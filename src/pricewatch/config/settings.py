@@ -18,6 +18,7 @@ from pricewatch.observability.redaction import register_secret
 
 ENV_PREFIX = "PRICEWATCH_"
 LOCAL_ENVIRONMENTS = {"development", "test"}
+SECRET_KEY_MIN_BYTES = 32
 
 
 class ConfigError(Exception):
@@ -35,6 +36,7 @@ class Settings(BaseSettings):
     env: Literal["development", "test", "production"]
     public_origin: str
     database_url: SecretStr
+    secret_key: SecretStr
     trusted_proxies: Annotated[tuple[IPv4Network | IPv6Network, ...], NoDecode] = ()
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     listen_host: str = "127.0.0.1"
@@ -59,6 +61,13 @@ class Settings(BaseSettings):
             raise ValueError("нужен адрес вида postgresql://пользователь:пароль@хост:порт/база")
         if not parts.hostname or parts.path.strip("/") == "":
             raise ValueError("в адресе нужны хост и имя базы")
+        return value
+
+    @field_validator("secret_key")
+    @classmethod
+    def _long_enough(cls, value: SecretStr) -> SecretStr:
+        if len(value.get_secret_value().encode("utf-8")) < SECRET_KEY_MIN_BYTES:
+            raise ValueError(f"нужно не меньше {SECRET_KEY_MIN_BYTES} байт; сгенерируйте ключ командой из .env.example")
         return value
 
     @field_validator("trusted_proxies", mode="before")

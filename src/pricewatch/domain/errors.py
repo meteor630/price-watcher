@@ -38,6 +38,9 @@ class ErrorCode(StrEnum):
     REFRESH_TOKEN_REUSED = "REFRESH_TOKEN_REUSED"
     IDEMPOTENCY_KEY_REUSED = "IDEMPOTENCY_KEY_REUSED"
     NAME_TAKEN = "NAME_TAKEN"
+    INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
+    INVITE_INVALID = "INVITE_INVALID"
+    LOGIN_TAKEN = "LOGIN_TAKEN"
 
 
 SAFE_MESSAGES: Mapping[ErrorCode, str] = MappingProxyType(
@@ -67,6 +70,9 @@ SAFE_MESSAGES: Mapping[ErrorCode, str] = MappingProxyType(
         ErrorCode.REFRESH_TOKEN_REUSED: "Сессия завершена из соображений безопасности. Войдите заново.",
         ErrorCode.IDEMPOTENCY_KEY_REUSED: "Повторный запрос отличается от исходного. Обновите страницу и повторите.",
         ErrorCode.NAME_TAKEN: "Такое название уже есть. Выберите другое.",
+        ErrorCode.INVALID_CREDENTIALS: "Неверный логин или пароль.",
+        ErrorCode.INVITE_INVALID: "Приглашение недействительно или истекло. Попросите администратора прислать новое.",
+        ErrorCode.LOGIN_TAKEN: "Такой логин уже занят. Выберите другой.",
     }
 )
 

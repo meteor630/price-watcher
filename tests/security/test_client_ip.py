@@ -80,6 +80,7 @@ def make_client(peer: str, trusted: str) -> TestClient:
         env="test",
         public_origin="https://prices.example.ru",
         database_url="postgresql://pricewatch@localhost:5432/pricewatch",
+        secret_key="test-secret-key-" + "k" * 32,
         trusted_proxies=trusted,
         _env_file=None,
     )  # type: ignore[call-arg]

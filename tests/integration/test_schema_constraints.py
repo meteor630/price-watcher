@@ -8,7 +8,7 @@ from collections.abc import Iterator
 
 import pytest
 from sqlalchemy import Connection, create_engine, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 
 
 @pytest.fixture
@@ -215,3 +215,125 @@ def test_defaults_for_new_records(db: Connection) -> None:
     row = db.execute(text("SELECT quantity, in_total, version, deleted_at FROM items WHERE id = :id"), {"id": item}).one()
     assert tuple(row) == (1, True, 1, None)
     assert run(db, "SELECT categories_order_version FROM users WHERE id = :id", id=alice) == 1
+
+
+# --- таблицы входа (этап 3) --------------------------------------------------
+
+HASH = "a" * 64
+OTHER_HASH = "b" * 64
+
+
+@pytest.mark.parametrize(
+    ("table", "column", "insert"),
+    [
+        ("invites", "code_hash", "INSERT INTO invites (code_hash, role, created_by, expires_at) VALUES (:h, 'user', :u, now() + interval '7 days')"),
+        ("web_sessions", "token_hash", "INSERT INTO web_sessions (user_id, token_hash, expires_at) VALUES (:u, :h, now() + interval '30 days')"),
+        ("pairing_codes", "code_hash", "INSERT INTO pairing_codes (user_id, code_hash, expires_at) VALUES (:u, :h, now() + interval '5 minutes')"),
+    ],
+)
+@pytest.mark.parametrize(
+    "bad_hash",
+    [
+        "x" * 43,  # токен в открытом виде: base64url, 43 символа
+        "A" * 64,  # заглавные — не наш формат
+        "a" * 63,
+        "",
+    ],
+)
+def test_user_hash_columns_accept_only_hmac_hex(
+    db: Connection, table: str, column: str, insert: str, bad_hash: str
+) -> None:
+    alice = user(db, "alice")
+
+    assert violated(db, insert, u=alice, h=bad_hash) == f"ck_{table}_{column}_format"
+    run(db, insert, u=alice, h=HASH)
+    assert violated(db, insert, u=alice, h=HASH) == f"uq_{table}_{column}"
+
+
+def device(db: Connection, user_id: int, name: str = "iPhone") -> int:
+    return run(db, "INSERT INTO devices (user_id, name) VALUES (:u, :n) RETURNING id", u=user_id, n=name)  # type: ignore[return-value]
+
+
+@pytest.mark.parametrize(
+    ("table", "insert"),
+    [
+        ("access_tokens", "INSERT INTO access_tokens (device_id, token_hash, expires_at) VALUES (:d, :h, now() + interval '15 minutes')"),
+        ("refresh_tokens", "INSERT INTO refresh_tokens (device_id, token_hash, expires_at) VALUES (:d, :h, now() + interval '60 days')"),
+    ],
+)
+def test_device_token_columns_accept_only_hmac_hex(db: Connection, table: str, insert: str) -> None:
+    dev = device(db, user(db, "alice"))
+
+    assert violated(db, insert, d=dev, h="x" * 43) == f"ck_{table}_token_hash_format"
+    run(db, insert, d=dev, h=HASH)
+    assert violated(db, insert, d=dev, h=HASH) == f"uq_{table}_token_hash"
+
+
+def test_invite_used_by_and_used_at_go_together(db: Connection) -> None:
+    admin, newcomer = user(db, "admin1", role="admin"), user(db, "newcomer")
+    invite = run(
+        db,
+        "INSERT INTO invites (code_hash, role, created_by, expires_at) VALUES (:h, 'user', :a, now() + interval '7 days') RETURNING id",
+        h=HASH,
+        a=admin,
+    )
+
+    assert violated(db, "UPDATE invites SET used_by = :n WHERE id = :i", n=newcomer, i=invite) == "ck_invites_used_together"
+    assert violated(db, "UPDATE invites SET used_at = now() WHERE id = :i", i=invite) == "ck_invites_used_together"
+    run(db, "UPDATE invites SET used_by = :n, used_at = now() WHERE id = :i", n=newcomer, i=invite)
+
+
+def test_invite_role_and_expiry(db: Connection) -> None:
+    admin = user(db, "admin1", role="admin")
+
+    assert violated(
+        db,
+        "INSERT INTO invites (code_hash, role, created_by, expires_at) VALUES (:h, 'root', :a, now() + interval '1 day')",
+        h=HASH,
+        a=admin,
+    ) == "ck_invites_role"
+    assert violated(
+        db,
+        "INSERT INTO invites (code_hash, role, created_by, expires_at) VALUES (:h, 'user', :a, now() - interval '1 second')",
+        h=OTHER_HASH,
+        a=admin,
+    ) == "ck_invites_expires_after_created"
+
+
+def test_one_invite_per_registered_user(db: Connection) -> None:
+    admin, newcomer = user(db, "admin1", role="admin"), user(db, "newcomer")
+    sql = (
+        "INSERT INTO invites (code_hash, role, created_by, expires_at, used_by, used_at) "
+        "VALUES (:h, 'user', :a, now() + interval '7 days', :n, now())"
+    )
+    run(db, sql, h=HASH, a=admin, n=newcomer)
+
+    assert violated(db, sql, h=OTHER_HASH, a=admin, n=newcomer) == "uq_invites_used_by"
+
+
+@pytest.mark.parametrize("name", ["", "я" * 81])
+def test_device_name_length(db: Connection, name: str) -> None:
+    alice = user(db, "alice")
+
+    assert violated(db, "INSERT INTO devices (user_id, name) VALUES (:u, :n)", u=alice, n=name) == "ck_devices_name_length"
+    device(db, alice, "я" * 80)
+
+
+def test_auth_failure_kind_and_subject(db: Connection) -> None:
+    insert = "INSERT INTO auth_failures (kind, subject, ip) VALUES (:k, :s, CAST(:ip AS inet))"
+    run(db, insert, k="login", s="alice", ip="203.0.113.7")
+    run(db, insert, k="pairing", s=None, ip="2001:db8::1")
+
+    assert violated(db, insert, k="password", s="alice", ip="203.0.113.7") == "ck_auth_failures_kind"
+    assert violated(db, insert, k="login", s="я" * 65, ip=None) == "ck_auth_failures_subject_length"
+    with pytest.raises(DataError), db.begin_nested():
+        run(db, insert, k="login", s="alice", ip="not-an-ip")
+
+
+def test_tokens_belong_to_existing_device(db: Connection) -> None:
+    assert violated(
+        db,
+        "INSERT INTO access_tokens (device_id, token_hash, expires_at) VALUES (:d, :h, now() + interval '15 minutes')",
+        d=10**12,
+        h=HASH,
+    ) == "fk_access_tokens_device_id"

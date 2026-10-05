@@ -42,6 +42,7 @@ def settings_url(monkeypatch: pytest.MonkeyPatch, database_url: str, tmp_path: P
     monkeypatch.setenv("PRICEWATCH_ENV", "test")
     monkeypatch.setenv("PRICEWATCH_PUBLIC_ORIGIN", "http://localhost:8000")
     monkeypatch.setenv("PRICEWATCH_DATABASE_URL", database_url)
+    monkeypatch.setenv("PRICEWATCH_SECRET_KEY", "test-secret-key-" + "k" * 32)
     return load_settings(tmp_path / ".env").database_url.get_secret_value()
 
 

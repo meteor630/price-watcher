@@ -18,7 +18,10 @@ from pricewatch.persistence.models import Base
 from pricewatch.persistence.schema import alembic_config
 
 ROOT = Path(__file__).resolve().parents[2]
-TABLES = {"users", "categories", "groups", "items"}
+TABLES = {
+    "users", "categories", "groups", "items",
+    "invites", "web_sessions", "devices", "refresh_tokens", "access_tokens", "pairing_codes", "auth_failures",
+}
 
 
 def tables(url: str) -> set[str]:
@@ -43,6 +46,10 @@ def test_upgrade_downgrade_upgrade(empty_database_url: str) -> None:
 
     command.upgrade(config, "head")
     assert tables(empty_database_url) == TABLES
+    assert revision(empty_database_url) == "0002"
+
+    command.downgrade(config, "0001")
+    assert tables(empty_database_url) == {"users", "categories", "groups", "items"}
     assert revision(empty_database_url) == "0001"
 
     command.downgrade(config, "base")
@@ -86,6 +93,7 @@ def test_alembic_command_uses_settings_and_logs_json(empty_database_url: str, tm
         "PRICEWATCH_ENV": "test",
         "PRICEWATCH_PUBLIC_ORIGIN": "http://localhost:8000",
         "PRICEWATCH_DATABASE_URL": url,
+        "PRICEWATCH_SECRET_KEY": "test-secret-key-" + "k" * 32,
     }
     try:
         result = subprocess.run(

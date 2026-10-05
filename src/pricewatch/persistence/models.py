@@ -1,4 +1,4 @@
-"""Таблицы PostgreSQL этапа 2: пользователи и личный список покупок.
+"""Таблицы PostgreSQL: пользователи, вход (этап 3) и личный список покупок (этап 2).
 
 Схема — DEVELOPMENT_ARCHITECTURE.md, раздел 5. Ограничения стоят в базе, а не только
 в коде: составные внешние ключи не дают положить группу в чужую категорию или товар
@@ -24,6 +24,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import INET
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 NAMING_CONVENTION = {
@@ -40,6 +41,8 @@ GROUP_NAME_INDEX = "uq_groups_category_id_name_active"
 USER_LOGIN_INDEX = "uq_users_login_lower"
 
 ACTIVE = text("deleted_at IS NULL")
+# Во всех *_hash — только HMAC-SHA256 в шестнадцатеричном виде: токен в открытом виде база не примет.
+HASH_PATTERN = "'^[0-9a-f]{64}$'"
 
 
 class Base(DeclarativeBase):
@@ -155,4 +158,140 @@ class ItemRow(Base):
         CheckConstraint("position >= 0", name="position"),
         CheckConstraint("version >= 1", name="version"),
         Index("ix_items_category_id_group_id_position", "category_id", "group_id", "position"),
+    )
+
+
+def _hash_check(column: str) -> CheckConstraint:
+    return CheckConstraint(f"{column} ~ {HASH_PATTERN}", name=f"{column}_format")
+
+
+class InviteRow(Base):
+    __tablename__ = "invites"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    code_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_by: Mapped[int | None] = mapped_column(BigInteger, unique=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        ForeignKeyConstraint(["created_by"], ["users.id"]),
+        ForeignKeyConstraint(["used_by"], ["users.id"]),
+        _hash_check("code_hash"),
+        CheckConstraint("role IN ('user', 'admin')", name="role"),
+        CheckConstraint("expires_at > created_at", name="expires_after_created"),
+        CheckConstraint("(used_by IS NULL) = (used_at IS NULL)", name="used_together"),
+    )
+
+
+class WebSessionRow(Base):
+    __tablename__ = "web_sessions"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    created_at: Mapped[datetime] = _created_at()
+    last_seen_at: Mapped[datetime] = _created_at()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        ForeignKeyConstraint(["user_id"], ["users.id"]),
+        _hash_check("token_hash"),
+        CheckConstraint("expires_at > created_at", name="expires_after_created"),
+        Index("ix_web_sessions_user_id", "user_id"),
+    )
+
+
+class DeviceRow(Base):
+    """Устройство приложения; оно же семья refresh-токенов."""
+
+    __tablename__ = "devices"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+    last_seen_at: Mapped[datetime] = _created_at()
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        ForeignKeyConstraint(["user_id"], ["users.id"]),
+        CheckConstraint("char_length(name) BETWEEN 1 AND 80", name="name_length"),
+        Index("ix_devices_user_id", "user_id"),
+    )
+
+
+class RefreshTokenRow(Base):
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    device_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    issued_at: Mapped[datetime] = _created_at()
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        ForeignKeyConstraint(["device_id"], ["devices.id"]),
+        _hash_check("token_hash"),
+        CheckConstraint("expires_at > issued_at", name="expires_after_issued"),
+        Index("ix_refresh_tokens_device_id", "device_id"),
+    )
+
+
+class AccessTokenRow(Base):
+    __tablename__ = "access_tokens"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    device_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    issued_at: Mapped[datetime] = _created_at()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        ForeignKeyConstraint(["device_id"], ["devices.id"]),
+        _hash_check("token_hash"),
+        CheckConstraint("expires_at > issued_at", name="expires_after_issued"),
+        Index("ix_access_tokens_device_id", "device_id"),
+    )
+
+
+class PairingCodeRow(Base):
+    __tablename__ = "pairing_codes"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    code_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    created_at: Mapped[datetime] = _created_at()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        ForeignKeyConstraint(["user_id"], ["users.id"]),
+        _hash_check("code_hash"),
+        CheckConstraint("expires_at > created_at", name="expires_after_created"),
+        Index("ix_pairing_codes_user_id", "user_id"),
+    )
+
+
+class AuthFailureRow(Base):
+    """Неудачная попытка входа (login) или ввода кода связки (pairing) — для ограничений."""
+
+    __tablename__ = "auth_failures"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    subject: Mapped[str | None] = mapped_column(Text)
+    ip: Mapped[str | None] = mapped_column(INET)
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('login', 'pairing')", name="kind"),
+        CheckConstraint("subject IS NULL OR char_length(subject) BETWEEN 1 AND 64", name="subject_length"),
+        Index("ix_auth_failures_kind_subject_created_at", "kind", "subject", "created_at"),
+        Index("ix_auth_failures_kind_ip_created_at", "kind", "ip", "created_at"),
     )

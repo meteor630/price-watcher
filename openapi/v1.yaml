@@ -44,7 +44,8 @@ paths:
       tags: [auth]
       summary: Обменять pairing-код на пару токенов
       description: |
-        Код — 8 символов, живёт 5 минут, одноразовый, сгорает после 5 неверных вводов.
+        Код — 8 символов, живёт 5 минут, одноразовый. Неверные вводы ограничены:
+        не больше 10 с одного IP за 15 минут, сверх лимита `429 RATE_LIMITED`.
         Создаёт устройство и семью refresh-токенов.
       security: []
       requestBody:
@@ -1343,7 +1344,8 @@ components:
                 [AUTH_REQUIRED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, RATE_LIMITED,
                  PAIRING_CODE_INVALID, PAIRING_CODE_EXPIRED, REFRESH_TOKEN_INVALID,
                  REFRESH_TOKEN_REUSED, IDEMPOTENCY_KEY_REUSED, VERSION_CONFLICT,
-                 RUN_IN_PROGRESS, WORKER_OFFLINE, DB_ERROR, INTERNAL_ERROR, NAME_TAKEN]
+                 RUN_IN_PROGRESS, WORKER_OFFLINE, DB_ERROR, INTERNAL_ERROR, NAME_TAKEN,
+                 INVALID_CREDENTIALS, INVITE_INVALID, LOGIN_TAKEN]
             message:
               type: string
               description: Понятное сообщение для пользователя, без технических подробностей.

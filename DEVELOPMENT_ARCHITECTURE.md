@@ -127,22 +127,26 @@ tools/  check_project_map.py, deps.py, import_contracts.py (свой тип ко
 
 Регистрация — по приглашению. Администратор создаёт одноразовую ссылку со сроком 7 дней; по ней открывается форма «Зарегистрироваться». Открытой регистрации нет: каждый пользователь может заставить парсер ходить по ссылкам. Первый администратор создаётся командой на сервере.
 
-Вход на сайт: логин и пароль (argon2id), серверная сессия в cookie `HttpOnly; Secure; SameSite=Lax`. Ограничение: 5 неудачных попыток на логин и 20 на IP за 15 минут.
+Логин — 3–64 символа: латиница, цифры, точка, дефис, подчёркивание; сравнивается без учёта регистра. Пароль — 10–128 символов и не совпадает с логином, без правил состава (NIST SP 800-63B).
 
-Вход в приложение: pairing-код. Его генерирует сервер по кнопке на сайте после входа либо по команде боту от привязанного Telegram-аккаунта. Код — 8 символов из алфавита в 32 знака, живёт 5 минут, одноразовый, сгорает после 5 неверных вводов. В базе хранится только хеш.
+Вход на сайт: логин и пароль (argon2id через argon2-cffi), серверная сессия в cookie `HttpOnly; Secure; SameSite=Lax`. Сессия живёт 30 суток с момента входа без продления; отметка последнего визита обновляется не чаще раза в час. Ограничение: 5 неудачных попыток на логин и 20 на IP за 15 минут; неудачи хранятся в `auth_failures`. Ответ при ошибке входа не уточняет, что неверно (`INVALID_CREDENTIALS`), а время ответа для несуществующего логина выравнивается проверкой фиктивного хеша. Смена пароля и отключение пользователя отзывают все его сессии и устройства.
+
+Серверный ключ `PRICEWATCH_SECRET_KEY` (не короче 32 байт) — основа HMAC для всех кодов, токенов и сессий: в базе хранится только HMAC с этим ключом, поэтому перебор по копии базы без ключа бесполезен. Смена ключа разлогинивает всех — это осознанный аварийный рычаг.
+
+Вход в приложение: pairing-код. Его генерирует сервер по кнопке на сайте после входа либо по команде боту от привязанного Telegram-аккаунта. Код — 8 символов из алфавита в 32 знака (A–Z, 2–7), живёт 5 минут, одноразовый. Неверный ввод не указывает, какой код перебирают, поэтому ограничение — не больше 10 неверных вводов с одного IP за 15 минут (`auth_failures`). В базе хранится только HMAC кода.
 
 Refresh-токены:
 
-- Ротация при каждом обновлении; токены одного устройства образуют семью.
-- Повтор предыдущего токена в течение 60 секунд возвращает ту же новую пару. Так приложение не разлогинивается, если ответ потерялся в сети.
+- Ротация при каждом обновлении; токены одного устройства образуют семью: отзыв семьи — это отзыв устройства.
+- Следующая пара выводится из предыдущего refresh-токена через HMAC с серверным ключом. Поэтому повтор предыдущего токена в течение 60 секунд возвращает ту же новую пару без хранения токенов в открытом виде. Так приложение не разлогинивается, если ответ потерялся в сети.
 - Повтор за пределами окна отзывает всю семью и создаёт уведомление администраторам.
-- Access-токен живёт 15 минут, refresh — 60 дней.
+- Access-токен — случайная строка, живёт 15 минут; в базе её HMAC, срок и устройство, поэтому отзыв действует сразу. Refresh живёт 60 дней.
 
 Два способа авторизации на одном API разделены жёстко:
 
-- Есть заголовок `Authorization` — cookie игнорируется, CSRF не требуется.
-- Заголовка нет — нужна cookie-сессия; для изменяющих запросов обязательны CSRF-токен и совпадение `Origin`.
-- `/web/*` принимает только cookie, `/worker/v1/*` — только токен worker, `/internal/v1/*` — только токен сервиса.
+- `/api/v1/*` принимает только `Authorization: Bearer`; cookie игнорируется, CSRF не требуется.
+- `/web/*` принимает только cookie-сессию; заголовок `Authorization` игнорируется. Для изменяющих запросов обязательны CSRF-токен и совпадение `Origin`. CSRF-токен — HMAC токена сессии с серверным ключом: живёт столько же, сколько сессия, и не хранится.
+- `/worker/v1/*` — только токен worker, `/internal/v1/*` — только токен сервиса.
 - CORS разрешён только своему домену.
 
 Telegram привязывается к пользователю одноразовым кодом с сайта.
@@ -156,11 +160,15 @@ Telegram привязывается к пользователю одноразо
 Учётные записи и сессии:
 
 - `users(id, login, password_hash, role, display_name, telegram_chat_id, categories_order_version, created_at, disabled_at)` — `categories_order_version` — версия порядка категорий пользователя.
-- `invites(id, code_hash, role, created_by, expires_at, used_by, used_at)`
+- `invites(id, code_hash, role, created_by, created_at, expires_at, used_by, used_at)`
 - `web_sessions(id, user_id, token_hash, created_at, last_seen_at, expires_at, revoked_at)`
-- `devices(id, user_id, name, created_at, revoked_at)`
-- `refresh_tokens(id, device_id, family_id, token_hash, replaced_by_id, issued_at, used_at, expires_at, revoked_at)`
-- `pairing_codes(id, user_id, code_hash, expires_at, attempts, used_at)`
+- `devices(id, user_id, name, created_at, last_seen_at, revoked_at)` — устройство и есть семья refresh-токенов.
+- `refresh_tokens(id, device_id, token_hash, issued_at, used_at, expires_at)` — отзыв через `devices.revoked_at`.
+- `access_tokens(id, device_id, token_hash, issued_at, expires_at)`
+- `pairing_codes(id, user_id, code_hash, created_at, expires_at, used_at)`
+- `auth_failures(id, kind, subject, ip, created_at)` — неудачные попытки входа (`login`) и ввода кода (`pairing`) для ограничений.
+
+Все `*_hash` здесь — HMAC-SHA256 с серверным ключом, пароли — argon2id.
 - `idempotency_keys(user_id, key, request_hash, response_status, response_body, created_at)` — уникально `(user_id, key)`, срок 24 часа. Тот же ключ с другим телом запроса даёт `409`.
 
 Личные данные пользователя (у каждой таблицы `user_id`, `version`, `deleted_at`):
@@ -344,7 +352,7 @@ Worker скачивает фото товара: не больше 2 МБ, то�
 
 Ошибки не маскируются нулевой ценой, пустым успешным ответом или заглушкой. Коды: `INVALID_URL`, `STORE_NOT_ALLOWED`, `BLOCKED`, `CAPTCHA`, `TIMEOUT`, `LAYOUT_CHANGED`, `PRICE_NOT_FOUND`, `REGION_MISMATCH`, `UNSUPPORTED_CURRENCY`, `WORKER_OFFLINE`, `RUN_IN_PROGRESS`, `VERSION_CONFLICT`, `DB_ERROR`, `INTERNAL_ERROR`.
 
-Коды API и входа: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `VALIDATION_ERROR`, `RATE_LIMITED`, `PAIRING_CODE_INVALID`, `PAIRING_CODE_EXPIRED`, `REFRESH_TOKEN_INVALID`, `REFRESH_TOKEN_REUSED`, `IDEMPOTENCY_KEY_REUSED`, `NAME_TAKEN`.
+Коды API и входа: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `VALIDATION_ERROR`, `RATE_LIMITED`, `PAIRING_CODE_INVALID`, `PAIRING_CODE_EXPIRED`, `REFRESH_TOKEN_INVALID`, `REFRESH_TOKEN_REUSED`, `IDEMPOTENCY_KEY_REUSED`, `NAME_TAKEN`, `INVALID_CREDENTIALS`, `INVITE_INVALID`, `LOGIN_TAKEN`.
 
 - Каждая попытка сохраняет статус, время, внутренние идентификаторы, краткое безопасное сообщение и correlation ID.
 - Полный traceback пишется в журнал узла. Токены, cookie, заголовки авторизации и чувствительные параметры URL вырезаются.

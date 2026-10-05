@@ -20,7 +20,18 @@ def engine_for(url: str) -> Engine:
 
 
 def test_head_is_latest_migration() -> None:
-    assert head_revision() == "0001"
+    assert head_revision() == "0002"
+
+
+def test_one_revision_behind_is_reported(empty_database_url: str) -> None:
+    command.upgrade(alembic_config(empty_database_url), "0001")
+    engine = engine_for(empty_database_url)
+    try:
+        assert current_revision(engine) == "0001"
+        with pytest.raises(SchemaMismatch, match="в ревизии 0001, код ожидает 0002"):
+            check_schema(engine)
+    finally:
+        engine.dispose()
 
 
 def test_migrated_database_matches_code(migrated_database_url: str) -> None:
@@ -43,8 +54,6 @@ def test_empty_database_is_behind(empty_database_url: str) -> None:
 
 
 def test_downgraded_database_is_behind(empty_database_url: str) -> None:
-    # Миграция пока одна, поэтому «отстающая» схема — это откат до base. Когда появится
-    # вторая миграция, сюда добавится проверка отставания на одну ревизию.
     command.upgrade(alembic_config(empty_database_url), "head")
     command.downgrade(alembic_config(empty_database_url), "base")
     engine = engine_for(empty_database_url)

@@ -25,9 +25,13 @@ def free_port() -> int:
         return int(probe.getsockname()[1])
 
 
+TEST_SECRET_KEY = "test-secret-key-" + "k" * 32
+
+
 def clean_env(**variables: str) -> dict[str, str]:
+    """Окружение без чужих PRICEWATCH_*; серверный ключ задан, если тест не убрал его явно."""
     env = {name: value for name, value in os.environ.items() if not name.startswith("PRICEWATCH_")}
-    return env | variables
+    return env | {"PRICEWATCH_SECRET_KEY": TEST_SECRET_KEY} | variables
 
 
 def stream_lines(process: subprocess.Popen[str]) -> "queue.Queue[str | None]":

@@ -37,6 +37,9 @@ HTTP_STATUS: Mapping[ErrorCode, int] = MappingProxyType(
         ErrorCode.REFRESH_TOKEN_REUSED: 401,
         ErrorCode.IDEMPOTENCY_KEY_REUSED: 409,
         ErrorCode.NAME_TAKEN: 409,
+        ErrorCode.INVALID_CREDENTIALS: 401,
+        ErrorCode.INVITE_INVALID: 400,
+        ErrorCode.LOGIN_TAKEN: 409,
     }
 )
 

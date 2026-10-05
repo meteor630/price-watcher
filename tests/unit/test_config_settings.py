@@ -9,6 +9,7 @@ from pricewatch.config.settings import ConfigError, Settings, load_settings
 
 ROOT = Path(__file__).resolve().parents[2]
 SECRETISH = "s3cr3t-VALUE-must-not-leak"
+TEST_SECRET_KEY = "test-secret-key-" + "k" * 32
 
 
 @pytest.fixture(autouse=True)
@@ -25,6 +26,7 @@ def base_env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
     monkeypatch.setenv("PRICEWATCH_ENV", "production")
     monkeypatch.setenv("PRICEWATCH_PUBLIC_ORIGIN", "https://prices.example.ru")
     monkeypatch.setenv("PRICEWATCH_DATABASE_URL", "postgresql://pricewatch@localhost:5432/pricewatch")
+    monkeypatch.setenv("PRICEWATCH_SECRET_KEY", TEST_SECRET_KEY)
     return monkeypatch
 
 
@@ -56,17 +58,20 @@ def test_reads_env_file_and_environment_wins(monkeypatch: pytest.MonkeyPatch, tm
     settings = load(
         tmp_path,
         "PRICEWATCH_ENV=development\nPRICEWATCH_PUBLIC_ORIGIN=http://localhost:8000\n"
-        "PRICEWATCH_DATABASE_URL=postgresql://pricewatch@localhost:5432/pricewatch\nPRICEWATCH_LOG_LEVEL=DEBUG\n",
+        "PRICEWATCH_DATABASE_URL=postgresql://pricewatch@localhost:5432/pricewatch\nPRICEWATCH_LOG_LEVEL=DEBUG\n"
+        f"PRICEWATCH_SECRET_KEY={TEST_SECRET_KEY}\n",
     )
 
     assert settings.env == "development"
     assert settings.log_level == "ERROR"
 
 
-def test_env_example_is_complete_and_loads(tmp_path: Path) -> None:
+def test_env_example_is_complete_and_loads(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     example = (ROOT / ".env.example").read_text(encoding="utf-8")
     variables = {line.split("=", 1)[0] for line in example.splitlines() if line and not line.startswith("#")}
 
+    # Серверного ключа в примере нет намеренно: секреты только в .env.
+    monkeypatch.setenv("PRICEWATCH_SECRET_KEY", TEST_SECRET_KEY)
     settings = load(tmp_path, example)
 
     assert variables == {f"PRICEWATCH_{name.upper()}" for name in Settings.model_fields}
@@ -221,3 +226,27 @@ def test_missing_database_url_is_named(base_env: pytest.MonkeyPatch, tmp_path: P
     base_env.delenv("PRICEWATCH_DATABASE_URL")
 
     assert "PRICEWATCH_DATABASE_URL: переменная не задана" in config_error(tmp_path)
+
+
+@pytest.mark.parametrize("key", ["", "short", "я" * 15])
+def test_short_secret_key_rejected_without_value(base_env: pytest.MonkeyPatch, tmp_path: Path, key: str) -> None:
+    base_env.setenv("PRICEWATCH_SECRET_KEY", key)
+
+    message = config_error(tmp_path)
+
+    assert "PRICEWATCH_SECRET_KEY" in message
+    if key:
+        assert key not in message
+
+
+def test_secret_key_of_32_bytes_accepted_and_hidden(base_env: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from pricewatch.observability.redaction import redact_text
+
+    key = "я" * 16  # 32 байта в UTF-8
+    base_env.setenv("PRICEWATCH_SECRET_KEY", key)
+
+    settings = load(tmp_path)
+
+    assert settings.secret_key.get_secret_value() == key
+    assert key not in repr(settings)
+    assert key not in redact_text(f"ключ {key} в тексте")
