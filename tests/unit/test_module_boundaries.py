@@ -1,6 +1,5 @@
 """Контракты import-linter из pyproject.toml ловят нарушения границ модулей."""
 
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -27,14 +26,6 @@ def run_lint(root: Path) -> subprocess.CompletedProcess[str]:
         text=True,
         check=False,
     )
-
-
-@pytest.fixture
-def project_copy(tmp_path: Path) -> Path:
-    shutil.copytree(PROJECT_ROOT / "src", tmp_path / "src")
-    shutil.copytree(PROJECT_ROOT / "tools", tmp_path / "tools")
-    shutil.copy(PROJECT_ROOT / "pyproject.toml", tmp_path / "pyproject.toml")
-    return tmp_path
 
 
 def add_line(root: Path, package: str, line: str) -> None:

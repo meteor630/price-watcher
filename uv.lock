@@ -113,6 +113,7 @@ source = { editable = "." }
 
 [package.dev-dependencies]
 dev = [
+    { name = "grimp" },
     { name = "import-linter" },
     { name = "pytest" },
 ]
@@ -121,6 +122,7 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "grimp", specifier = ">=3.17" },
     { name = "import-linter", specifier = ">=2.15" },
     { name = "pytest", specifier = ">=9.1.1" },
 ]

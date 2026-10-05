@@ -91,7 +91,7 @@ src/pricewatch/
   bootstrap/       сборка приложения: связывает сценарии с реализациями репозиториев
 ios/PriceWatcher/  отдельный Xcode-проект
 tests/  unit/ integration/ contracts/ security/ ui/
-tools/  check_project_map.py, deps.py
+tools/  check_project_map.py, deps.py, import_contracts.py (свой тип контракта import-linter)
 ```
 
 Направление зависимостей: `api → application → domain`; `persistence` реализует интерфейсы из `application`; адаптеры магазинов не импортируют друг друга; `worker` и `bot` не импортируют `persistence`.
