@@ -55,7 +55,8 @@
 - Путь: `src/pricewatch/domain/`
 - Отвечает: сущности и правила расчётов; только стандартная библиотека
 - Зависит от: —
-- Тесты: `uv run pytest tests/unit/test_package_layout.py`
+- Тесты: `uv run pytest tests/unit/test_domain_errors.py tests/unit/test_package_layout.py`
+- Файлы: `src/pricewatch/domain/errors.py` — коды ошибок, безопасные сообщения, базовое исключение PriceWatcherError.
 
 ### pricewatch.application
 - Путь: `src/pricewatch/application/`
