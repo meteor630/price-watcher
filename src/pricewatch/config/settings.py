@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
-from pydantic import ValidationError, field_validator, model_validator
+from pydantic import Field, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 ENV_PREFIX = "PRICEWATCH_"
@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     public_origin: str
     trusted_proxies: Annotated[tuple[IPv4Network | IPv6Network, ...], NoDecode] = ()
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    listen_host: str = "127.0.0.1"
+    listen_port: int = Field(default=8000, ge=1, le=65535)
 
     @field_validator("public_origin")
     @classmethod

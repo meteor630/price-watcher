@@ -7,6 +7,7 @@
 ## Команды
 
 - Команда: `uv sync` — установить окружение.
+- Команда: `uv run python -m pricewatch.bootstrap` — запустить сервер; настройки из окружения и .env.
 - Команда: `uv run pytest` — весь набор тестов.
 - Команда: `uv run lint-imports` — границы модулей.
 - Команда: `uv run python tools/check_project_map.py` — карта против кода.
@@ -46,7 +47,7 @@
 - Файлы: `.gitignore`
 - Файлы: `.env.example` — все настройки с пояснениями, без секретов; копируется в .env.
 
-Зависимости рабочего кода: pydantic-settings (MIT). Для разработки: pytest, import-linter, grimp, openapi-spec-validator.
+Зависимости рабочего кода: pydantic-settings (MIT), fastapi (MIT), uvicorn (BSD-3). Для разработки: pytest, import-linter, grimp, openapi-spec-validator, httpx2.
 
 ## Пакеты
 
@@ -74,8 +75,11 @@
 ### pricewatch.api
 - Путь: `src/pricewatch/api/`
 - Отвечает: маршруты `/api/v1`, `/web`, `/worker/v1`, `/internal/v1`; аутентификация
-- Зависит от: —
-- Тесты: `uv run pytest tests/unit/test_package_layout.py`
+- Зависит от: `pricewatch.config`, `pricewatch.domain`, `pricewatch.observability`
+- Тесты: `uv run pytest tests/unit/test_api_app.py tests/integration/test_server_start.py`
+- Файлы: `src/pricewatch/api/app.py` — create_app: обработчики ошибок, CORS только своему домену, без автодокументации.
+- Файлы: `src/pricewatch/api/edge.py` — внешний слой: request_id, защитные заголовки, 500 без утечек, журнал запросов без строки запроса.
+- Файлы: `src/pricewatch/api/errors.py` — HTTP-статус каждого кода ошибки, тело по схеме ErrorResponse.
 
 ### pricewatch.web
 - Путь: `src/pricewatch/web/`
@@ -121,8 +125,9 @@
 ### pricewatch.bootstrap
 - Путь: `src/pricewatch/bootstrap/`
 - Отвечает: сборка приложения, связывает сценарии с репозиториями; без бизнес-логики
-- Зависит от: —
-- Тесты: `uv run pytest tests/unit/test_package_layout.py`
+- Зависит от: `pricewatch.api`, `pricewatch.config`, `pricewatch.observability`
+- Тесты: `uv run pytest tests/integration/test_server_start.py`
+- Файлы: `src/pricewatch/bootstrap/server.py`, `src/pricewatch/bootstrap/__main__.py` — настройки, журнал, приложение, uvicorn.
 
 ### pricewatch.config
 - Путь: `src/pricewatch/config/`
@@ -159,6 +164,7 @@
 ## Тесты
 
 - Файлы: `tests/unit/` — unit-тесты.
+- Файлы: `tests/integration/` — запуск настоящего процесса сервера.
 - Файлы: `tests/contracts/` — проверки контракта API.
 - Файлы: `tests/unit/conftest.py` — фикстура project_copy: копия проекта для тестов, которые ломают код.
 

@@ -43,80 +43,80 @@ def add_line(root: Path, package: str, line: str) -> None:
     init.write_text(init.read_text() + line + "\n")
 
 
-def test_valid_map_passes(project_copy: Path) -> None:
-    write_map(project_copy)
+def test_valid_map_passes(skeleton_copy: Path) -> None:
+    write_map(skeleton_copy)
 
-    result = run_check(project_copy)
+    result = run_check(skeleton_copy)
 
     assert result.returncode == 0, result.stderr
     assert result.stdout == "PROJECT_MAP.md соответствует коду.\n"
 
 
-def test_missing_map_fails(project_copy: Path) -> None:
-    result = run_check(project_copy)
+def test_missing_map_fails(skeleton_copy: Path) -> None:
+    result = run_check(skeleton_copy)
 
     assert result.returncode == 1
     assert "Нет файла PROJECT_MAP.md" in result.stderr
 
 
-def test_undescribed_package_fails(project_copy: Path) -> None:
-    write_map(project_copy)
-    (project_copy / "src" / "pricewatch" / "extra").mkdir()
-    (project_copy / "src" / "pricewatch" / "extra" / "__init__.py").write_text("")
+def test_undescribed_package_fails(skeleton_copy: Path) -> None:
+    write_map(skeleton_copy)
+    (skeleton_copy / "src" / "pricewatch" / "extra").mkdir()
+    (skeleton_copy / "src" / "pricewatch" / "extra" / "__init__.py").write_text("")
 
-    result = run_check(project_copy)
+    result = run_check(skeleton_copy)
 
     assert result.returncode == 1
     assert "pricewatch.extra: пакет есть в коде, но не описан в карте" in result.stderr
 
 
-def test_described_package_without_code_fails(project_copy: Path) -> None:
-    write_map(project_copy, extra="\n" + package_section("ghost", Путь="`src/`"))
+def test_described_package_without_code_fails(skeleton_copy: Path) -> None:
+    write_map(skeleton_copy, extra="\n" + package_section("ghost", Путь="`src/`"))
 
-    result = run_check(project_copy)
+    result = run_check(skeleton_copy)
 
     assert "pricewatch.ghost: пакет описан в карте, но его нет в коде" in result.stderr
 
 
-def test_duplicate_section_fails(project_copy: Path) -> None:
-    write_map(project_copy, extra="\n" + package_section("domain"))
+def test_duplicate_section_fails(skeleton_copy: Path) -> None:
+    write_map(skeleton_copy, extra="\n" + package_section("domain"))
 
-    result = run_check(project_copy)
+    result = run_check(skeleton_copy)
 
     assert "pricewatch.domain: пакет описан в карте несколько раз" in result.stderr
 
 
 @pytest.mark.parametrize("field", ["Путь", "Отвечает", "Зависит от", "Тесты"])
-def test_missing_field_fails(project_copy: Path, field: str) -> None:
-    write_map(project_copy, {"domain": {field: None}})
+def test_missing_field_fails(skeleton_copy: Path, field: str) -> None:
+    write_map(skeleton_copy, {"domain": {field: None}})
 
-    result = run_check(project_copy)
+    result = run_check(skeleton_copy)
 
     assert result.returncode == 1
     assert f"pricewatch.domain: нет поля «{field}»" in result.stderr
 
 
-def test_wrong_package_path_fails(project_copy: Path) -> None:
-    write_map(project_copy, {"domain": {"Путь": "`src/pricewatch/application/`"}})
+def test_wrong_package_path_fails(skeleton_copy: Path) -> None:
+    write_map(skeleton_copy, {"domain": {"Путь": "`src/pricewatch/application/`"}})
 
-    result = run_check(project_copy)
+    result = run_check(skeleton_copy)
 
     assert "pricewatch.domain: «Путь» должен быть `src/pricewatch/domain/`" in result.stderr
 
 
-def test_unlisted_dependency_fails(project_copy: Path) -> None:
-    add_line(project_copy, "application", "import pricewatch.domain")
-    write_map(project_copy)
+def test_unlisted_dependency_fails(skeleton_copy: Path) -> None:
+    add_line(skeleton_copy, "application", "import pricewatch.domain")
+    write_map(skeleton_copy)
 
-    result = run_check(project_copy)
+    result = run_check(skeleton_copy)
 
     assert "pricewatch.application: импортирует pricewatch.domain, но в карте это не указано" in result.stderr
 
 
-def test_listed_dependency_without_import_fails(project_copy: Path) -> None:
-    write_map(project_copy, {"application": {"Зависит от": "`pricewatch.domain`"}})
+def test_listed_dependency_without_import_fails(skeleton_copy: Path) -> None:
+    write_map(skeleton_copy, {"application": {"Зависит от": "`pricewatch.domain`"}})
 
-    result = run_check(project_copy)
+    result = run_check(skeleton_copy)
 
     assert (
         "pricewatch.application: в карте указана зависимость от pricewatch.domain, но импорта нет"
@@ -124,60 +124,60 @@ def test_listed_dependency_without_import_fails(project_copy: Path) -> None:
     )
 
 
-def test_matching_dependencies_pass(project_copy: Path) -> None:
-    add_line(project_copy, "application", "import pricewatch.domain")
-    add_line(project_copy, "bootstrap", "import pricewatch.application")
-    add_line(project_copy, "bootstrap", "from pricewatch.persistence import __doc__")
+def test_matching_dependencies_pass(skeleton_copy: Path) -> None:
+    add_line(skeleton_copy, "application", "import pricewatch.domain")
+    add_line(skeleton_copy, "bootstrap", "import pricewatch.application")
+    add_line(skeleton_copy, "bootstrap", "from pricewatch.persistence import __doc__")
     write_map(
-        project_copy,
+        skeleton_copy,
         {
             "application": {"Зависит от": "`pricewatch.domain`"},
             "bootstrap": {"Зависит от": "`pricewatch.application`, `pricewatch.persistence`"},
         },
     )
 
-    result = run_check(project_copy)
+    result = run_check(skeleton_copy)
 
     assert result.returncode == 0, result.stderr
 
 
-def test_dependency_in_free_text_fails(project_copy: Path) -> None:
-    write_map(project_copy, {"domain": {"Зависит от": "ничего"}})
+def test_dependency_in_free_text_fails(skeleton_copy: Path) -> None:
+    write_map(skeleton_copy, {"domain": {"Зависит от": "ничего"}})
 
-    result = run_check(project_copy)
+    result = run_check(skeleton_copy)
 
     assert "pricewatch.domain: «Зависит от» — пакеты в обратных кавычках или —" in result.stderr
 
 
-def test_missing_file_path_fails(project_copy: Path) -> None:
-    write_map(project_copy, extra="\n## Инструменты\n\n- Файлы: `tools/deps.py`, `tools/absent.py`\n")
+def test_missing_file_path_fails(skeleton_copy: Path) -> None:
+    write_map(skeleton_copy, extra="\n## Инструменты\n\n- Файлы: `tools/deps.py`, `tools/absent.py`\n")
 
-    result = run_check(project_copy)
+    result = run_check(skeleton_copy)
 
     assert result.stderr == "Путь не существует: tools/absent.py\n"
 
 
-def test_missing_path_in_command_fails(project_copy: Path) -> None:
-    write_map(project_copy, {"domain": {"Тесты": "`uv run pytest tests/unit/test_absent.py::test_one -q`"}})
+def test_missing_path_in_command_fails(skeleton_copy: Path) -> None:
+    write_map(skeleton_copy, {"domain": {"Тесты": "`uv run pytest tests/unit/test_absent.py::test_one -q`"}})
 
-    result = run_check(project_copy)
+    result = run_check(skeleton_copy)
 
     assert result.stderr == "Путь не существует: tests/unit/test_absent.py\n"
 
 
-def test_glob_must_match_something(project_copy: Path) -> None:
-    write_map(project_copy, extra="\n- Файлы: `src/pricewatch/*/__init__.py`, `src/pricewatch/*/absent_*.py`\n")
+def test_glob_must_match_something(skeleton_copy: Path) -> None:
+    write_map(skeleton_copy, extra="\n- Файлы: `src/pricewatch/*/__init__.py`, `src/pricewatch/*/absent_*.py`\n")
 
-    result = run_check(project_copy)
+    result = run_check(skeleton_copy)
 
     assert result.stderr == "Путь не существует: src/pricewatch/*/absent_*.py\n"
 
 
-def test_non_path_values_are_ignored(project_copy: Path) -> None:
-    (project_copy / "design_reference").mkdir()
-    (project_copy / "design_reference" / "домашняя страница.png").write_bytes(b"")
+def test_non_path_values_are_ignored(skeleton_copy: Path) -> None:
+    (skeleton_copy / "design_reference").mkdir()
+    (skeleton_copy / "design_reference" / "домашняя страница.png").write_bytes(b"")
     write_map(
-        project_copy,
+        skeleton_copy,
         extra=(
             "\n- Файлы: `design_reference/домашняя страница.png`\n"
             "- Команда: `uv run python tools/deps.py <модуль> --root .`\n"
@@ -185,7 +185,7 @@ def test_non_path_values_are_ignored(project_copy: Path) -> None:
         ),
     )
 
-    result = run_check(project_copy)
+    result = run_check(skeleton_copy)
 
     assert result.returncode == 0, result.stderr
 

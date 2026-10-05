@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Price Watcher: отслеживание цен в магазинах Санкт-Петербурга"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+    "fastapi>=0.142.2",
     "pydantic-settings>=2.15",
+    "uvicorn>=0.54.0",
 ]
 
 [build-system]
@@ -20,6 +22,7 @@ filterwarnings = ["error"]
 [dependency-groups]
 dev = [
     "grimp>=3.17",
+    "httpx2>=2.13.1",
     "import-linter>=2.15",
     "openapi-spec-validator>=0.9.0",
     "pytest>=9.1.1",
