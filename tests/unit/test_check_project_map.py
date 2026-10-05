@@ -1,5 +1,6 @@
 """tools/check_project_map.py: карта проекта сверяется с кодом."""
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -26,21 +27,23 @@ def write_map(root: Path, overrides: dict[str, dict[str, str]] | None = None, ex
     # Пробная карта описывает пакеты, которые есть в копии кода на момент вызова.
     packages = sorted(init.parent.name for init in (root / "src" / "pricewatch").glob("*/__init__.py"))
     sections = [package_section(name, **overrides.get(name, {})) for name in packages]
-    (root / "PROJECT_MAP.md").write_text("# Карта\n\n## Пакеты\n\n" + "\n\n".join(sections) + "\n" + extra)
+    (root / "PROJECT_MAP.md").write_text("# Карта\n\n## Пакеты\n\n" + "\n\n".join(sections) + "\n" + extra, encoding="utf-8")
 
 
 def run_check(root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(root / "tools" / "check_project_map.py"), "--root", str(root)],
+        # Кодировка вывода как у Windows при записи в канал: инструмент обязан писать UTF-8 сам.
+        env={**os.environ, "PYTHONIOENCODING": "cp1252"},
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=False,
     )
 
 
 def add_line(root: Path, package: str, line: str) -> None:
     init = root / "src" / "pricewatch" / package / "__init__.py"
-    init.write_text(init.read_text() + line + "\n")
+    init.write_text(init.read_text(encoding="utf-8") + line + "\n", encoding="utf-8")
 
 
 def test_valid_map_passes(skeleton_copy: Path) -> None:
@@ -62,7 +65,7 @@ def test_missing_map_fails(skeleton_copy: Path) -> None:
 def test_undescribed_package_fails(skeleton_copy: Path) -> None:
     write_map(skeleton_copy)
     (skeleton_copy / "src" / "pricewatch" / "extra").mkdir()
-    (skeleton_copy / "src" / "pricewatch" / "extra" / "__init__.py").write_text("")
+    (skeleton_copy / "src" / "pricewatch" / "extra" / "__init__.py").write_text("", encoding="utf-8")
 
     result = run_check(skeleton_copy)
 

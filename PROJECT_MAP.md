@@ -50,7 +50,7 @@
 - Файлы: `.python-version` — Python 3.13.
 - Файлы: `.gitignore`
 - Файлы: `.env.example` — все настройки с пояснениями, без секретов; копируется в .env. PRICEWATCH_SECRET_KEY — ключ HMAC для кодов, токенов, сессий; его смена разлогинивает всех.
-- Файлы: `.github/workflows/ci.yml` — CI на каждый push: тесты, import-linter, проверка карты, gitleaks по всей истории. Действия закреплены по хешу, gitleaks — с проверкой контрольной суммы.
+- Файлы: `.github/workflows/ci.yml` — CI на каждый push: тесты, import-linter, проверка карты на Linux и на Windows (PostgreSQL 18 сборки EDB), gitleaks по всей истории. Действия закреплены по хешу, gitleaks и PostgreSQL для Windows — с проверкой контрольной суммы.
 - Файлы: `.gitleaksignore` — ложные срабатывания gitleaks по точному отпечатку; только ненастоящие значения из тестов и только с согласия владельца.
 
 Зависимости рабочего кода: pydantic-settings (MIT), fastapi (MIT), uvicorn (BSD-3), sqlalchemy (MIT), psycopg (LGPL-3.0, как неизменённая библиотека), alembic (MIT), argon2-cffi (MIT), tzdata (Apache-2.0). Для разработки: pytest, import-linter, grimp, openapi-spec-validator, httpx2.
@@ -153,7 +153,7 @@
 - Отвечает: логи, идентификаторы запросов и ошибок
 - Зависит от: —
 - Тесты: `uv run pytest tests/unit/test_observability_logging.py tests/unit/test_package_layout.py`
-- Файлы: `src/pricewatch/observability/json_log.py` — JsonFormatter и configure_logging: одна JSON-строка на событие в stdout.
+- Файлы: `src/pricewatch/observability/json_log.py` — JsonFormatter и configure_logging: одна JSON-строка на событие в stdout; use_utf8_streams — ввод и вывод процесса в UTF-8 (вызывают точки входа: bootstrap, миграции).
 - Файлы: `src/pricewatch/observability/redaction.py` — вырезание секретов из полей и текста, в том числе из traceback.
 - Файлы: `src/pricewatch/observability/ids.py` — request_id в контексте выполнения, генератор error_id.
 

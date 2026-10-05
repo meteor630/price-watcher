@@ -27,5 +27,5 @@ def skeleton_copy(project_copy: Path) -> Path:
     for package in [init.parent for init in source.glob("*/__init__.py")]:
         shutil.rmtree(package)
         package.mkdir()
-        (package / "__init__.py").write_text("")
+        (package / "__init__.py").write_text("", encoding="utf-8")
     return project_copy

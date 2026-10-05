@@ -93,7 +93,7 @@ def server(tmp_path: Path, migrated_database_url: str) -> Iterator[tuple[str, Se
         ),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        text=True,
+        encoding="utf-8",
     )
     output = collect(process)
     try:
@@ -136,7 +136,7 @@ def start_once(tmp_path: Path, **variables: str) -> subprocess.CompletedProcess[
         cwd=tmp_path,
         env=clean_env(**variables),
         capture_output=True,
-        text=True,
+        encoding="utf-8",  # вывод процесса всегда UTF-8, независимо от кодировки системы
         timeout=STARTUP_TIMEOUT_S,
     )
 
@@ -153,6 +153,16 @@ def test_missing_setting_stops_start(tmp_path: Path) -> None:
     (entry,) = [json.loads(line) for line in result.stdout.splitlines()]
     assert entry["level"] == "ERROR"
     assert "PRICEWATCH_ENV: переменная не задана" in entry["message"]
+    assert result.stderr == ""
+
+
+def test_output_is_utf8_even_with_legacy_system_encoding(tmp_path: Path) -> None:
+    # Так пишет в файл, службу или Docker процесс на Windows с русской или западной локалью.
+    result = start_once(tmp_path, PYTHONIOENCODING="cp1252", PRICEWATCH_PUBLIC_ORIGIN="https://prices.example.ru")
+
+    assert result.returncode == 2
+    (entry,) = [json.loads(line) for line in result.stdout.splitlines()]
+    assert "переменная не задана" in entry["message"]
     assert result.stderr == ""
 
 

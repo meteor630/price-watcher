@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine, text
 
+from pricewatch.application.passwords import PasswordHasher
 from pricewatch.bootstrap.commands import create_admin_command
 
 TEST_SECRET_KEY = "test-secret-key-" + "k" * 32
@@ -30,10 +31,10 @@ def run_command(database_url: str, tmp_path: Path, *args: str, stdin: str = "") 
     return subprocess.run(
         [sys.executable, "-m", "pricewatch.bootstrap", "create-admin", *args],
         cwd=tmp_path,
-        env=env_for(database_url),
+        env=env_for(database_url) | {"PYTHONIOENCODING": "cp1252"},
         input=stdin,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         timeout=60,
         check=False,
     )
@@ -74,6 +75,17 @@ def test_login_taken(migrated_database_url: str, tmp_path: Path) -> None:
     assert "Такой логин уже занят" in result.stdout
 
 
+
+def test_cyrillic_password_from_stdin_survives_legacy_encoding(migrated_database_url: str, tmp_path: Path) -> None:
+    # run_command задаёт процессу кодировку cp1252, как у Windows: пароль не должен исказиться.
+    login = f"cyr{uuid.uuid4().hex[:8]}"
+
+    result = run_command(migrated_database_url, tmp_path, "--login", login, "--password-stdin", stdin=PASSWORD + "\n")
+
+    assert result.returncode == 0, result.stdout
+    row = stored(migrated_database_url, login)
+    assert row is not None and PasswordHasher().verify(row[1], PASSWORD)
+
 @pytest.mark.parametrize(
     ("login", "password", "expected"),
     [
@@ -97,7 +109,7 @@ def test_password_is_not_an_argument() -> None:
     result = subprocess.run(
         [sys.executable, "-m", "pricewatch.bootstrap", "create-admin", "--login", "x", "--password", "secret"],
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         timeout=60,
         check=False,
     )
@@ -138,7 +150,7 @@ def test_missing_configuration(tmp_path: Path) -> None:
     env = {name: value for name, value in os.environ.items() if not name.startswith("PRICEWATCH_")}
     result = subprocess.run(
         [sys.executable, "-m", "pricewatch.bootstrap", "create-admin", "--login", "admin", "--password-stdin"],
-        cwd=tmp_path, env=env, input=PASSWORD, capture_output=True, text=True, timeout=60, check=False,
+        cwd=tmp_path, env=env, input=PASSWORD, capture_output=True, encoding="utf-8", timeout=60, check=False,
     )
 
     assert result.returncode == 2

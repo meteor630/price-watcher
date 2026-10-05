@@ -94,6 +94,8 @@ def test_alembic_command_uses_settings_and_logs_json(empty_database_url: str, tm
         "PRICEWATCH_PUBLIC_ORIGIN": "http://localhost:8000",
         "PRICEWATCH_DATABASE_URL": url,
         "PRICEWATCH_SECRET_KEY": "test-secret-key-" + "k" * 32,
+        # Кодировка вывода как у Windows при записи в канал: журнал миграций обязан писать UTF-8 сам.
+        "PYTHONIOENCODING": "cp1252",
     }
     try:
         result = subprocess.run(
@@ -101,7 +103,7 @@ def test_alembic_command_uses_settings_and_logs_json(empty_database_url: str, tm
             cwd=tmp_path,
             env=env,
             capture_output=True,
-            text=True,
+            encoding="utf-8",
             timeout=60,
             check=False,
         )

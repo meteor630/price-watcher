@@ -1,5 +1,7 @@
 """Контракты import-linter из pyproject.toml ловят нарушения границ модулей."""
 
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -7,7 +9,8 @@ from pathlib import Path
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-LINT_IMPORTS = Path(sys.executable).parent / "lint-imports"
+# which учитывает расширение .exe на Windows.
+LINT_IMPORTS = shutil.which("lint-imports", path=str(Path(sys.executable).parent))
 
 DOMAIN = "domain импортирует только стандартную библиотеку"
 APPLICATION = "application зависит только от domain"
@@ -18,19 +21,21 @@ WORKER_BOT = "worker и bot не импортируют persistence"
 
 
 def run_lint(root: Path) -> subprocess.CompletedProcess[str]:
+    assert LINT_IMPORTS is not None, "lint-imports не установлен рядом с интерпретатором"
     return subprocess.run(
         [str(LINT_IMPORTS), "--no-cache", "--config", str(root / "pyproject.toml")],
         cwd=root,
-        env={"PYTHONPATH": str(root / "src")},
+        # Окружение целиком: без SYSTEMROOT Python на Windows не запускается. Вывод — UTF-8.
+        env={**os.environ, "PYTHONPATH": str(root / "src"), "PYTHONIOENCODING": "utf-8"},
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=False,
     )
 
 
 def add_line(root: Path, package: str, line: str) -> None:
     init = root / "src" / "pricewatch" / package / "__init__.py"
-    init.write_text(init.read_text() + line + "\n")
+    init.write_text(init.read_text(encoding="utf-8") + line + "\n", encoding="utf-8")
 
 
 def broken(result: subprocess.CompletedProcess[str]) -> set[str]:
@@ -87,7 +92,7 @@ def test_indirect_path_to_persistence_is_broken(project_copy: Path) -> None:
 def test_package_with_domain_prefix_is_not_domain(project_copy: Path) -> None:
     lookalike = project_copy / "src" / "pricewatch" / "domainx"
     lookalike.mkdir()
-    (lookalike / "__init__.py").write_text("")
+    (lookalike / "__init__.py").write_text("", encoding="utf-8")
     add_line(project_copy, "domain", "import pricewatch.domainx")
 
     result = run_lint(project_copy)
@@ -105,7 +110,7 @@ def test_domain_violation_names_module_and_line(project_copy: Path) -> None:
 
 def test_allowed_dependencies_keep_contracts(project_copy: Path) -> None:
     (project_copy / "src" / "pricewatch" / "domain" / "money.py").write_text(
-        "from __future__ import annotations\n\nfrom decimal import Decimal\n"
+        "from __future__ import annotations\n\nfrom decimal import Decimal\n", encoding="utf-8"
     )
     add_line(project_copy, "domain", "import datetime")
     add_line(project_copy, "domain", "import os.path")

@@ -153,13 +153,13 @@ def test_filled_sensitive_variable_in_env_example_is_caught() -> None:
 
 def test_new_untracked_secret_file_is_seen(tmp_path: Path) -> None:
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    (tmp_path / ".gitignore").write_text(".env\n")
-    (tmp_path / ".env").write_text("X=1\n")
-    (tmp_path / "server.key").write_text(PRIVATE_KEY)
-    (tmp_path / "notes.txt").write_text(f"bot {TELEGRAM}\n")
+    (tmp_path / ".gitignore").write_text(".env\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("X=1\n", encoding="utf-8")
+    (tmp_path / "server.key").write_text(PRIVATE_KEY, encoding="utf-8")
+    (tmp_path / "notes.txt").write_text(f"bot {TELEGRAM}\n", encoding="utf-8")
 
     names = files_to_commit(tmp_path)
 
     assert ".env" not in names
     assert forbidden_files(names) == ["server.key"]
-    assert secrets_in_text((tmp_path / "notes.txt").read_text()) == ["токен Telegram-бота"]
+    assert secrets_in_text((tmp_path / "notes.txt").read_text(encoding="utf-8")) == ["токен Telegram-бота"]

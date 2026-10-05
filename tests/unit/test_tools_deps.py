@@ -1,5 +1,6 @@
 """tools/deps.py: прямые зависимые модуля."""
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -10,16 +11,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 def run_deps(root: Path, module: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(root / "tools" / "deps.py"), module, "--root", str(root)],
+        # Кодировка вывода как у Windows при записи в канал: инструмент обязан писать UTF-8 сам.
+        env={**os.environ, "PYTHONIOENCODING": "cp1252"},
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=False,
     )
 
 
 def add_line(root: Path, module_file: str, line: str) -> None:
     path = root / "src" / "pricewatch" / module_file
-    existing = path.read_text() if path.exists() else ""
-    path.write_text(existing + line + "\n")
+    existing = path.read_text(encoding="utf-8") if path.exists() else ""
+    path.write_text(existing + line + "\n", encoding="utf-8")
 
 
 def test_lists_packages_that_import_module(skeleton_copy: Path) -> None:

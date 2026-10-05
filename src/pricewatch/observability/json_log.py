@@ -61,5 +61,17 @@ def configure_logging(level: str) -> None:
     root.setLevel(level)
 
 
+
+def use_utf8_streams() -> None:
+    """Ввод и вывод процесса — UTF-8 независимо от системы; вызывается точкой входа процесса.
+
+    Иначе кодировка берётся из системы (на Windows при записи в файл, службу
+    или Docker — cp1252): журнал с кириллицей теряется с ошибкой, а пароль
+    из --password-stdin читается искажённым.
+    """
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+
+
 def _timestamp(record: logging.LogRecord) -> str:
     return datetime.fromtimestamp(record.created, UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")

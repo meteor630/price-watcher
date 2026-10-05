@@ -22,8 +22,10 @@ def run_migrations() -> None:
     if context.is_offline_mode():
         raise RuntimeError("Миграции выполняются только на подключённой базе: офлайн-режим не поддерживается")
     if config.config_file_name is not None:
-        from pricewatch.observability.json_log import configure_logging
+        # Запуск из командной строки alembic: здесь точка входа процесса.
+        from pricewatch.observability.json_log import configure_logging, use_utf8_streams
 
+        use_utf8_streams()
         configure_logging("INFO")
     engine = create_db_engine(database_url())
     try:

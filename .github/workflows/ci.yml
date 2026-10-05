@@ -1,4 +1,5 @@
-# Проверки на каждый push и pull request: тесты, границы модулей, карта проекта, секреты.
+# Проверки на каждый push и pull request: тесты, границы модулей, карта проекта, секреты;
+# тот же набор на Windows — проект обязан запускаться не только на Raspberry Pi.
 # Сторонние действия закреплены по хешу коммита; gitleaks скачивается с проверкой контрольной суммы.
 name: CI
 
@@ -41,6 +42,58 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: "0.12.23"
+
+      - name: Окружение по uv.lock
+        run: uv sync --locked
+
+      - name: Тесты
+        run: uv run pytest
+
+      - name: Границы модулей
+        run: uv run lint-imports
+
+      - name: Карта проекта
+        run: uv run python tools/check_project_map.py
+
+  windows:
+    name: Тесты на Windows
+    runs-on: windows-2025
+    timeout-minutes: 25
+    env:
+      # На образе Windows только PostgreSQL 17, а тесты требуют 18: сборка EDB, сумма сверена
+      # с манифестом Scoop (ScoopInstaller/Main, bucket/postgresql.json).
+      PG_VERSION: "18.6-5"
+      PG_SHA256: "e2246ba91d22345bc3d017586c09ede52d9df180b1eeb480f050445f1cad84e2"
+      # Пароль одноразовой базы CI; доступен только внутри прогона.
+      TEST_DATABASE_URL: postgresql://postgres:ci-only-not-secret@localhost:5432/postgres
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.23"
+
+      - name: PostgreSQL 18
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "postgresql-$env:PG_VERSION-windows-x64-binaries.zip"
+          curl.exe -fsSL -o $archive "https://get.enterprisedb.com/postgresql/postgresql-$env:PG_VERSION-windows-x64-binaries.zip"
+          $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:PG_SHA256) { throw "Контрольная сумма PostgreSQL не совпала: $actual" }
+          tar.exe -xf $archive -C $env:RUNNER_TEMP
+          $bin = Join-Path $env:RUNNER_TEMP "pgsql\bin"
+          $data = Join-Path $env:RUNNER_TEMP "pgdata"
+          $passwordFile = Join-Path $env:RUNNER_TEMP "pgpass"
+          Set-Content -Path $passwordFile -Value "ci-only-not-secret" -NoNewline
+          # Пароль проверяется, как в CI на Linux и на узле: доверительный вход скрыл бы ошибки паролей.
+          & "$bin\initdb.exe" -D $data -U postgres --pwfile=$passwordFile --auth=scram-sha-256 --encoding=UTF8 --locale=C --locale-provider=builtin --builtin-locale=C.UTF-8
+          if ($LASTEXITCODE -ne 0) { throw "initdb завершился с кодом $LASTEXITCODE" }
+          & "$bin\pg_ctl.exe" -D $data -l (Join-Path $env:RUNNER_TEMP "postgresql.log") -o "-p 5432" -w start
+          if ($LASTEXITCODE -ne 0) { Get-Content (Join-Path $env:RUNNER_TEMP "postgresql.log"); throw "PostgreSQL не запустился" }
 
       - name: Окружение по uv.lock
         run: uv sync --locked

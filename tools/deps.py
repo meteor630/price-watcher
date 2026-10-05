@@ -59,4 +59,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    # Вывод по-русски: кодировка не должна зависеть от системы (на Windows в канал — cp1252).
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
     sys.exit(main())
