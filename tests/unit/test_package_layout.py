@@ -17,6 +17,7 @@ ARCHITECTURE_PACKAGES = {
     "scheduler",
     "bot",
     "observability",
+    "bootstrap",
 }
 
 

@@ -17,5 +17,73 @@ filterwarnings = ["error"]
 
 [dependency-groups]
 dev = [
+    "import-linter>=2.15",
     "pytest>=9.1.1",
 ]
+
+# Границы модулей: DEVELOPMENT_ARCHITECTURE.md, раздел 3.
+# Контракты меняются только с согласия владельца (AGENTS.md, раздел 2).
+[tool.importlinter]
+root_package = "pricewatch"
+# Стандартная библиотека и сторонние пакеты попадают в граф: нужно контракту stdlib_only.
+include_external_packages = true
+contract_types = ["stdlib_only: tools.import_contracts.StdlibOnlyContract"]
+
+[[tool.importlinter.contracts]]
+id = "domain-stdlib-only"
+name = "domain импортирует только стандартную библиотеку"
+type = "stdlib_only"
+source_modules = ["pricewatch.domain"]
+
+[[tool.importlinter.contracts]]
+id = "application-depends-on-domain-only"
+name = "application зависит только от domain"
+type = "forbidden"
+source_modules = ["pricewatch.application"]
+forbidden_modules = [
+    "pricewatch.persistence",
+    "pricewatch.api",
+    "pricewatch.web",
+    "pricewatch.parsers",
+    "pricewatch.worker",
+    "pricewatch.scheduler",
+    "pricewatch.bot",
+    "pricewatch.observability",
+    "pricewatch.bootstrap",
+]
+
+[[tool.importlinter.contracts]]
+id = "persistence-implements-application"
+name = "persistence не импортирует api, web, parsers, worker, scheduler, bot, bootstrap"
+type = "forbidden"
+source_modules = ["pricewatch.persistence"]
+forbidden_modules = [
+    "pricewatch.api",
+    "pricewatch.web",
+    "pricewatch.parsers",
+    "pricewatch.worker",
+    "pricewatch.scheduler",
+    "pricewatch.bot",
+    "pricewatch.bootstrap",
+]
+
+[[tool.importlinter.contracts]]
+id = "persistence-only-from-bootstrap"
+name = "persistence импортирует только bootstrap"
+type = "protected"
+protected_modules = ["pricewatch.persistence"]
+allowed_importers = ["pricewatch.bootstrap"]
+
+[[tool.importlinter.contracts]]
+id = "bootstrap-is-entry-point"
+name = "bootstrap никто не импортирует: обход сценариев через него невозможен"
+type = "protected"
+protected_modules = ["pricewatch.bootstrap"]
+allowed_importers = []
+
+[[tool.importlinter.contracts]]
+id = "worker-bot-without-persistence"
+name = "worker и bot не импортируют persistence"
+type = "forbidden"
+source_modules = ["pricewatch.worker", "pricewatch.bot"]
+forbidden_modules = ["pricewatch.persistence"]
