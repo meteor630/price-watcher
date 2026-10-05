@@ -1,5 +1,6 @@
 """Вход в приложение: код связки, устройство, ротация refresh-токенов с окном 60 секунд."""
 
+import itertools
 import logging
 import uuid
 from collections.abc import Iterator
@@ -50,8 +51,12 @@ def user_id(engine: Engine) -> int:
         ).scalar_one()
 
 
+_IP_COUNTER = itertools.count(1)
+
+
 def ip() -> str:
-    return f"192.0.2.{uuid.uuid4().int % 250 + 1}"
+    # Уникальный адрес: случайный из 250 изредка совпадал с уже заблокированным.
+    return f"2001:db8:b::{next(_IP_COUNTER):x}"
 
 
 def error_of(action) -> PriceWatcherError:  # type: ignore[no-untyped-def]

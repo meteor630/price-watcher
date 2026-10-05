@@ -801,6 +801,7 @@ components:
         - out_of_stock
         - awaiting_check
         - store_disabled
+        - no_links
 
     Store:
       type: object

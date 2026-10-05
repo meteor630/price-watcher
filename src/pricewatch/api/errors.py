@@ -1,5 +1,6 @@
 """Ответы об ошибках по схеме ErrorResponse из openapi/v1.yaml и HTTP-статусы кодов."""
 
+import logging
 from collections.abc import Mapping
 from types import MappingProxyType
 
@@ -9,6 +10,9 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from pricewatch.domain.errors import SAFE_MESSAGES, ErrorCode, PriceWatcherError
+from pricewatch.observability.ids import new_error_id
+
+logger = logging.getLogger(__name__)
 
 HTTP_STATUS: Mapping[ErrorCode, int] = MappingProxyType(
     {
@@ -84,7 +88,16 @@ _BEARER_CHALLENGE = {"WWW-Authenticate": "Bearer"}
 async def handle_project_error(request: Request, error: PriceWatcherError) -> JSONResponse:
     status = HTTP_STATUS[error.code]
     headers = _BEARER_CHALLENGE if status == 401 and request.url.path.startswith("/api/") else None
-    return error_response(error.code, status, details=error.details, headers=headers)
+    error_id = None
+    if status >= 500:
+        # Сбой на нашей стороне (например, база): причина — в журнал под тем же error_id, что получит клиент.
+        error_id = new_error_id()
+        logger.error(
+            "Сбой обслуживания запроса",
+            exc_info=error,
+            extra={"error_id": error_id, "error_code": error.code.value, "path": request.url.path},
+        )
+    return error_response(error.code, status, error_id=error_id, details=error.details, headers=headers)
 
 
 async def handle_validation_error(_: Request, error: RequestValidationError) -> JSONResponse:

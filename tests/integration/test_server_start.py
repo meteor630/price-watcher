@@ -2,7 +2,6 @@
 
 import json
 import os
-import queue
 import socket
 import subprocess
 import sys
@@ -34,21 +33,54 @@ def clean_env(**variables: str) -> dict[str, str]:
     return env | {"PRICEWATCH_SECRET_KEY": TEST_SECRET_KEY} | variables
 
 
-def stream_lines(process: subprocess.Popen[str]) -> "queue.Queue[str | None]":
-    lines: queue.Queue[str | None] = queue.Queue()
+class ServerOutput:
+    """Вывод процесса сервера: строки добавляются по мере появления; можно дождаться нужной."""
+
+    def __init__(self) -> None:
+        self.lines: list[str] = []
+        self.ended = False
+        self._changed = threading.Condition()
+
+    def add(self, line: str) -> None:
+        with self._changed:
+            self.lines.append(line)
+            self._changed.notify_all()
+
+    def finish(self) -> None:
+        with self._changed:
+            self.ended = True
+            self._changed.notify_all()
+
+    def wait_for(self, text: str, timeout: float = STARTUP_TIMEOUT_S) -> bool:
+        """Дождаться строки с text; False — если вывод закончился или время вышло."""
+        with self._changed:
+            self._changed.wait_for(lambda: self.ended or any(text in line for line in self.lines), timeout)
+            return any(text in line for line in self.lines)
+
+    def wait_ended(self, timeout: float = STARTUP_TIMEOUT_S) -> None:
+        with self._changed:
+            self._changed.wait_for(lambda: self.ended, timeout)
+
+    def text(self) -> str:
+        with self._changed:
+            return "".join(self.lines)
+
+
+def collect(process: subprocess.Popen[str]) -> ServerOutput:
+    output = ServerOutput()
 
     def pump() -> None:
         assert process.stdout is not None
         for line in process.stdout:
-            lines.put(line)
-        lines.put(None)
+            output.add(line)
+        output.finish()
 
     threading.Thread(target=pump, daemon=True).start()
-    return lines
+    return output
 
 
 @pytest.fixture
-def server(tmp_path: Path, migrated_database_url: str) -> Iterator[tuple[str, list[str]]]:
+def server(tmp_path: Path, migrated_database_url: str) -> Iterator[tuple[str, ServerOutput]]:
     port = free_port()
     process = subprocess.Popen(
         [sys.executable, "-m", "pricewatch.bootstrap"],
@@ -63,34 +95,19 @@ def server(tmp_path: Path, migrated_database_url: str) -> Iterator[tuple[str, li
         stderr=subprocess.STDOUT,
         text=True,
     )
-    lines = stream_lines(process)
-    seen: list[str] = []
-    output_ended = False
+    output = collect(process)
     try:
-        while True:
-            line = lines.get(timeout=STARTUP_TIMEOUT_S)
-            if line is None:
-                output_ended = True
-                raise AssertionError("сервер завершился до старта:\n" + "".join(seen))
-            seen.append(line)
-            if "Application startup complete" in line:
-                break
-        yield f"http://127.0.0.1:{port}", seen
+        assert output.wait_for("Application startup complete"), "сервер не стартовал:\n" + output.text()
+        yield f"http://127.0.0.1:{port}", output
     finally:
         process.terminate()
         process.wait(timeout=STARTUP_TIMEOUT_S)
-        # Маркер конца вывода читается один раз: если сервер упал при старте, он уже получен.
-        while not output_ended:
-            line = lines.get(timeout=STARTUP_TIMEOUT_S)
-            if line is None:
-                output_ended = True
-            else:
-                seen.append(line)
+        output.wait_ended()
         assert process.stdout is not None
         process.stdout.close()
 
 
-def test_server_answers_with_headers_and_json_error(server: tuple[str, list[str]]) -> None:
+def test_server_answers_with_headers_and_json_error(server: tuple[str, ServerOutput]) -> None:
     base_url, _ = server
 
     response = httpx2.get(f"{base_url}/absent?token=s3cret")
@@ -101,13 +118,16 @@ def test_server_answers_with_headers_and_json_error(server: tuple[str, list[str]
     assert "server" not in response.headers
 
 
-def test_server_log_is_json_only(server: tuple[str, list[str]]) -> None:
-    base_url, seen = server
+def test_server_log_is_json_only(server: tuple[str, ServerOutput]) -> None:
+    base_url, output = server
     httpx2.get(f"{base_url}/absent?token=s3cret")
 
-    entries = [json.loads(line) for line in seen]  # падает на любой не-JSON строке
+    # Ждём запись о самом запросе: без неё проверка смотрела бы только на строки старта.
+    assert output.wait_for('"path": "/absent"')
+    entries = [json.loads(line) for line in output.lines]  # падает на любой не-JSON строке
     assert any(entry["logger"].startswith("uvicorn") for entry in entries)
-    assert "s3cret" not in "".join(seen)
+    assert any(entry.get("path") == "/absent" and entry.get("status") == 404 for entry in entries)
+    assert "s3cret" not in output.text()
 
 
 def start_once(tmp_path: Path, **variables: str) -> subprocess.CompletedProcess[str]:
@@ -136,10 +156,10 @@ def test_missing_setting_stops_start(tmp_path: Path) -> None:
     assert result.stderr == ""
 
 
-def test_server_started_log_reports_schema(server: tuple[str, list[str]]) -> None:
-    _, seen = server
+def test_server_started_log_reports_schema(server: tuple[str, ServerOutput]) -> None:
+    _, output = server
 
-    (ready,) = [entry for entry in map(json.loads, seen) if entry["message"] == "База данных готова"]
+    (ready,) = [entry for entry in map(json.loads, output.lines) if entry["message"] == "База данных готова"]
     assert ready["schema_revision"] == head_revision()
     assert str(ready["server_version"]).startswith("18")
 
@@ -190,3 +210,43 @@ def test_unknown_schema_revision_stops_start(tmp_path: Path, empty_database_url:
     assert result.returncode == 3
     (entry,) = error_entries(result)
     assert "ревизии 9999_future, неизвестной этой версии кода" in str(entry["message"])
+
+
+def test_app_login_end_to_end_on_real_server(server: tuple[str, ServerOutput], migrated_database_url: str) -> None:
+    """Настоящий процесс сервера с настоящей базой: код → токены → /me → ротация → выход."""
+    import uuid
+    from datetime import UTC, datetime
+
+    from pricewatch.application.app_auth import issue_pairing_code
+    from pricewatch.persistence.database import create_db_engine
+    from pricewatch.persistence.unit_of_work import SqlUnitOfWork
+
+    base_url, output = server
+    login = f"e2e{uuid.uuid4().hex[:8]}"
+    engine = create_db_engine(migrated_database_url)
+    try:
+        with engine.begin() as connection:
+            user_id = connection.execute(
+                text("INSERT INTO users (login, password_hash, role, display_name) VALUES (:l, 'h', 'user', 'E2E') RETURNING id"),
+                {"l": login},
+            ).scalar_one()
+        code = issue_pairing_code(SqlUnitOfWork(engine), TEST_SECRET_KEY.encode(), user_id, datetime.now(UTC)).code
+    finally:
+        engine.dispose()
+
+    paired = httpx2.post(f"{base_url}/api/v1/auth/pair", json={"code": code, "device_name": "E2E"})
+    assert paired.status_code == 200, paired.text
+    tokens = paired.json()
+    me = httpx2.get(f"{base_url}/api/v1/me", headers={"Authorization": f"Bearer {tokens['access_token']}"})
+    rotated = httpx2.post(f"{base_url}/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}).json()
+    out = httpx2.post(f"{base_url}/api/v1/auth/logout", headers={"Authorization": f"Bearer {rotated['access_token']}"})
+    after = httpx2.get(f"{base_url}/api/v1/me", headers={"Authorization": f"Bearer {rotated['access_token']}"})
+
+    assert me.json() == {"id": user_id, "login": login, "display_name": "E2E", "role": "user"}
+    assert rotated["refresh_token"] != tokens["refresh_token"]
+    assert (out.status_code, after.status_code) == (204, 401)
+    assert output.wait_for('"path": "/api/v1/me", "status": 401')
+    logged = output.text()
+    assert '"path": "/api/v1/auth/pair"' in logged  # журнал запросов действительно собран
+    for secret in (code, tokens["access_token"], tokens["refresh_token"], rotated["access_token"]):
+        assert secret not in logged

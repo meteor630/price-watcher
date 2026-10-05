@@ -1,5 +1,6 @@
 """Вход на сайт: неотличимые отказы, ограничение попыток, перехеширование, сессия и выход."""
 
+import itertools
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -67,8 +68,12 @@ def error_of(action) -> PriceWatcherError:  # type: ignore[no-untyped-def]
     return caught.value
 
 
+_IP_COUNTER = itertools.count(1)
+
+
 def unique_ip() -> str:
-    return f"198.51.100.{uuid.uuid4().int % 250 + 1}"
+    # Уникальный адрес: случайный из 250 изредка совпадал с уже заблокированным.
+    return f"2001:db8:c::{next(_IP_COUNTER):x}"
 
 
 # --- вход --------------------------------------------------------------------
@@ -278,7 +283,10 @@ def test_csrf_token_bound_to_session(engine: Engine, hasher: CountingHasher) -> 
     second = sign_in(engine, hasher, add_user(engine, hasher))
 
     check_csrf(KEY, first.token, first.csrf_token)
-    for presented in (None, "", second.csrf_token, first.csrf_token[:-1] + "0", first.token):
+    # Последний символ заменяется на гарантированно другой: замена на «0» совпадала с исходным в 1 случае из 16.
+    tampered = first.csrf_token[:-1] + ("1" if first.csrf_token[-1] == "0" else "0")
+    assert tampered != first.csrf_token
+    for presented in (None, "", second.csrf_token, tampered, first.token):
         assert error_of(lambda: check_csrf(KEY, first.token, presented)).code is ErrorCode.CSRF_FAILED
 
 

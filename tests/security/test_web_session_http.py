@@ -3,6 +3,7 @@
 Маршруты тестовые — те, что на этапе 7 сделают настоящие страницы.
 """
 
+import itertools
 import logging
 import uuid
 from collections.abc import Iterator
@@ -94,8 +95,12 @@ def account(engine: Engine) -> str:
     return name
 
 
+_IP_COUNTER = itertools.count(1)
+
+
 def ip() -> str:
-    return f"203.0.113.{uuid.uuid4().int % 250 + 1}"
+    # Уникальный адрес: случайный из 250 изредка совпадал с уже заблокированным.
+    return f"2001:db8:a::{next(_IP_COUNTER):x}"
 
 
 def sign_in(client: TestClient, name: str, password: str = PASSWORD, forwarded: str | None = None):  # type: ignore[no-untyped-def]

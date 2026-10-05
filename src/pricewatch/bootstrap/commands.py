@@ -12,6 +12,8 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import TextIO
 
+from sqlalchemy import Engine
+
 from pricewatch.application.accounts import create_admin
 from pricewatch.application.passwords import PasswordHasher
 from pricewatch.bootstrap.server import EXIT_CONFIG, EXIT_DATABASE, check_database, serve
@@ -67,7 +69,23 @@ def create_admin_command(
         print(error, file=out)
         return EXIT_CONFIG
     configure_logging("WARNING")
-    if not check_database(settings):
+    engine = create_db_engine(settings.database_url.get_secret_value())
+    try:
+        return _create_admin(engine, login, display_name, password_stdin, prompt, stdin, out)
+    finally:
+        engine.dispose()
+
+
+def _create_admin(
+    engine: Engine,
+    login: str,
+    display_name: str,
+    password_stdin: bool,
+    prompt: Callable[[str], str],
+    stdin: TextIO | None,
+    out: TextIO,
+) -> int:
+    if not check_database(engine):
         return EXIT_DATABASE
 
     if password_stdin:
@@ -78,14 +96,11 @@ def create_admin_command(
             print("Пароли не совпадают. Администратор не создан.", file=out)
             return EXIT_INVALID
 
-    engine = create_db_engine(settings.database_url.get_secret_value())
     try:
         user = create_admin(SqlUnitOfWork(engine), PasswordHasher(), login, password, display_name)
     except PriceWatcherError as error:
         print(_explain(error), file=out)
         return EXIT_INVALID
-    finally:
-        engine.dispose()
     print(f"Администратор «{user.login}» создан (id {user.id}).", file=out)
     return 0
 

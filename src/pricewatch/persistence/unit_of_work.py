@@ -1,12 +1,18 @@
 """Единица работы на PostgreSQL: одно соединение и одна транзакция на все репозитории.
 
-Выход без commit() — откат, в том числе при исключении.
+Выход без commit() — откат, в том числе при исключении. Сбой самой базы — недоступность,
+обрыв соединения, взаимная блокировка — превращается в DB_ERROR (503); техническая
+причина остаётся в цепочке исключений для журнала.
 """
 
+import logging
 from types import TracebackType
 from typing import Self
 
 from sqlalchemy import Connection, Engine, RootTransaction
+from sqlalchemy.exc import InterfaceError, OperationalError, SQLAlchemyError
+
+from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 
 from pricewatch.persistence.app_auth_repositories import (
     SqlDeviceRepository,
@@ -22,6 +28,11 @@ from pricewatch.persistence.shopping_repositories import (
 )
 from pricewatch.persistence.user_repository import SqlUserRepository
 
+logger = logging.getLogger(__name__)
+
+# Сбои базы, а не ошибки запросов: их причина — среда, и повтор позже может помочь.
+DATABASE_FAILURES = (OperationalError, InterfaceError)
+
 
 class SqlUnitOfWork:
     def __init__(self, engine: Engine) -> None:
@@ -32,8 +43,12 @@ class SqlUnitOfWork:
     def __enter__(self) -> Self:
         if self._connection is not None:
             raise RuntimeError("Единица работы уже открыта: вложенный вход не поддерживается")
-        self._connection = self.engine.connect()
-        self._transaction = self._connection.begin()
+        try:
+            self._connection = self.engine.connect()
+            self._transaction = self._connection.begin()
+        except DATABASE_FAILURES as error:
+            self._connection = None
+            raise PriceWatcherError(ErrorCode.DB_ERROR) from error
         self.users = SqlUserRepository(self._connection)
         self.invites = SqlInviteRepository(self._connection)
         self.auth_failures = SqlAuthFailureRepository(self._connection)
@@ -61,8 +76,15 @@ class SqlUnitOfWork:
         try:
             if self._transaction is not None and self._transaction.is_active:
                 self._transaction.rollback()
+        except SQLAlchemyError:
+            if not isinstance(exc, DATABASE_FAILURES):
+                raise
+            # Соединение уже мёртвое: откат невозможен, база сама откатит транзакцию при разрыве.
+            logger.warning("Откат после сбоя базы не удался", exc_info=True)
         finally:
             if self._connection is not None:
                 self._connection.close()
             self._connection = None
             self._transaction = None
+        if isinstance(exc, DATABASE_FAILURES):
+            raise PriceWatcherError(ErrorCode.DB_ERROR) from exc
