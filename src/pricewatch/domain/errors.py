@@ -41,6 +41,7 @@ class ErrorCode(StrEnum):
     INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
     INVITE_INVALID = "INVITE_INVALID"
     LOGIN_TAKEN = "LOGIN_TAKEN"
+    CSRF_FAILED = "CSRF_FAILED"
 
 
 SAFE_MESSAGES: Mapping[ErrorCode, str] = MappingProxyType(
@@ -73,6 +74,7 @@ SAFE_MESSAGES: Mapping[ErrorCode, str] = MappingProxyType(
         ErrorCode.INVALID_CREDENTIALS: "Неверный логин или пароль.",
         ErrorCode.INVITE_INVALID: "Приглашение недействительно или истекло. Попросите администратора прислать новое.",
         ErrorCode.LOGIN_TAKEN: "Такой логин уже занят. Выберите другой.",
+        ErrorCode.CSRF_FAILED: "Страница устарела. Обновите её и повторите действие.",
     }
 )
 

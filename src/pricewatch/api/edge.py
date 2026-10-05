@@ -57,6 +57,8 @@ class EdgeMiddleware:
         peer = scope["client"][0] if scope.get("client") else None
         forwarded_for = [value.decode("latin-1") for name, value in scope["headers"] if name == b"x-forwarded-for"]
         visitor_ip = client_ip(peer, forwarded_for, self.trusted_proxies)
+        # Обработчики читают IP через request.state (лимиты попыток входа).
+        scope.setdefault("state", {})["client_ip"] = str(visitor_ip) if visitor_ip else None
         started = time.perf_counter()
         status = 500
         response_started = False

@@ -20,7 +20,7 @@ from datetime import datetime
 from types import TracebackType
 from typing import Protocol, Self
 
-from pricewatch.domain.accounts import Invite, Role, User
+from pricewatch.domain.accounts import Invite, Role, User, WebSession
 from pricewatch.domain.shopping import Category, Group, Item
 
 
@@ -53,11 +53,45 @@ class ItemChanges:
     group_id: int | None | Unchanged = UNCHANGED
 
 
+@dataclass(frozen=True, slots=True)
+class UserCredentials:
+    user: User
+    password_hash: str
+
+
 class UserRepository(Protocol):
     """Логин уникален без учёта регистра: занятый — LOGIN_TAKEN."""
 
     def create(self, login: str, password_hash: str, role: Role, display_name: str) -> User: ...
     def get(self, user_id: int) -> User: ...
+    def find_credentials(self, login: str) -> UserCredentials | None:
+        """Поиск по логину без учёта регистра, в том числе отключённого пользователя."""
+        ...
+    def set_password_hash(self, user_id: int, password_hash: str) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class FailureWindow:
+    """Неудачи за окно: сколько и когда была самая ранняя (для времени ожидания)."""
+
+    count: int
+    oldest: datetime | None
+
+
+class AuthFailureRepository(Protocol):
+    def record(self, kind: str, subject: str | None, ip: str | None, now: datetime) -> None: ...
+    def window_for_subject(self, kind: str, subject: str, since: datetime) -> FailureWindow: ...
+    def window_for_ip(self, kind: str, ip: str, since: datetime) -> FailureWindow: ...
+    def clear_subject(self, kind: str, subject: str) -> None: ...
+
+
+class SessionRepository(Protocol):
+    def create(self, user_id: int, token_hash: str, created_at: datetime, expires_at: datetime) -> WebSession: ...
+    def find_active(self, token_hash: str, now: datetime) -> WebSession | None:
+        """Неотозванная и неистёкшая сессия; отключённость пользователя проверяет сценарий."""
+        ...
+    def touch(self, session_id: int, now: datetime) -> None: ...
+    def revoke(self, session_id: int, now: datetime) -> None: ...
 
 
 class InviteRepository(Protocol):
@@ -108,6 +142,8 @@ class UnitOfWork(Protocol):
 
     users: UserRepository
     invites: InviteRepository
+    auth_failures: AuthFailureRepository
+    sessions: SessionRepository
     categories: CategoryRepository
     groups: GroupRepository
     items: ItemRepository

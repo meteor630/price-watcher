@@ -19,6 +19,11 @@ PASSWORD_MIN = 10
 PASSWORD_MAX = 128
 DISPLAY_NAME_MAX = 100
 INVITE_LIFETIME = timedelta(days=7)
+SESSION_LIFETIME = timedelta(days=30)
+SESSION_TOUCH_INTERVAL = timedelta(hours=1)
+FAILURE_WINDOW = timedelta(minutes=15)
+LOGIN_FAILURES_PER_LOGIN = 5
+LOGIN_FAILURES_PER_IP = 20
 
 
 class Role(StrEnum):
@@ -44,6 +49,15 @@ class Invite:
     id: int
     role: Role
     created_by: int
+    expires_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class WebSession:
+    id: int
+    user_id: int
+    created_at: datetime
+    last_seen_at: datetime
     expires_at: datetime
 
 

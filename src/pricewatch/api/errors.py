@@ -40,6 +40,7 @@ HTTP_STATUS: Mapping[ErrorCode, int] = MappingProxyType(
         ErrorCode.INVALID_CREDENTIALS: 401,
         ErrorCode.INVITE_INVALID: 400,
         ErrorCode.LOGIN_TAKEN: 409,
+        ErrorCode.CSRF_FAILED: 403,
     }
 )
 
@@ -64,9 +65,16 @@ def error_response(
     headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     error: dict[str, object] = {"code": code.value, "message": SAFE_MESSAGES[code], "error_id": error_id}
-    if details:
-        error["details"] = dict(details)
-    return JSONResponse({"error": error}, status_code=status, headers=dict(headers or {}))
+    extra_headers = dict(headers or {})
+    rest = dict(details or {})
+    # Время ожидания — отдельное поле ошибки по схеме ErrorResponse и стандартный заголовок Retry-After.
+    retry_after = rest.pop("retry_after_seconds", None)
+    if isinstance(retry_after, int):
+        error["retry_after_seconds"] = retry_after
+        extra_headers["Retry-After"] = str(retry_after)
+    if rest:
+        error["details"] = rest
+    return JSONResponse({"error": error}, status_code=status, headers=extra_headers)
 
 
 async def handle_project_error(_: Request, error: PriceWatcherError) -> JSONResponse:

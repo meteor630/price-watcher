@@ -352,7 +352,7 @@ Worker скачивает фото товара: не больше 2 МБ, то�
 
 Ошибки не маскируются нулевой ценой, пустым успешным ответом или заглушкой. Коды: `INVALID_URL`, `STORE_NOT_ALLOWED`, `BLOCKED`, `CAPTCHA`, `TIMEOUT`, `LAYOUT_CHANGED`, `PRICE_NOT_FOUND`, `REGION_MISMATCH`, `UNSUPPORTED_CURRENCY`, `WORKER_OFFLINE`, `RUN_IN_PROGRESS`, `VERSION_CONFLICT`, `DB_ERROR`, `INTERNAL_ERROR`.
 
-Коды API и входа: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `VALIDATION_ERROR`, `RATE_LIMITED`, `PAIRING_CODE_INVALID`, `PAIRING_CODE_EXPIRED`, `REFRESH_TOKEN_INVALID`, `REFRESH_TOKEN_REUSED`, `IDEMPOTENCY_KEY_REUSED`, `NAME_TAKEN`, `INVALID_CREDENTIALS`, `INVITE_INVALID`, `LOGIN_TAKEN`.
+Коды API и входа: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `VALIDATION_ERROR`, `RATE_LIMITED`, `PAIRING_CODE_INVALID`, `PAIRING_CODE_EXPIRED`, `REFRESH_TOKEN_INVALID`, `REFRESH_TOKEN_REUSED`, `IDEMPOTENCY_KEY_REUSED`, `NAME_TAKEN`, `INVALID_CREDENTIALS`, `INVITE_INVALID`, `LOGIN_TAKEN`, `CSRF_FAILED`.
 
 - Каждая попытка сохраняет статус, время, внутренние идентификаторы, краткое безопасное сообщение и correlation ID.
 - Полный traceback пишется в журнал узла. Токены, cookie, заголовки авторизации и чувствительные параметры URL вырезаются.

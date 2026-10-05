@@ -1345,7 +1345,7 @@ components:
                  PAIRING_CODE_INVALID, PAIRING_CODE_EXPIRED, REFRESH_TOKEN_INVALID,
                  REFRESH_TOKEN_REUSED, IDEMPOTENCY_KEY_REUSED, VERSION_CONFLICT,
                  RUN_IN_PROGRESS, WORKER_OFFLINE, DB_ERROR, INTERNAL_ERROR, NAME_TAKEN,
-                 INVALID_CREDENTIALS, INVITE_INVALID, LOGIN_TAKEN]
+                 INVALID_CREDENTIALS, INVITE_INVALID, LOGIN_TAKEN, CSRF_FAILED]
             message:
               type: string
               description: Понятное сообщение для пользователя, без технических подробностей.
