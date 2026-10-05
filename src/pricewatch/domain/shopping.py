@@ -4,6 +4,15 @@
 """
 
 from dataclasses import dataclass
+from enum import StrEnum
+
+
+class ItemState(StrEnum):
+    """Жизненный цикл товара: в списке, куплен, в архиве (DEVELOPMENT_ARCHITECTURE.md, раздел 6)."""
+
+    ACTIVE = "active"
+    PURCHASED = "purchased"
+    ARCHIVED = "archived"
 
 
 @dataclass(frozen=True, slots=True)

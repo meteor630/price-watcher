@@ -4,7 +4,7 @@ import dataclasses
 
 import pytest
 
-from pricewatch.domain.shopping import Category, Group, Item
+from pricewatch.domain.shopping import Category, Group, Item, ItemState
 
 
 @pytest.mark.parametrize(
@@ -32,3 +32,7 @@ def test_new_version_is_a_new_record() -> None:
 
     assert (category.name, category.version) == ("А", 1)
     assert (renamed.name, renamed.version) == ("Б", 2)
+
+
+def test_item_states_match_architecture() -> None:
+    assert [state.value for state in ItemState] == ["active", "purchased", "archived"]
