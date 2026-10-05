@@ -168,6 +168,7 @@
 - Файлы: `tests/integration/` — запуск настоящего процесса сервера.
 - Файлы: `tests/security/` — набор безопасности; обязателен при изменении входа, ролей, URL, worker (`AGENTS.md`, раздел 7).
 - Команда: `uv run pytest tests/security` — только набор безопасности.
+- Файлы: `tests/security/test_no_secrets_in_git.py` — нет .env, ключей и токенов в файлах, которые попадут в коммит; .env игнорируется, .env.example без секретов.
 - Файлы: `tests/contracts/` — проверки контракта API.
 - Файлы: `tests/unit/conftest.py` — фикстура project_copy: копия проекта для тестов, которые ломают код.
 
