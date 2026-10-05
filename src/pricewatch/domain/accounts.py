@@ -5,6 +5,7 @@
 и не совпадает с логином; правил состава нет (NIST SP 800-63B).
 """
 
+import math
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -24,6 +25,12 @@ SESSION_TOUCH_INTERVAL = timedelta(hours=1)
 FAILURE_WINDOW = timedelta(minutes=15)
 LOGIN_FAILURES_PER_LOGIN = 5
 LOGIN_FAILURES_PER_IP = 20
+PAIRING_CODE_LIFETIME = timedelta(minutes=5)
+PAIRING_FAILURES_PER_IP = 10
+ACCESS_TOKEN_LIFETIME = timedelta(minutes=15)
+REFRESH_TOKEN_LIFETIME = timedelta(days=60)
+REFRESH_REPLAY_WINDOW = timedelta(seconds=60)
+DEVICE_NAME_MAX = 80
 
 
 class Role(StrEnum):
@@ -62,11 +69,38 @@ class WebSession:
 
 
 @dataclass(frozen=True, slots=True)
+class Device:
+    """Устройство приложения; оно же семья refresh-токенов."""
+
+    id: int
+    user_id: int
+    name: str
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class TokenPair:
+    access_token: str
+    access_expires_at: datetime
+    refresh_token: str
+    refresh_expires_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class IssuedInvite:
     """Приглашение и его код; код показывается один раз и нигде не хранится."""
 
     invite: Invite
     code: str
+
+
+def retry_after_seconds(oldest_failure: datetime, now: datetime) -> int:
+    """Через сколько целых секунд окно неудач освободится от самой ранней из них; не меньше 1."""
+    return max(1, math.ceil((oldest_failure + FAILURE_WINDOW - now).total_seconds()))
+
+
+def check_device_name(raw: str) -> str:
+    return clean_name(raw, field="device_name", max_length=DEVICE_NAME_MAX)
 
 
 def check_login(raw: str) -> str:

@@ -8,6 +8,11 @@ from typing import Self
 
 from sqlalchemy import Connection, Engine, RootTransaction
 
+from pricewatch.persistence.app_auth_repositories import (
+    SqlDeviceRepository,
+    SqlPairingCodeRepository,
+    SqlTokenRepository,
+)
 from pricewatch.persistence.auth_repositories import SqlAuthFailureRepository, SqlSessionRepository
 from pricewatch.persistence.invite_repository import SqlInviteRepository
 from pricewatch.persistence.shopping_repositories import (
@@ -33,6 +38,9 @@ class SqlUnitOfWork:
         self.invites = SqlInviteRepository(self._connection)
         self.auth_failures = SqlAuthFailureRepository(self._connection)
         self.sessions = SqlSessionRepository(self._connection)
+        self.pairing_codes = SqlPairingCodeRepository(self._connection)
+        self.devices = SqlDeviceRepository(self._connection)
+        self.tokens = SqlTokenRepository(self._connection)
         self.categories = SqlCategoryRepository(self._connection)
         self.groups = SqlGroupRepository(self._connection)
         self.items = SqlItemRepository(self._connection)

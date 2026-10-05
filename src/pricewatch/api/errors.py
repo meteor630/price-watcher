@@ -77,8 +77,14 @@ def error_response(
     return JSONResponse({"error": error}, status_code=status, headers=extra_headers)
 
 
-async def handle_project_error(_: Request, error: PriceWatcherError) -> JSONResponse:
-    return error_response(error.code, HTTP_STATUS[error.code], details=error.details)
+# Ответ 401 приложению называет схему входа (RFC 6750); сайт входит по cookie, ему заголовок не нужен.
+_BEARER_CHALLENGE = {"WWW-Authenticate": "Bearer"}
+
+
+async def handle_project_error(request: Request, error: PriceWatcherError) -> JSONResponse:
+    status = HTTP_STATUS[error.code]
+    headers = _BEARER_CHALLENGE if status == 401 and request.url.path.startswith("/api/") else None
+    return error_response(error.code, status, details=error.details, headers=headers)
 
 
 async def handle_validation_error(_: Request, error: RequestValidationError) -> JSONResponse:

@@ -9,7 +9,6 @@
 - В базе только HMAC токена сессии; CSRF-токен — HMAC того же токена и нигде не хранится.
 """
 
-import math
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -25,6 +24,7 @@ from pricewatch.domain.accounts import (
     User,
     WebSession,
     login_key,
+    retry_after_seconds,
 )
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.tokens import Purpose, keyed_hash, new_token, same_secret
@@ -137,6 +137,5 @@ def _ensure_not_limited(uow: UnitOfWork, subject: str | None, ip: str | None, no
         if window.count >= LOGIN_FAILURES_PER_IP:
             exceeded.append(window)
     if exceeded:
-        free_at = max(window.oldest + FAILURE_WINDOW for window in exceeded if window.oldest is not None)
-        retry_after = max(1, math.ceil((free_at - now).total_seconds()))
+        retry_after = max(retry_after_seconds(window.oldest, now) for window in exceeded if window.oldest is not None)
         raise PriceWatcherError(ErrorCode.RATE_LIMITED, {"retry_after_seconds": retry_after})

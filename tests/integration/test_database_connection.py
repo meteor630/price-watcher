@@ -140,3 +140,15 @@ def test_sqlalchemy_does_not_print_query_parameters(engine: Engine) -> None:
 
     assert "SQL parameters hidden" in str(caught.value)
     assert SPECIAL_PASSWORD not in str(caught.value)
+
+
+def test_timestamps_come_back_in_utc(engine: Engine) -> None:
+    # Регрессия: соединение работало в часовом поясе сервера PostgreSQL, и время из базы
+    # приходило как +03:00, а посчитанное в коде — как +00:00. Контракт API требует UTC.
+    from datetime import timedelta
+
+    with engine.connect() as connection:
+        moment = connection.execute(text("SELECT TIMESTAMPTZ '2026-10-05 15:00:00+03'")).scalar_one()
+
+    assert moment.utcoffset() == timedelta(0)
+    assert moment.isoformat() == "2026-10-05T12:00:00+00:00"

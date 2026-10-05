@@ -25,7 +25,12 @@ def create_db_engine(database_url: str) -> Engine:
         pool_pre_ping=True,
         pool_recycle=POOL_RECYCLE_S,
         hide_parameters=True,
-        connect_args={"connect_timeout": CONNECT_TIMEOUT_S, "application_name": "pricewatch"},
+        # Время из базы всегда в UTC, как требует контракт API, независимо от настройки сервера.
+        connect_args={
+            "connect_timeout": CONNECT_TIMEOUT_S,
+            "application_name": "pricewatch",
+            "options": "-c timezone=UTC",
+        },
     )
 
 

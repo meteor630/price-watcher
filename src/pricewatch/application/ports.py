@@ -20,7 +20,7 @@ from datetime import datetime
 from types import TracebackType
 from typing import Protocol, Self
 
-from pricewatch.domain.accounts import Invite, Role, User, WebSession
+from pricewatch.domain.accounts import Device, Invite, Role, User, WebSession
 from pricewatch.domain.shopping import Category, Group, Item
 
 
@@ -104,6 +104,57 @@ class InviteRepository(Protocol):
     def mark_used(self, invite_id: int, user_id: int, now: datetime) -> None: ...
 
 
+@dataclass(frozen=True, slots=True)
+class PairingClaim:
+    id: int
+    user_id: int
+    expires_at: datetime
+    used: bool
+
+
+class PairingCodeRepository(Protocol):
+    def create(self, user_id: int, code_hash: str, created_at: datetime, expires_at: datetime) -> None: ...
+    def claim(self, code_hash: str) -> PairingClaim | None:
+        """Код по HMAC, заблокированный до конца транзакции; истечение и использование проверяет сценарий."""
+        ...
+    def mark_used(self, code_id: int, now: datetime) -> None: ...
+
+
+class DeviceRepository(Protocol):
+    def create(self, user_id: int, name: str, created_at: datetime) -> Device: ...
+    def get_active(self, device_id: int) -> Device | None: ...
+    def touch(self, device_id: int, now: datetime) -> None: ...
+    def revoke(self, device_id: int, now: datetime) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class RefreshRecord:
+    id: int
+    device_id: int
+    used_at: datetime | None
+    expires_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class AccessGrant:
+    device_id: int
+    user_id: int
+
+
+class TokenRepository(Protocol):
+    def add_access(self, device_id: int, token_hash: str, issued_at: datetime, expires_at: datetime) -> None: ...
+    def add_refresh(self, device_id: int, token_hash: str, issued_at: datetime, expires_at: datetime) -> None: ...
+    def find_access(self, token_hash: str, now: datetime) -> AccessGrant | None:
+        """Неистёкший access-токен неотозванного устройства."""
+        ...
+    def find_refresh(self, token_hash: str) -> RefreshRecord | None:
+        """Refresh-токен по HMAC, заблокированный до конца транзакции."""
+        ...
+    def expires_of_access(self, token_hash: str) -> datetime | None: ...
+    def expires_of_refresh(self, token_hash: str) -> datetime | None: ...
+    def mark_refresh_used(self, refresh_id: int, now: datetime) -> None: ...
+
+
 class CategoryRepository(Protocol):
     def list_active(self, user_id: int) -> list[Category]: ...
     def get(self, user_id: int, category_id: int) -> Category: ...
@@ -144,6 +195,9 @@ class UnitOfWork(Protocol):
     invites: InviteRepository
     auth_failures: AuthFailureRepository
     sessions: SessionRepository
+    pairing_codes: PairingCodeRepository
+    devices: DeviceRepository
+    tokens: TokenRepository
     categories: CategoryRepository
     groups: GroupRepository
     items: ItemRepository
