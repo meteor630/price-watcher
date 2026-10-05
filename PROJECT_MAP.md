@@ -79,8 +79,9 @@
 - Путь: `src/pricewatch/web/`
 - Отвечает: шаблоны, HTML-фрагменты, CSS, JS
 - Зависит от: —
-- Тесты: `uv run pytest tests/unit/test_design_tokens.py tests/unit/test_package_layout.py`
+- Тесты: `uv run pytest tests/unit/test_design_tokens.py tests/unit/test_fonts.py tests/unit/test_package_layout.py`
 - Файлы: `src/pricewatch/web/static/css/tokens.css` — токены дизайна; компоненты берут цвета, размеры и длительности только отсюда.
+- Файлы: `src/pricewatch/web/static/css/fonts.css`, `src/pricewatch/web/static/fonts/` — шрифты со своего домена: кириллица, латиница, расширенная латиница (знак ₽).
 
 ### pricewatch.parsers
 - Путь: `src/pricewatch/parsers/`
@@ -171,8 +172,15 @@
 
 ## Данные и API
 
-Пока нет: схема базы — этап 2, OpenAPI `/api/v1` — срез 6 этапа 0.
+- Файлы: `openapi/v1.yaml` — контракт /api/v1 для приложения, черновик на согласовании. Контракт пишется до клиентов.
 
-## Готовые решения с GitHub
+Схема базы — этап 2. Маршруты `/web`, `/worker/v1`, `/internal/v1` в контракт приложения не входят.
 
-Пока не выбирались (`AGENTS.md`, раздел 8).
+## Сторонние материалы и готовые решения
+
+Готовые решения с GitHub пока не выбирались (`AGENTS.md`, раздел 8).
+
+Шрифты, лицензия SIL OFL 1.1, источник — npm-пакеты @fontsource-variable:
+- Файлы: `src/pricewatch/web/static/fonts/unbounded.LICENSE.txt` — Unbounded 5.3.0, github.com/googlefonts/unbounded.
+- Файлы: `src/pricewatch/web/static/fonts/onest.LICENSE.txt` — Onest 5.3.1, github.com/simpals/onest.
+- Файлы: `src/pricewatch/web/static/fonts/jetbrains-mono.LICENSE.txt` — JetBrains Mono 5.3.0, github.com/JetBrains/JetBrainsMono.
