@@ -27,5 +27,5 @@ def create_app(settings: Settings) -> FastAPI:
         max_age=600,
     )
     # Добавленный последним слой — внешний: он видит ответы CORS и все исключения.
-    app.add_middleware(EdgeMiddleware)
+    app.add_middleware(EdgeMiddleware, trusted_proxies=settings.trusted_proxies)
     return app
