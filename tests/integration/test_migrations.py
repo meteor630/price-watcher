@@ -1,0 +1,99 @@
+"""Миграции: вверх, вниз, снова вверх; модели совпадают со схемой; команда alembic работает."""
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+from urllib.parse import quote
+
+import pytest
+from alembic import command
+from alembic.autogenerate import compare_metadata
+from alembic.migration import MigrationContext
+from sqlalchemy import create_engine, inspect, make_url
+
+from pricewatch.persistence.models import Base
+from pricewatch.persistence.schema import alembic_config
+
+ROOT = Path(__file__).resolve().parents[2]
+TABLES = {"users", "categories", "groups", "items"}
+
+
+def tables(url: str) -> set[str]:
+    engine = create_engine(url)
+    try:
+        return set(inspect(engine).get_table_names()) - {"alembic_version"}
+    finally:
+        engine.dispose()
+
+
+def revision(url: str) -> str | None:
+    engine = create_engine(url)
+    try:
+        with engine.connect() as connection:
+            return MigrationContext.configure(connection).get_current_revision()
+    finally:
+        engine.dispose()
+
+
+def test_upgrade_downgrade_upgrade(empty_database_url: str) -> None:
+    config = alembic_config(empty_database_url)
+
+    command.upgrade(config, "head")
+    assert tables(empty_database_url) == TABLES
+    assert revision(empty_database_url) == "0001"
+
+    command.downgrade(config, "base")
+    assert tables(empty_database_url) == set()
+    assert revision(empty_database_url) is None
+
+    command.upgrade(config, "head")
+    assert tables(empty_database_url) == TABLES
+
+
+def test_models_match_migrated_schema(migrated_database_url: str) -> None:
+    engine = create_engine(migrated_database_url)
+    try:
+        with engine.connect() as connection:
+            context = MigrationContext.configure(
+                connection, opts={"compare_type": True, "compare_server_default": True}
+            )
+            differences = compare_metadata(context, Base.metadata)
+    finally:
+        engine.dispose()
+
+    assert differences == []
+
+
+def test_alembic_command_uses_settings_and_logs_json(empty_database_url: str, tmp_path: Path) -> None:
+    password = "cli-" + "Pw%40" + "d"
+    url = make_url(empty_database_url).set(password=password).render_as_string(hide_password=False)
+    env = {name: value for name, value in os.environ.items() if not name.startswith("PRICEWATCH_")} | {
+        "PRICEWATCH_ENV": "test",
+        "PRICEWATCH_PUBLIC_ORIGIN": "http://localhost:8000",
+        "PRICEWATCH_DATABASE_URL": url,
+    }
+
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "-c", str(ROOT / "alembic.ini"), "upgrade", "head"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    entries = [json.loads(line) for line in result.stdout.splitlines()]
+    assert any("Running upgrade" in entry["message"] for entry in entries)
+    assert password not in result.stdout + result.stderr
+    assert quote(password, safe="") not in result.stdout + result.stderr
+    assert tables(empty_database_url) == TABLES
+
+
+def test_offline_mode_is_refused(empty_database_url: str) -> None:
+    with pytest.raises(RuntimeError, match="офлайн"):
+        command.upgrade(alembic_config(empty_database_url), "head", sql=True)
+

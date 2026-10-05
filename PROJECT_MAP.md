@@ -8,6 +8,7 @@
 
 - Команда: `uv sync` — установить окружение.
 - Команда: `uv run python -m pricewatch.bootstrap` — запустить сервер; настройки из окружения и .env.
+- Команда: `uv run alembic upgrade head` — применить миграции; адрес базы из настроек.
 - Команда: `TEST_DATABASE_URL=postgresql://localhost/postgres uv run pytest` — весь набор тестов; без TEST_DATABASE_URL тесты базы падают с объяснением.
 - Команда: `LC_ALL=en_US.UTF-8 pg_ctl -D /opt/homebrew/var/postgresql@18 -l /opt/homebrew/var/log/postgresql@18.log start` — запустить локальный PostgreSQL 18 (Homebrew) до перезагрузки.
 - Команда: `uv run lint-imports` — границы модулей.
@@ -44,6 +45,7 @@
 
 - Файлы: `pyproject.toml` — проект, зависимости, pytest, контракты import-linter.
 - Файлы: `uv.lock` — точные версии.
+- Файлы: `alembic.ini` — расположение миграций; адреса базы в нём нет.
 - Файлы: `.python-version` — Python 3.13.
 - Файлы: `.gitignore`
 - Файлы: `.env.example` — все настройки с пояснениями, без секретов; копируется в .env.
@@ -72,9 +74,12 @@
 ### pricewatch.persistence
 - Путь: `src/pricewatch/persistence/`
 - Отвечает: модели БД, репозитории, миграции
-- Зависит от: `pricewatch.domain`
-- Тесты: `uv run pytest tests/integration/test_database_connection.py`
+- Зависит от: `pricewatch.config`, `pricewatch.domain`, `pricewatch.observability`
+- Тесты: `uv run pytest tests/integration/test_database_connection.py tests/integration/test_migrations.py tests/integration/test_schema_constraints.py`
 - Файлы: `src/pricewatch/persistence/database.py` — подключение: малый пул, hide_parameters, DB_ERROR при недоступной базе.
+- Файлы: `src/pricewatch/persistence/models.py` — таблицы users, categories, groups, items; составные ключи владельца; имена ограничений по правилу.
+- Файлы: `src/pricewatch/persistence/migrations/`, `src/pricewatch/persistence/migrations/versions/` — миграции Alembic; env.py берёт адрес базы из настроек (config) и пишет журнал в JSON (observability).
+- Файлы: `src/pricewatch/persistence/schema.py` — настройка Alembic из кода, без alembic.ini.
 
 ### pricewatch.api
 - Путь: `src/pricewatch/api/`
@@ -203,7 +208,7 @@
 - Файлы: `openapi/v1.yaml` — контракт /api/v1 для приложения, утверждён. Меняется только с согласия владельца; совместимо — новыми необязательными полями.
 - Тесты: `uv run pytest tests/contracts/test_openapi_document.py`
 
-Схема базы — этап 2. Маршруты `/web`, `/worker/v1`, `/internal/v1` в контракт приложения не входят.
+Схема базы: этап 2 — users, categories, groups, items (`persistence/models.py`); остальные таблицы раздела 5 добавляются миграциями своих этапов. Маршруты `/web`, `/worker/v1`, `/internal/v1` в контракт приложения не входят.
 
 ## Сторонние материалы и готовые решения
 
