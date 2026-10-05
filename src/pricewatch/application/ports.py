@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from types import TracebackType
 from typing import Protocol, Self
 
+from pricewatch.domain.accounts import Role, User
 from pricewatch.domain.shopping import Category, Group, Item
 
 
@@ -49,6 +50,13 @@ class ItemChanges:
     quantity: int | Unchanged = UNCHANGED
     in_total: bool | Unchanged = UNCHANGED
     group_id: int | None | Unchanged = UNCHANGED
+
+
+class UserRepository(Protocol):
+    """Логин уникален без учёта регистра: занятый — LOGIN_TAKEN."""
+
+    def create(self, login: str, password_hash: str, role: Role, display_name: str) -> User: ...
+    def get(self, user_id: int) -> User: ...
 
 
 class CategoryRepository(Protocol):
@@ -87,6 +95,7 @@ class ItemRepository(Protocol):
 class UnitOfWork(Protocol):
     """Одна транзакция. Выход без commit() — откат."""
 
+    users: UserRepository
     categories: CategoryRepository
     groups: GroupRepository
     items: ItemRepository

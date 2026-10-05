@@ -13,6 +13,7 @@ from pricewatch.persistence.shopping_repositories import (
     SqlGroupRepository,
     SqlItemRepository,
 )
+from pricewatch.persistence.user_repository import SqlUserRepository
 
 
 class SqlUnitOfWork:
@@ -26,6 +27,7 @@ class SqlUnitOfWork:
             raise RuntimeError("Единица работы уже открыта: вложенный вход не поддерживается")
         self._connection = self.engine.connect()
         self._transaction = self._connection.begin()
+        self.users = SqlUserRepository(self._connection)
         self.categories = SqlCategoryRepository(self._connection)
         self.groups = SqlGroupRepository(self._connection)
         self.items = SqlItemRepository(self._connection)

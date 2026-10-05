@@ -1,6 +1,6 @@
 """Запуск сервера: настройки → журнал → проверка базы → приложение → uvicorn.
 
-Команда: uv run python -m pricewatch.bootstrap
+Команда: uv run python -m pricewatch.bootstrap (или … serve); остальные команды — bootstrap/commands.py.
 Код выхода: 2 — неверная конфигурация, 3 — база недоступна или схема не совпадает с кодом.
 Uvicorn не настраивает журнал сам (log_config=None): его записи идут в общий JSON-журнал.
 Свой журнал доступа uvicorn выключен — запросы пишет EdgeMiddleware, без строки запроса.
@@ -42,7 +42,7 @@ def check_database(settings: Settings) -> bool:
     return True
 
 
-def main(env_file: Path = Path(".env")) -> int:
+def serve(env_file: Path = Path(".env")) -> int:
     try:
         settings = load_settings(env_file)
     except ConfigError as error:
