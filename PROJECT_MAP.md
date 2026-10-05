@@ -74,10 +74,10 @@
 - Путь: `src/pricewatch/application/`
 - Отвечает: сценарии и интерфейсы репозиториев
 - Зависит от: `pricewatch.domain`
-- Тесты: `uv run pytest tests/unit/test_passwords.py tests/integration/test_create_admin_command.py`
+- Тесты: `uv run pytest tests/unit/test_passwords.py tests/integration/test_create_admin_command.py tests/integration/test_registration.py`
 - Файлы: `src/pricewatch/application/ports.py` — интерфейсы репозиториев и единицы работы; общие правила владельца, версий, перестановки, удаления.
 - Файлы: `src/pricewatch/application/passwords.py` — PasswordHasher: argon2id (argon2-cffi), нормализация, фиктивная проверка для выравнивания времени.
-- Файлы: `src/pricewatch/application/accounts.py` — сценарий create_admin.
+- Файлы: `src/pricewatch/application/accounts.py` — сценарии create_admin, create_invite (только активный администратор), register (по приглашению, неверные поля и занятый логин приглашение не тратят).
 
 ### pricewatch.persistence
 - Путь: `src/pricewatch/persistence/`
@@ -91,6 +91,7 @@
 - Файлы: `src/pricewatch/persistence/shopping_repositories.py` — репозитории категорий, групп, товаров; изменения состава списка блокируют родителя подъёмом его версии.
 - Файлы: `src/pricewatch/persistence/unit_of_work.py` — SqlUnitOfWork: одно соединение и транзакция; без commit — откат.
 - Файлы: `src/pricewatch/persistence/user_repository.py` — пользователи; занятый логин без учёта регистра — LOGIN_TAKEN.
+- Файлы: `src/pricewatch/persistence/invite_repository.py` — приглашения; claim блокирует строку (FOR UPDATE) до конца транзакции; времена записи — из часов сценария, не базы.
 
 ### pricewatch.api
 - Путь: `src/pricewatch/api/`
@@ -186,7 +187,8 @@
 ## Тесты
 
 - Файлы: `tests/unit/` — unit-тесты.
-- Файлы: `tests/integration/` — запуск настоящего процесса сервера.
+- Файлы: `tests/integration/` — запуск настоящего процесса сервера, база, команды.
+- Файлы: `tests/integration/concurrency_helpers.py` — пересечение транзакций с проверкой ожидания блокировки; импортируется тестами (pythonpath в pyproject).
 - Файлы: `tests/security/` — набор безопасности; обязателен при изменении входа, ролей, URL, worker (`AGENTS.md`, раздел 7).
 - Команда: `uv run pytest tests/security` — только набор безопасности.
 - Файлы: `tests/security/test_no_secrets_in_git.py` — нет .env, ключей и токенов в файлах, которые попадут в коммит; .env игнорируется, .env.example без секретов.

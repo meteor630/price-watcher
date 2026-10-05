@@ -8,6 +8,7 @@
 import re
 import unicodedata
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from enum import StrEnum
 
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
@@ -17,6 +18,7 @@ LOGIN_PATTERN = re.compile(r"[A-Za-z0-9._-]{3,64}")
 PASSWORD_MIN = 10
 PASSWORD_MAX = 128
 DISPLAY_NAME_MAX = 100
+INVITE_LIFETIME = timedelta(days=7)
 
 
 class Role(StrEnum):
@@ -35,6 +37,22 @@ class User:
     @property
     def is_admin(self) -> bool:
         return self.role is Role.ADMIN
+
+
+@dataclass(frozen=True, slots=True)
+class Invite:
+    id: int
+    role: Role
+    created_by: int
+    expires_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class IssuedInvite:
+    """Приглашение и его код; код показывается один раз и нигде не хранится."""
+
+    invite: Invite
+    code: str
 
 
 def check_login(raw: str) -> str:

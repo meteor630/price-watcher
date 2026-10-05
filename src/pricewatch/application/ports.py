@@ -16,10 +16,11 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from types import TracebackType
 from typing import Protocol, Self
 
-from pricewatch.domain.accounts import Role, User
+from pricewatch.domain.accounts import Invite, Role, User
 from pricewatch.domain.shopping import Category, Group, Item
 
 
@@ -59,6 +60,16 @@ class UserRepository(Protocol):
     def get(self, user_id: int) -> User: ...
 
 
+class InviteRepository(Protocol):
+    def create(self, code_hash: str, role: Role, created_by: int, created_at: datetime, expires_at: datetime) -> Invite:
+        """created_at и expires_at — из одного источника времени, без часов базы."""
+        ...
+    def claim(self, code_hash: str, now: datetime) -> Invite | None:
+        """Неиспользованное и неистёкшее приглашение, заблокированное до конца транзакции; иначе None."""
+        ...
+    def mark_used(self, invite_id: int, user_id: int, now: datetime) -> None: ...
+
+
 class CategoryRepository(Protocol):
     def list_active(self, user_id: int) -> list[Category]: ...
     def get(self, user_id: int, category_id: int) -> Category: ...
@@ -96,6 +107,7 @@ class UnitOfWork(Protocol):
     """Одна транзакция. Выход без commit() — откат."""
 
     users: UserRepository
+    invites: InviteRepository
     categories: CategoryRepository
     groups: GroupRepository
     items: ItemRepository
