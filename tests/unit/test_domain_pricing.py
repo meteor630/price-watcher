@@ -311,3 +311,13 @@ def test_observation_price_must_be_integer(bad: object) -> None:
 def test_naive_now_rejected() -> None:
     with pytest.raises(ValueError):
         link_price(link(ok()), datetime(2026, 10, 6, 12, 0))
+
+
+def test_link_keeps_observations_sorted_and_immutable() -> None:
+    late, early = ok(ago=timedelta(hours=1)), ok(ago=timedelta(days=1))
+    source = [late, early]
+
+    stored = link(*source).observations
+    source.clear()
+
+    assert stored == (early, late)

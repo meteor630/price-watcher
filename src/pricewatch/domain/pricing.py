@@ -11,6 +11,7 @@
 функция отвечает и на вопрос «какой была цена тогда».
 """
 
+from bisect import bisect_right
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -96,6 +97,10 @@ class LinkInput:
     store_enabled: bool
     observations: Sequence[Observation]
 
+    def __post_init__(self) -> None:
+        # Сортировка один раз: расчёт на момент ищет границу двоичным поиском (графики за год — 365 расчётов).
+        object.__setattr__(self, "observations", tuple(sorted(self.observations, key=_checked_at)))
+
 
 @dataclass(frozen=True, slots=True)
 class LinkPrice:
@@ -126,13 +131,23 @@ class ItemPrice:
 def link_price(link: LinkInput, now: datetime, stale_after: timedelta = STALE_AFTER) -> LinkPrice:
     if now.utcoffset() is None:
         raise ValueError("время расчёта без часового пояса")
-    visible = sorted((o for o in link.observations if o.checked_at <= now), key=lambda o: o.checked_at)
-    success = next((o for o in reversed(visible) if o.is_success), None)
+    observations = link.observations
+    success: Observation | None = None
     # Последняя проверка, влияющая на показ: сбой или подтверждённый успех; ждущие решения и отклонённые — нет.
-    last_check = next((o for o in reversed(visible) if o.failure is not None or o.is_success), None)
+    last_check: Observation | None = None
+    pending_times = []
+    # Назад от момента `now` до последнего успешного наблюдения; более ранние на результат не влияют.
+    for index in range(bisect_right(observations, now, key=_checked_at) - 1, -1, -1):
+        observation = observations[index]
+        if last_check is None and (observation.failure is not None or observation.is_success):
+            last_check = observation
+        if observation.is_success:
+            success = observation
+            break
+        if observation.confirmation is Confirmation.PENDING:
+            pending_times.append(observation.checked_at)
     failure = last_check.failure if last_check is not None else None
-    after_success = [o for o in visible if success is None or o.checked_at > success.checked_at]
-    under_review = any(o.confirmation is Confirmation.PENDING for o in after_success)
+    under_review = any(success is None or moment > success.checked_at for moment in pending_times)
 
     price = success.effective_price_minor if success is not None else None
     if not link.store_enabled:
@@ -174,6 +189,10 @@ def item_price(links: Sequence[LinkInput], now: datetime, stale_after: timedelta
             best = _cheapest(known) if known else None
             return ItemPrice(status, best, best.price_minor if best else None, False, under_review, prices)
     return ItemPrice(PriceStatus.AWAITING_CHECK, None, None, False, under_review, prices)
+
+
+def _checked_at(observation: Observation) -> datetime:
+    return observation.checked_at
 
 
 def _cheapest(prices: Sequence[LinkPrice]) -> LinkPrice:
