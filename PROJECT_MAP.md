@@ -113,7 +113,10 @@
 - Путь: `src/pricewatch/observability/`
 - Отвечает: логи, идентификаторы запросов и ошибок
 - Зависит от: —
-- Тесты: `uv run pytest tests/unit/test_package_layout.py`
+- Тесты: `uv run pytest tests/unit/test_observability_logging.py tests/unit/test_package_layout.py`
+- Файлы: `src/pricewatch/observability/json_log.py` — JsonFormatter и configure_logging: одна JSON-строка на событие в stdout.
+- Файлы: `src/pricewatch/observability/redaction.py` — вырезание секретов из полей и текста, в том числе из traceback.
+- Файлы: `src/pricewatch/observability/ids.py` — request_id в контексте выполнения, генератор error_id.
 
 ### pricewatch.bootstrap
 - Путь: `src/pricewatch/bootstrap/`
