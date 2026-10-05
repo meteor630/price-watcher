@@ -152,7 +152,7 @@ Telegram привязывается к пользователю одноразо
 
 Учётные записи и сессии:
 
-- `users(id, login, password_hash, role, display_name, telegram_chat_id, created_at, disabled_at)`
+- `users(id, login, password_hash, role, display_name, telegram_chat_id, categories_order_version, created_at, disabled_at)` — `categories_order_version` — версия порядка категорий пользователя.
 - `invites(id, code_hash, role, created_by, expires_at, used_by, used_at)`
 - `web_sessions(id, user_id, token_hash, created_at, last_seen_at, expires_at, revoked_at)`
 - `devices(id, user_id, name, created_at, revoked_at)`
@@ -189,7 +189,7 @@ Telegram привязывается к пользователю одноразо
 
 ### Конфликты правок
 
-У изменяемых записей есть целое поле `version`. Клиент присылает версию, которую видел. Обновление выполняется одним запросом `UPDATE … WHERE id = … AND version = …`; ноль затронутых строк даёт `409 VERSION_CONFLICT` с актуальным состоянием. Перестановка присылает полный упорядоченный список идентификаторов и версию родителя.
+У изменяемых записей есть целое поле `version`. Клиент присылает версию, которую видел. Обновление выполняется одним запросом `UPDATE … WHERE id = … AND version = …`; ноль затронутых строк даёт `409 VERSION_CONFLICT` с актуальным состоянием. Перестановка присылает полный упорядоченный список идентификаторов и версию родителя: для товаров — версию группы, для категорий — `users.categories_order_version`.
 
 ### Удаление и отмена
 
@@ -326,7 +326,9 @@ Worker скачивает фото товара: не больше 2 МБ, то�
 
 ## 9. API и сайт
 
-- `/api/v1` — JSON для приложения, описан в OpenAPI. Контракт пишется до клиентов.
+- `/api/v1` — JSON для приложения, описан в `openapi/v1.yaml`. Контракт пишется до клиентов; при расхождении с этим разделом прав контракт.
+- Статусы в ответах — открытые строки: клиент показывает нейтральное состояние для неизвестного значения.
+- Цвет магазина передаётся номером палитры (`store-1` … `store-8`); значение цвета клиент берёт из своих токенов под текущую тему.
 - `/web` — страницы и HTML-фрагменты для сайта. Те же сценарии application layer, другой формат ответа.
 - Суммы приходят числом копеек и готовой строкой для показа (`price_minor`, `price_text`). Форматирование денег живёт в одном месте — на сервере.
 - Данные графиков: упорядоченный массив `{date, value_minor, label, status}`.
@@ -338,6 +340,8 @@ Worker скачивает фото товара: не больше 2 МБ, то�
 ## 10. Ошибки, логи, уведомления
 
 Ошибки не маскируются нулевой ценой, пустым успешным ответом или заглушкой. Коды: `INVALID_URL`, `STORE_NOT_ALLOWED`, `BLOCKED`, `CAPTCHA`, `TIMEOUT`, `LAYOUT_CHANGED`, `PRICE_NOT_FOUND`, `REGION_MISMATCH`, `UNSUPPORTED_CURRENCY`, `WORKER_OFFLINE`, `RUN_IN_PROGRESS`, `VERSION_CONFLICT`, `DB_ERROR`, `INTERNAL_ERROR`.
+
+Коды API и входа: `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`, `VALIDATION_ERROR`, `RATE_LIMITED`, `PAIRING_CODE_INVALID`, `PAIRING_CODE_EXPIRED`, `REFRESH_TOKEN_INVALID`, `REFRESH_TOKEN_REUSED`, `IDEMPOTENCY_KEY_REUSED`.
 
 - Каждая попытка сохраняет статус, время, внутренние идентификаторы, краткое безопасное сообщение и correlation ID.
 - Полный traceback пишется в журнал узла. Токены, cookie, заголовки авторизации и чувствительные параметры URL вырезаются.

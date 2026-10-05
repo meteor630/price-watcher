@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Price Watcher API
-  version: 1.0.0-draft
+  version: 1.0.0
   description: |
     JSON API для приложения iPhone и iPad. Контракт пишется до клиентов
     (DEVELOPMENT_ARCHITECTURE.md, раздел 9; IOS_APP_PLAN.md).

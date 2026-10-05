@@ -19,6 +19,7 @@ filterwarnings = ["error"]
 dev = [
     "grimp>=3.17",
     "import-linter>=2.15",
+    "openapi-spec-validator>=0.9.0",
     "pytest>=9.1.1",
 ]
 
