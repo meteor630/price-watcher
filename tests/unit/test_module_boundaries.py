@@ -53,6 +53,8 @@ def test_current_code_keeps_contracts() -> None:
         ("domain", "import decimalx", DOMAIN),
         ("application", "import pricewatch.persistence", APPLICATION),
         ("application", "import pricewatch.api", APPLICATION),
+        ("application", "import pricewatch.config", APPLICATION),
+        ("domain", "from pricewatch.config import settings", DOMAIN),
         ("persistence", "import pricewatch.api", PERSISTENCE_OUTWARD),
         ("api", "import pricewatch.persistence", PERSISTENCE_ONLY_BOOTSTRAP),
         ("scheduler", "import pricewatch.persistence", PERSISTENCE_ONLY_BOOTSTRAP),
@@ -115,6 +117,8 @@ def test_allowed_dependencies_keep_contracts(project_copy: Path) -> None:
     add_line(project_copy, "bootstrap", "import pricewatch.persistence")
     add_line(project_copy, "bootstrap", "import pricewatch.api")
     add_line(project_copy, "bootstrap", "import pricewatch.scheduler")
+    add_line(project_copy, "api", "import pricewatch.config")
+    add_line(project_copy, "bootstrap", "import pricewatch.config")
 
     result = run_lint(project_copy)
 

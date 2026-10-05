@@ -18,6 +18,7 @@ ARCHITECTURE_PACKAGES = {
     "bot",
     "observability",
     "bootstrap",
+    "config",
 }
 
 

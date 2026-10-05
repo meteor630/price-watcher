@@ -89,6 +89,7 @@ src/pricewatch/
   bot/             Telegram-бот и сторож
   observability/   логи, идентификаторы запросов и ошибок
   bootstrap/       сборка приложения: связывает сценарии с реализациями репозиториев
+  config/          настройки процесса из окружения и .env
 ios/PriceWatcher/  отдельный Xcode-проект
 tests/  unit/ integration/ contracts/ security/ ui/
 tools/  check_project_map.py, deps.py, import_contracts.py (свой тип контракта import-linter)
@@ -97,6 +98,8 @@ tools/  check_project_map.py, deps.py, import_contracts.py (свой тип ко
 Направление зависимостей: `api → application → domain`; `persistence` реализует интерфейсы из `application`; адаптеры магазинов не импортируют друг друга; `worker` и `bot` не импортируют `persistence`.
 
 `persistence` импортирует только `bootstrap`. Он создаёт репозитории и передаёт их сценариям при старте процесса. `api` и `scheduler` получают готовые сценарии от `bootstrap` и обратиться к базе в обход сценариев не могут. В `bootstrap` нет бизнес-логики и обработчиков.
+
+`config` читают `api`, `bootstrap`, `worker`, `scheduler` и `bot`; `domain` и `application` его не импортируют — сценарии получают нужные значения параметрами.
 
 `domain` импортирует только стандартную библиотеку Python. Любая сторонняя библиотека в `domain` запрещена; исключение добавляется только с согласия владельца.
 

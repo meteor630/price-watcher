@@ -6,19 +6,6 @@ from pathlib import Path
 
 import pytest
 
-PACKAGES = [
-    "api",
-    "application",
-    "bootstrap",
-    "bot",
-    "domain",
-    "observability",
-    "parsers",
-    "persistence",
-    "scheduler",
-    "web",
-    "worker",
-]
 LAYOUT_TESTS = "`uv run pytest tests/unit/test_package_layout.py`"
 
 
@@ -36,7 +23,9 @@ def package_section(name: str, **fields: str) -> str:
 
 def write_map(root: Path, overrides: dict[str, dict[str, str]] | None = None, extra: str = "") -> None:
     overrides = overrides or {}
-    sections = [package_section(name, **overrides.get(name, {})) for name in PACKAGES]
+    # Пробная карта описывает пакеты, которые есть в копии кода на момент вызова.
+    packages = sorted(init.parent.name for init in (root / "src" / "pricewatch").glob("*/__init__.py"))
+    sections = [package_section(name, **overrides.get(name, {})) for name in packages]
     (root / "PROJECT_MAP.md").write_text("# Карта\n\n## Пакеты\n\n" + "\n\n".join(sections) + "\n" + extra)
 
 

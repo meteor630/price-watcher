@@ -233,6 +233,9 @@ wheels = [
 name = "pricewatch"
 version = "0.1.0"
 source = { editable = "." }
+dependencies = [
+    { name = "pydantic-settings" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -243,6 +246,7 @@ dev = [
 ]
 
 [package.metadata]
+requires-dist = [{ name = "pydantic-settings", specifier = ">=2.15" }]
 
 [package.metadata.requires-dev]
 dev = [

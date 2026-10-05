@@ -1,0 +1,99 @@
+"""Настройки процесса.
+
+Источники: переменные окружения с префиксом PRICEWATCH_, затем файл .env; окружение
+важнее файла. Неверная или отсутствующая настройка останавливает старт с сообщением,
+где названа переменная, но нет её значения: значения могут быть секретами.
+"""
+
+import os
+from ipaddress import IPv4Network, IPv6Network, ip_network
+from pathlib import Path
+from typing import Annotated, Literal
+from urllib.parse import urlsplit
+
+from pydantic import ValidationError, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+ENV_PREFIX = "PRICEWATCH_"
+LOCAL_ENVIRONMENTS = {"development", "test"}
+
+
+class ConfigError(Exception):
+    """Конфигурация неполна или неверна. Текст не содержит значений настроек."""
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix=ENV_PREFIX,
+        env_file_encoding="utf-8",
+        extra="forbid",
+        frozen=True,
+    )
+
+    env: Literal["development", "test", "production"]
+    public_origin: str
+    trusted_proxies: Annotated[tuple[IPv4Network | IPv6Network, ...], NoDecode] = ()
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+
+    @field_validator("public_origin")
+    @classmethod
+    def _origin_only(cls, value: str) -> str:
+        parts = urlsplit(value.strip())
+        if parts.scheme not in {"http", "https"} or not parts.hostname:
+            raise ValueError("нужен адрес вида https://домен")
+        if parts.username or parts.password or parts.query or parts.fragment or parts.path not in {"", "/"}:
+            raise ValueError("только схема, домен и порт, без пути, параметров и логина")
+        port = f":{parts.port}" if parts.port else ""
+        return f"{parts.scheme}://{parts.hostname}{port}"
+
+    @field_validator("trusted_proxies", mode="before")
+    @classmethod
+    def _split_networks(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        try:
+            return tuple(ip_network(item.strip()) for item in value.split(",") if item.strip())
+        except ValueError:
+            raise ValueError("нужен список сетей через запятую, например 10.0.0.2/32") from None
+
+    @model_validator(mode="after")
+    def _https_outside_development(self) -> "Settings":
+        if self.env not in LOCAL_ENVIRONMENTS and not self.public_origin.startswith("https://"):
+            raise ValueError("public_origin: в рабочем режиме нужен https")
+        return self
+
+
+def load_settings(env_file: Path | None = Path(".env")) -> Settings:
+    """Прочитать настройки или остановиться с понятной ошибкой."""
+    unknown = sorted(name for name in os.environ if name.startswith(ENV_PREFIX) and not _is_field(name))
+    if unknown:
+        raise ConfigError("Неизвестные переменные окружения: " + ", ".join(unknown))
+    try:
+        return Settings(_env_file=env_file)  # type: ignore[call-arg]
+    except ValidationError as error:
+        raise ConfigError(_describe(error)) from None
+
+
+def _is_field(variable: str) -> bool:
+    return variable.removeprefix(ENV_PREFIX).lower() in Settings.model_fields
+
+
+def _describe(error: ValidationError) -> str:
+    lines = []
+    for issue in error.errors(include_input=False, include_url=False, include_context=False):
+        location = [str(part) for part in issue["loc"]]
+        field = location[0] if location else ""
+        variable = f"{ENV_PREFIX}{field.upper()}" if field else "конфигурация"
+        message = "переменная не задана" if issue["type"] == "missing" else _plain(issue)
+        lines.append(f"- {variable}: {message}")
+    return "Конфигурация неверна:\n" + "\n".join(lines)
+
+
+def _plain(issue: dict) -> str:
+    if issue["type"] == "extra_forbidden":
+        return "неизвестная настройка в .env"
+    if issue["type"] == "value_error":
+        return str(issue["msg"]).removeprefix("Value error, ")
+    if issue["type"] == "literal_error":
+        return "значение не из допустимого списка"
+    return "неверное значение"

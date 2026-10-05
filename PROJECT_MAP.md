@@ -44,8 +44,9 @@
 - Файлы: `uv.lock` — точные версии.
 - Файлы: `.python-version` — Python 3.13.
 - Файлы: `.gitignore`
+- Файлы: `.env.example` — все настройки с пояснениями, без секретов; копируется в .env.
 
-Зависимости рабочего кода: нет. Для разработки: pytest, import-linter, grimp, openapi-spec-validator.
+Зависимости рабочего кода: pydantic-settings (MIT). Для разработки: pytest, import-linter, grimp, openapi-spec-validator.
 
 ## Пакеты
 
@@ -119,6 +120,13 @@
 - Отвечает: сборка приложения, связывает сценарии с репозиториями; без бизнес-логики
 - Зависит от: —
 - Тесты: `uv run pytest tests/unit/test_package_layout.py`
+
+### pricewatch.config
+- Путь: `src/pricewatch/config/`
+- Отвечает: настройки процесса из окружения и .env; ошибка без значений; не импортируется domain и application
+- Зависит от: —
+- Тесты: `uv run pytest tests/unit/test_config_settings.py tests/unit/test_package_layout.py`
+- Файлы: `src/pricewatch/config/settings.py` — Settings, load_settings, ConfigError.
 
 ## Границы модулей
 
