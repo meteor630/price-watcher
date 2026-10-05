@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 from urllib.parse import quote
 
@@ -11,7 +12,7 @@ import pytest
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
-from sqlalchemy import create_engine, inspect, make_url
+from sqlalchemy import create_engine, inspect, make_url, text
 
 from pricewatch.persistence.models import Base
 from pricewatch.persistence.schema import alembic_config
@@ -67,30 +68,49 @@ def test_models_match_migrated_schema(migrated_database_url: str) -> None:
 
 
 def test_alembic_command_uses_settings_and_logs_json(empty_database_url: str, tmp_path: Path) -> None:
-    password = "cli-" + "Pw%40" + "d"
-    url = make_url(empty_database_url).set(password=password).render_as_string(hide_password=False)
+    # Отдельная роль с настоящим паролем: проверка работает и там, где пароль проверяется (CI),
+    # и там, где вход без пароля (локальный trust). Роль становится владельцем тестовой базы.
+    role = f"cli_{uuid.uuid4().hex[:8]}"
+    password = "cli-Pw%40:/@" + uuid.uuid4().hex[:6]
+    admin = create_engine(empty_database_url, isolation_level="AUTOCOMMIT")
+    database = make_url(empty_database_url).database
+    with admin.connect() as connection:
+        original_owner = connection.execute(
+            text("SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = current_database()")
+        ).scalar_one()
+        escaped = password.replace("'", "''")
+        connection.execute(text(f"CREATE ROLE {role} LOGIN PASSWORD '{escaped}'"))
+        connection.execute(text(f'ALTER DATABASE "{database}" OWNER TO {role}'))
+    url = make_url(empty_database_url).set(username=role, password=password).render_as_string(hide_password=False)
     env = {name: value for name, value in os.environ.items() if not name.startswith("PRICEWATCH_")} | {
         "PRICEWATCH_ENV": "test",
         "PRICEWATCH_PUBLIC_ORIGIN": "http://localhost:8000",
         "PRICEWATCH_DATABASE_URL": url,
     }
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "alembic", "-c", str(ROOT / "alembic.ini"), "upgrade", "head"],
+            cwd=tmp_path,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
 
-    result = subprocess.run(
-        [sys.executable, "-m", "alembic", "-c", str(ROOT / "alembic.ini"), "upgrade", "head"],
-        cwd=tmp_path,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-    entries = [json.loads(line) for line in result.stdout.splitlines()]
-    assert any("Running upgrade" in entry["message"] for entry in entries)
-    assert password not in result.stdout + result.stderr
-    assert quote(password, safe="") not in result.stdout + result.stderr
-    assert tables(empty_database_url) == TABLES
+        assert result.returncode == 0, result.stdout + result.stderr
+        entries = [json.loads(line) for line in result.stdout.splitlines()]
+        assert any("Running upgrade" in entry["message"] for entry in entries)
+        assert password not in result.stdout + result.stderr
+        assert quote(password, safe="") not in result.stdout + result.stderr
+        assert tables(empty_database_url) == TABLES
+    finally:
+        with admin.connect() as connection:
+            connection.execute(text(f'ALTER DATABASE "{database}" OWNER TO "{original_owner}"'))
+            connection.execute(text(f"REASSIGN OWNED BY {role} TO \"{original_owner}\""))
+            connection.execute(text(f"DROP OWNED BY {role}"))
+            connection.execute(text(f"DROP ROLE {role}"))
+        admin.dispose()
 
 
 def test_offline_mode_is_refused(empty_database_url: str) -> None:
