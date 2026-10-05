@@ -515,3 +515,72 @@ def test_repositories_match_protocols(protocol: type, implementation: type) -> N
         expected = list(inspect.signature(getattr(protocol, name)).parameters)
         actual = list(inspect.signature(getattr(implementation, name)).parameters)
         assert actual == expected, name
+
+
+# --- чужой идентификатор для каждого метода ----------------------------------
+
+
+@pytest.fixture
+def alices_records(uow: SqlUnitOfWork, alice: int) -> dict[str, int]:
+    category = uow.categories.create(alice, "Её категория")
+    group = uow.groups.create(alice, category.id, "Её группа")
+    item = uow.items.create(alice, NewItem(category_id=category.id, group_id=group.id, name="Её товар"))
+    deleted_category = uow.categories.create(alice, "Удалённая")
+    uow.categories.delete(alice, deleted_category.id, deleted_category.version)
+    deleted_group = uow.groups.create(alice, category.id, "Удалённая группа")
+    uow.groups.delete(alice, deleted_group.id, deleted_group.version)
+    deleted_item = uow.items.create(alice, NewItem(category_id=category.id, name="Удалённый"))
+    uow.items.delete(alice, deleted_item.id, deleted_item.version)
+    return {
+        "category": category.id,
+        "group": group.id,
+        "item": item.id,
+        "deleted_category": deleted_category.id,
+        "deleted_group": deleted_group.id,
+        "deleted_item": deleted_item.id,
+    }
+
+
+FOREIGN_CALLS: dict[str, Callable[[SqlUnitOfWork, int, dict[str, int]], object]] = {
+    "categories.get": lambda w, u, r: w.categories.get(u, r["category"]),
+    "categories.rename": lambda w, u, r: w.categories.rename(u, r["category"], "Захват", 1),
+    "categories.delete": lambda w, u, r: w.categories.delete(u, r["category"], 1),
+    "categories.restore": lambda w, u, r: w.categories.restore(u, r["deleted_category"]),
+    "categories.order_version": lambda w, u, r: w.categories.order_version(10**12),
+    "groups.list_in_category": lambda w, u, r: w.groups.list_in_category(u, r["category"]),
+    "groups.get": lambda w, u, r: w.groups.get(u, r["group"]),
+    "groups.create": lambda w, u, r: w.groups.create(u, r["category"], "Захват"),
+    "groups.rename": lambda w, u, r: w.groups.rename(u, r["group"], "Захват", 1),
+    "groups.delete": lambda w, u, r: w.groups.delete(u, r["group"], 1),
+    "groups.restore": lambda w, u, r: w.groups.restore(u, r["deleted_group"]),
+    "groups.reorder": lambda w, u, r: w.groups.reorder(u, r["category"], [r["group"]], 1),
+    "items.list_in_category": lambda w, u, r: w.items.list_in_category(u, r["category"]),
+    "items.get": lambda w, u, r: w.items.get(u, r["item"]),
+    "items.create": lambda w, u, r: w.items.create(u, NewItem(category_id=r["category"], name="Захват")),
+    "items.update": lambda w, u, r: w.items.update(u, r["item"], 1, ItemChanges(quantity=2)),
+    "items.delete": lambda w, u, r: w.items.delete(u, r["item"], 1),
+    "items.restore": lambda w, u, r: w.items.restore(u, r["deleted_item"]),
+    "items.reorder_ungrouped": lambda w, u, r: w.items.reorder(u, r["category"], None, [], 1),
+    "items.reorder_grouped": lambda w, u, r: w.items.reorder(u, r["category"], r["group"], [r["item"]], 1),
+}
+
+
+@pytest.mark.parametrize("method", sorted(FOREIGN_CALLS))
+def test_foreign_id_is_not_found_for_every_method(
+    uow: SqlUnitOfWork, bob: int, alices_records: dict[str, int], method: str
+) -> None:
+    assert code_of(lambda: FOREIGN_CALLS[method](uow, bob, alices_records)) is ErrorCode.NOT_FOUND
+
+
+def test_foreign_calls_cover_every_repository_method() -> None:
+    covered = {name.split(".")[0] + "." + name.split(".")[1].removesuffix("_ungrouped").removesuffix("_grouped")
+               for name in FOREIGN_CALLS}
+    expected = {
+        f"{kind}.{name}"
+        for kind, protocol in (("categories", ports.CategoryRepository), ("groups", ports.GroupRepository), ("items", ports.ItemRepository))
+        for name in vars(protocol)
+        if not name.startswith("_")
+    }
+    # categories.create и list_active принимают только user_id — чужой записи там нет;
+    # чужие id в categories.reorder дают VALIDATION_ERROR (test_category_reorder_requires_exact_list).
+    assert expected - covered == {"categories.create", "categories.list_active", "categories.reorder"}

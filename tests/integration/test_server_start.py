@@ -12,6 +12,9 @@ from pathlib import Path
 
 import httpx2
 import pytest
+from sqlalchemy import create_engine, text
+
+from pricewatch.persistence.schema import head_revision
 
 STARTUP_TIMEOUT_S = 20
 
@@ -41,7 +44,7 @@ def stream_lines(process: subprocess.Popen[str]) -> "queue.Queue[str | None]":
 
 
 @pytest.fixture
-def server(tmp_path: Path) -> Iterator[tuple[str, list[str]]]:
+def server(tmp_path: Path, migrated_database_url: str) -> Iterator[tuple[str, list[str]]]:
     port = free_port()
     process = subprocess.Popen(
         [sys.executable, "-m", "pricewatch.bootstrap"],
@@ -50,7 +53,7 @@ def server(tmp_path: Path) -> Iterator[tuple[str, list[str]]]:
             PRICEWATCH_ENV="test",
             PRICEWATCH_PUBLIC_ORIGIN=f"http://127.0.0.1:{port}",
             PRICEWATCH_LISTEN_PORT=str(port),
-            PRICEWATCH_DATABASE_URL="postgresql://pricewatch@localhost:5432/pricewatch",
+            PRICEWATCH_DATABASE_URL=migrated_database_url,
         ),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -103,18 +106,83 @@ def test_server_log_is_json_only(server: tuple[str, list[str]]) -> None:
     assert "s3cret" not in "".join(seen)
 
 
-def test_missing_setting_stops_start(tmp_path: Path) -> None:
-    result = subprocess.run(
+def start_once(tmp_path: Path, **variables: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
         [sys.executable, "-m", "pricewatch.bootstrap"],
         cwd=tmp_path,
-        env=clean_env(PRICEWATCH_PUBLIC_ORIGIN="https://prices.example.ru"),
+        env=clean_env(**variables),
         capture_output=True,
         text=True,
         timeout=STARTUP_TIMEOUT_S,
     )
+
+
+def error_entries(result: subprocess.CompletedProcess[str]) -> list[dict[str, object]]:
+    entries = [json.loads(line) for line in result.stdout.splitlines()]
+    return [entry for entry in entries if entry["level"] == "ERROR"]
+
+
+def test_missing_setting_stops_start(tmp_path: Path) -> None:
+    result = start_once(tmp_path, PRICEWATCH_PUBLIC_ORIGIN="https://prices.example.ru")
 
     assert result.returncode == 2
     (entry,) = [json.loads(line) for line in result.stdout.splitlines()]
     assert entry["level"] == "ERROR"
     assert "PRICEWATCH_ENV: переменная не задана" in entry["message"]
     assert result.stderr == ""
+
+
+def test_server_started_log_reports_schema(server: tuple[str, list[str]]) -> None:
+    _, seen = server
+
+    (ready,) = [entry for entry in map(json.loads, seen) if entry["message"] == "База данных готова"]
+    assert ready["schema_revision"] == head_revision()
+    assert str(ready["server_version"]).startswith("18")
+
+
+def test_unreachable_database_stops_start(tmp_path: Path) -> None:
+    password = "Unreach" + "-pw-" + "77"
+    result = start_once(
+        tmp_path,
+        PRICEWATCH_ENV="test",
+        PRICEWATCH_PUBLIC_ORIGIN="http://127.0.0.1",
+        PRICEWATCH_DATABASE_URL=f"postgresql://pricewatch:{password}@127.0.0.1:{free_port()}/pricewatch",
+    )
+
+    assert result.returncode == 3
+    (entry,) = error_entries(result)
+    assert entry["message"] == "База данных недоступна"
+    assert "Traceback" in str(entry["exc"])
+    assert password not in result.stdout + result.stderr
+
+
+def test_empty_schema_stops_start(tmp_path: Path, empty_database_url: str) -> None:
+    result = start_once(
+        tmp_path,
+        PRICEWATCH_ENV="test",
+        PRICEWATCH_PUBLIC_ORIGIN="http://127.0.0.1",
+        PRICEWATCH_DATABASE_URL=empty_database_url,
+    )
+
+    assert result.returncode == 3
+    (entry,) = error_entries(result)
+    assert entry["message"] == f"Схема базы пустая, код ожидает {head_revision()}. Выполните: uv run alembic upgrade head"
+
+
+def test_unknown_schema_revision_stops_start(tmp_path: Path, empty_database_url: str) -> None:
+    engine = create_engine(empty_database_url)
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE alembic_version (version_num varchar(32) PRIMARY KEY)"))
+        connection.execute(text("INSERT INTO alembic_version VALUES ('9999_future')"))
+    engine.dispose()
+
+    result = start_once(
+        tmp_path,
+        PRICEWATCH_ENV="test",
+        PRICEWATCH_PUBLIC_ORIGIN="http://127.0.0.1",
+        PRICEWATCH_DATABASE_URL=empty_database_url,
+    )
+
+    assert result.returncode == 3
+    (entry,) = error_entries(result)
+    assert "ревизии 9999_future, неизвестной этой версии кода" in str(entry["message"])

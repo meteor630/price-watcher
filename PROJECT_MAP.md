@@ -7,7 +7,7 @@
 ## Команды
 
 - Команда: `uv sync` — установить окружение.
-- Команда: `uv run python -m pricewatch.bootstrap` — запустить сервер; настройки из окружения и .env.
+- Команда: `uv run python -m pricewatch.bootstrap` — запустить сервер; настройки из окружения и .env; без базы или со старой схемой не стартует.
 - Команда: `uv run alembic upgrade head` — применить миграции; адрес базы из настроек.
 - Команда: `TEST_DATABASE_URL=postgresql://localhost/postgres uv run pytest` — весь набор тестов; без TEST_DATABASE_URL тесты базы падают с объяснением.
 - Команда: `LC_ALL=en_US.UTF-8 pg_ctl -D /opt/homebrew/var/postgresql@18 -l /opt/homebrew/var/log/postgresql@18.log start` — запустить локальный PostgreSQL 18 (Homebrew) до перезагрузки.
@@ -78,11 +78,11 @@
 - Путь: `src/pricewatch/persistence/`
 - Отвечает: модели БД, репозитории, миграции
 - Зависит от: `pricewatch.application`, `pricewatch.config`, `pricewatch.domain`, `pricewatch.observability`
-- Тесты: `uv run pytest tests/integration/test_database_connection.py tests/integration/test_migrations.py tests/integration/test_schema_constraints.py tests/integration/test_shopping_repositories.py tests/integration/test_concurrency.py`
+- Тесты: `uv run pytest tests/integration/test_database_connection.py tests/integration/test_migrations.py tests/integration/test_schema_constraints.py tests/integration/test_shopping_repositories.py tests/integration/test_concurrency.py tests/integration/test_schema_check.py`
 - Файлы: `src/pricewatch/persistence/database.py` — подключение: малый пул, hide_parameters, DB_ERROR при недоступной базе.
 - Файлы: `src/pricewatch/persistence/models.py` — таблицы users, categories, groups, items; составные ключи владельца; имена ограничений по правилу.
 - Файлы: `src/pricewatch/persistence/migrations/`, `src/pricewatch/persistence/migrations/versions/` — миграции Alembic; env.py берёт адрес базы из настроек (config) и пишет журнал в JSON (observability).
-- Файлы: `src/pricewatch/persistence/schema.py` — настройка Alembic из кода, без alembic.ini.
+- Файлы: `src/pricewatch/persistence/schema.py` — настройка Alembic из кода, без alembic.ini; ревизия кода и базы, SchemaMismatch с подсказкой.
 - Файлы: `src/pricewatch/persistence/shopping_repositories.py` — репозитории категорий, групп, товаров; изменения состава списка блокируют родителя подъёмом его версии.
 - Файлы: `src/pricewatch/persistence/unit_of_work.py` — SqlUnitOfWork: одно соединение и транзакция; без commit — откат.
 
@@ -140,9 +140,9 @@
 ### pricewatch.bootstrap
 - Путь: `src/pricewatch/bootstrap/`
 - Отвечает: сборка приложения, связывает сценарии с репозиториями; без бизнес-логики
-- Зависит от: `pricewatch.api`, `pricewatch.config`, `pricewatch.observability`
+- Зависит от: `pricewatch.api`, `pricewatch.config`, `pricewatch.domain`, `pricewatch.observability`, `pricewatch.persistence`
 - Тесты: `uv run pytest tests/integration/test_server_start.py`
-- Файлы: `src/pricewatch/bootstrap/server.py`, `src/pricewatch/bootstrap/__main__.py` — настройки, журнал, приложение, uvicorn.
+- Файлы: `src/pricewatch/bootstrap/server.py`, `src/pricewatch/bootstrap/__main__.py` — настройки, журнал, проверка базы и схемы, приложение, uvicorn; выход 2 — конфигурация, 3 — база или схема.
 
 ### pricewatch.config
 - Путь: `src/pricewatch/config/`
