@@ -79,7 +79,8 @@
 - Путь: `src/pricewatch/web/`
 - Отвечает: шаблоны, HTML-фрагменты, CSS, JS
 - Зависит от: —
-- Тесты: `uv run pytest tests/unit/test_package_layout.py`
+- Тесты: `uv run pytest tests/unit/test_design_tokens.py tests/unit/test_package_layout.py`
+- Файлы: `src/pricewatch/web/static/css/tokens.css` — токены дизайна; компоненты берут цвета, размеры и длительности только отсюда.
 
 ### pricewatch.parsers
 - Путь: `src/pricewatch/parsers/`

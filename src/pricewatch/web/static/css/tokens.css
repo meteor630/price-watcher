@@ -1,0 +1,199 @@
+/*
+ * Токены дизайна Price Watcher.
+ * Источник: design_reference/css/style.css (фиолетовый набор) и снимки;
+ * правила: SITE_DESIGN_SPEC.md, разделы 2, 10, 12.
+ * Компоненты используют только эти переменные; цвета и длительности в компонентах не пишутся.
+ * Точки перестройки сетки (переменные в @media не работают): 600px, 760px.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* Цвета: тёмная тема по умолчанию */
+  --color-bg: #0c1017;
+  --color-surface: #141a24;
+  --color-surface-2: #1b2431;
+  --color-line: #293546;
+  --color-fg: #edf2fa;
+  --color-muted: #96a3b5;
+  --color-accent: #a694ff;
+  --color-accent-ink: #17102d;
+  --color-accent-from: #b6a9ff;
+  --color-accent-to: #8e7be9;
+  --color-down: #68dfb1;
+  --color-down-bg: rgb(104 223 177 / 12%);
+  --color-up: #ff858c;
+  --color-up-bg: rgb(255 133 140 / 12%);
+  --color-neutral: #a9b7c9;
+  --color-photo-glow: #26344b;
+  --color-backdrop: rgb(0 0 0 / 55%);
+  --bg-glow-1: rgb(108 124 211 / 18%);
+  --bg-glow-2: rgb(94 151 185 / 8%);
+
+  /* Палитра магазинов: администратор выбирает цвет только из неё */
+  --store-1: #6b9bff;
+  --store-2: #f0b43c;
+  --store-3: #f48cc8;
+  --store-4: #ff9257;
+  --store-5: #56c7e6;
+  --store-6: #d4b98c;
+  --store-7: #c3ccd8;
+  --store-8: #d8e05a;
+
+  /* Шрифты */
+  --font-display: "Unbounded", "Arial Black", system-ui, sans-serif;
+  --font-body: "Onest", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  /* Размеры текста */
+  --text-2xs: 11.5px;
+  --text-xs: 12.5px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-base: 15px;
+  --text-lg: 17px;
+  --text-xl: 20px;
+  --text-2xl: 30px;
+  --text-h1: clamp(24px, 4vw, 36px);
+  --text-price: clamp(30px, 5vw, 46px);
+  --text-total: clamp(36px, 6vw, 56px);
+  --leading-tight: 1.15;
+  --leading-base: 1.5;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --tracking-display: -0.035em;
+  --tracking-total: -0.055em;
+  --tracking-eyebrow: 0.11em;
+
+  /* Отступы */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* Каркас */
+  --content-max: 1120px;
+  --gutter: max(16px, 3vw);
+  --tap-min: 44px;
+
+  /* Радиусы */
+  --radius-xs: 7px;
+  --radius-sm: 11px;
+  --radius-md: 14px;
+  --radius-lg: 16px;
+  --radius-xl: 18px;
+  --radius-2xl: 22px;
+  --radius-pill: 999px;
+
+  /* Тени */
+  --shadow-card: 0 8px 22px rgb(0 0 0 / 8%);
+  --shadow-card-hover: 0 17px 38px rgb(0 0 0 / 18%);
+  --shadow-hero: 0 20px 60px rgb(0 0 0 / 12%);
+  --shadow-popover: 0 18px 48px rgb(0 0 0 / 36%);
+  --shadow-toast: 0 16px 42px rgb(0 0 0 / 28%);
+  --shadow-dialog: 0 28px 90px rgb(0 0 0 / 42%);
+  --shadow-accent: 0 6px 18px color-mix(in srgb, var(--color-accent) 20%, transparent);
+  --focus-ring: 2px solid var(--color-accent);
+  --focus-ring-offset: 2px;
+  --focus-glow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 15%, transparent);
+
+  /* Движение */
+  --duration-fast: 180ms;
+  --duration-toast: 280ms;
+  --duration-panel: 340ms;
+  --duration-segment: 420ms;
+  --ease-standard: cubic-bezier(0.2, 0.75, 0.25, 1);
+  --ease-panel: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-segment: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-toast: cubic-bezier(0.16, 1, 0.3, 1);
+  --lift-sm: 2px;
+  --lift-md: 4px;
+  --press-scale: 0.98;
+
+  /* Слои */
+  --z-header: 10;
+  --z-popover: 20;
+  --z-toast: 30;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --color-bg: #f4f6fa;
+    --color-surface: #ffffff;
+    --color-surface-2: #f0f2f8;
+    --color-line: #e0e4ed;
+    --color-fg: #202638;
+    --color-muted: #636d7f;
+    --color-accent: #6e57dc;
+    --color-accent-ink: #ffffff;
+    --color-accent-from: #7258ff;
+    --color-accent-to: #5f47d0;
+    --color-down: #137c5a;
+    --color-down-bg: rgb(19 124 90 / 10%);
+    --color-up: #ca3244;
+    --color-up-bg: rgb(202 50 68 / 10%);
+    --color-neutral: #616e83;
+    --color-photo-glow: #e9edfa;
+    --color-backdrop: rgb(32 38 56 / 40%);
+    --bg-glow-1: rgb(108 124 211 / 12%);
+    --bg-glow-2: rgb(94 151 185 / 6%);
+    --store-1: #2f6fe0;
+    --store-2: #a87400;
+    --store-3: #c2448f;
+    --store-4: #c95a1c;
+    --store-5: #1f8aa8;
+    --store-6: #8c7349;
+    --store-7: #66748a;
+    --store-8: #7d8300;
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-bg: #f4f6fa;
+  --color-surface: #ffffff;
+  --color-surface-2: #f0f2f8;
+  --color-line: #e0e4ed;
+  --color-fg: #202638;
+  --color-muted: #636d7f;
+  --color-accent: #6e57dc;
+  --color-accent-ink: #ffffff;
+  --color-accent-from: #7258ff;
+  --color-accent-to: #5f47d0;
+  --color-down: #137c5a;
+  --color-down-bg: rgb(19 124 90 / 10%);
+  --color-up: #ca3244;
+  --color-up-bg: rgb(202 50 68 / 10%);
+  --color-neutral: #616e83;
+  --color-photo-glow: #e9edfa;
+  --color-backdrop: rgb(32 38 56 / 40%);
+  --bg-glow-1: rgb(108 124 211 / 12%);
+  --bg-glow-2: rgb(94 151 185 / 6%);
+  --store-1: #2f6fe0;
+  --store-2: #a87400;
+  --store-3: #c2448f;
+  --store-4: #c95a1c;
+  --store-5: #1f8aa8;
+  --store-6: #8c7349;
+  --store-7: #66748a;
+  --store-8: #7d8300;
+}
+
+/* Уменьшение движения: смена состояния остаётся, смещения и длительные переходы убираются */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-toast: 0ms;
+    --duration-panel: 0ms;
+    --duration-segment: 0ms;
+    --lift-sm: 0px;
+    --lift-md: 0px;
+    --press-scale: 1;
+  }
+}
