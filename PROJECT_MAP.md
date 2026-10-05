@@ -53,7 +53,7 @@
 - Файлы: `.github/workflows/ci.yml` — CI на каждый push: тесты, import-linter, проверка карты, gitleaks по всей истории. Действия закреплены по хешу, gitleaks — с проверкой контрольной суммы.
 - Файлы: `.gitleaksignore` — ложные срабатывания gitleaks по точному отпечатку; только ненастоящие значения из тестов и только с согласия владельца.
 
-Зависимости рабочего кода: pydantic-settings (MIT), fastapi (MIT), uvicorn (BSD-3), sqlalchemy (MIT), psycopg (LGPL-3.0, как неизменённая библиотека), alembic (MIT), argon2-cffi (MIT). Для разработки: pytest, import-linter, grimp, openapi-spec-validator, httpx2.
+Зависимости рабочего кода: pydantic-settings (MIT), fastapi (MIT), uvicorn (BSD-3), sqlalchemy (MIT), psycopg (LGPL-3.0, как неизменённая библиотека), alembic (MIT), argon2-cffi (MIT), tzdata (Apache-2.0). Для разработки: pytest, import-linter, grimp, openapi-spec-validator, httpx2.
 
 ## Пакеты
 
@@ -63,12 +63,14 @@
 - Путь: `src/pricewatch/domain/`
 - Отвечает: сущности и правила расчётов; только стандартная библиотека
 - Зависит от: —
-- Тесты: `uv run pytest tests/unit/test_domain_errors.py tests/unit/test_domain_names.py tests/unit/test_domain_shopping.py tests/unit/test_domain_tokens.py tests/unit/test_domain_accounts.py`
+- Тесты: `uv run pytest tests/unit/test_domain_errors.py tests/unit/test_domain_names.py tests/unit/test_domain_shopping.py tests/unit/test_domain_tokens.py tests/unit/test_domain_accounts.py tests/unit/test_domain_money.py tests/unit/test_domain_days.py`
 - Файлы: `src/pricewatch/domain/errors.py` — коды ошибок, безопасные сообщения, базовое исключение PriceWatcherError.
 - Файлы: `src/pricewatch/domain/names.py` — очистка имён для показа, ключ сравнения (регистр, пробелы, «ё», NFKC), пределы длины и количества.
 - Файлы: `src/pricewatch/domain/shopping.py` — неизменяемые записи Category, Group, Item.
 - Файлы: `src/pricewatch/domain/tokens.py` — случайные токены и коды связки, HMAC с назначением, вывод следующего токена из предыдущего.
 - Файлы: `src/pricewatch/domain/accounts.py` — роли, User, правила логина и пароля (NFKC), отображаемое имя.
+- Файлы: `src/pricewatch/domain/money.py` — целые копейки, строки «12 990 ₽», «−652 ₽», процент с одним знаком (половины вверх), изменение Change.
+- Файлы: `src/pricewatch/domain/days.py` — сутки с 00:00 по Москве (zoneinfo + tzdata), начала периодов day/week/month/year (0/7/30/365 суток), подписи «5 окт».
 
 ### pricewatch.application
 - Путь: `src/pricewatch/application/`
@@ -243,6 +245,7 @@
 | Хеширование паролей | argon2id через argon2-cffi | github.com/hynek/argon2-cffi, MIT | pwdlib (лишний слой), passlib (не работает на Python 3.13) |
 | Ротация refresh-токенов, сессии | своя реализация по разделу 4 архитектуры; access-токен — случайная строка, в базе HMAC | RFC 9700 (OAuth 2.0 Security BCP), схема ротации с обнаружением повтора Auth0 — как образец | fastapi-users (режим поддержки, нет refresh), Authlib (сервер OAuth2 целиком), simplejwt (только Django, нет семей) |
 | Ограничение попыток входа | своя таблица неудачных попыток в PostgreSQL | — | slowapi и limits (нет хранилища PostgreSQL), fastapi-limiter (нужен Redis) |
+| Часовой пояс Москвы | `zoneinfo` стандартной библиотеки с данными пакета tzdata | github.com/python/tzdata, Apache-2.0 | фиксированное +3 (правила менялись в 2011 и 2014), системная база (может отсутствовать в образе) |
 | CSRF | свой токен, привязанный к серверной сессии, и проверка Origin | — | starlette-csrf (не развивается с 2023), fastapi-csrf-protect (вторая cookie и секрет) |
 
 Шрифты, лицензия SIL OFL 1.1, источник — npm-пакеты @fontsource-variable:
