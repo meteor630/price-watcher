@@ -199,3 +199,11 @@ def test_non_path_values_are_ignored(project_copy: Path) -> None:
     result = run_check(project_copy)
 
     assert result.returncode == 0, result.stderr
+
+
+def test_project_map_matches_current_code() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+
+    result = run_check(project_root)
+
+    assert result.returncode == 0, result.stderr
