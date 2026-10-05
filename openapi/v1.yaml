@@ -1343,7 +1343,7 @@ components:
                 [AUTH_REQUIRED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, RATE_LIMITED,
                  PAIRING_CODE_INVALID, PAIRING_CODE_EXPIRED, REFRESH_TOKEN_INVALID,
                  REFRESH_TOKEN_REUSED, IDEMPOTENCY_KEY_REUSED, VERSION_CONFLICT,
-                 RUN_IN_PROGRESS, WORKER_OFFLINE, DB_ERROR, INTERNAL_ERROR]
+                 RUN_IN_PROGRESS, WORKER_OFFLINE, DB_ERROR, INTERNAL_ERROR, NAME_TAKEN]
             message:
               type: string
               description: Понятное сообщение для пользователя, без технических подробностей.

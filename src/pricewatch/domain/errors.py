@@ -37,6 +37,7 @@ class ErrorCode(StrEnum):
     REFRESH_TOKEN_INVALID = "REFRESH_TOKEN_INVALID"
     REFRESH_TOKEN_REUSED = "REFRESH_TOKEN_REUSED"
     IDEMPOTENCY_KEY_REUSED = "IDEMPOTENCY_KEY_REUSED"
+    NAME_TAKEN = "NAME_TAKEN"
 
 
 SAFE_MESSAGES: Mapping[ErrorCode, str] = MappingProxyType(
@@ -65,6 +66,7 @@ SAFE_MESSAGES: Mapping[ErrorCode, str] = MappingProxyType(
         ErrorCode.REFRESH_TOKEN_INVALID: "Нужно войти заново.",
         ErrorCode.REFRESH_TOKEN_REUSED: "Сессия завершена из соображений безопасности. Войдите заново.",
         ErrorCode.IDEMPOTENCY_KEY_REUSED: "Повторный запрос отличается от исходного. Обновите страницу и повторите.",
+        ErrorCode.NAME_TAKEN: "Такое название уже есть. Выберите другое.",
     }
 )
 

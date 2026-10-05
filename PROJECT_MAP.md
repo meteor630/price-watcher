@@ -62,14 +62,17 @@
 - Путь: `src/pricewatch/domain/`
 - Отвечает: сущности и правила расчётов; только стандартная библиотека
 - Зависит от: —
-- Тесты: `uv run pytest tests/unit/test_domain_errors.py tests/unit/test_package_layout.py`
+- Тесты: `uv run pytest tests/unit/test_domain_errors.py tests/unit/test_domain_names.py tests/unit/test_domain_shopping.py`
 - Файлы: `src/pricewatch/domain/errors.py` — коды ошибок, безопасные сообщения, базовое исключение PriceWatcherError.
+- Файлы: `src/pricewatch/domain/names.py` — очистка имён для показа, ключ сравнения (регистр, пробелы, «ё», NFKC), пределы длины и количества.
+- Файлы: `src/pricewatch/domain/shopping.py` — неизменяемые записи Category, Group, Item.
 
 ### pricewatch.application
 - Путь: `src/pricewatch/application/`
 - Отвечает: сценарии и интерфейсы репозиториев
-- Зависит от: —
+- Зависит от: `pricewatch.domain`
 - Тесты: `uv run pytest tests/unit/test_package_layout.py`
+- Файлы: `src/pricewatch/application/ports.py` — интерфейсы репозиториев и единицы работы; общие правила владельца, версий, перестановки, удаления.
 
 ### pricewatch.persistence
 - Путь: `src/pricewatch/persistence/`
