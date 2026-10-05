@@ -50,6 +50,7 @@ def server(tmp_path: Path) -> Iterator[tuple[str, list[str]]]:
             PRICEWATCH_ENV="test",
             PRICEWATCH_PUBLIC_ORIGIN=f"http://127.0.0.1:{port}",
             PRICEWATCH_LISTEN_PORT=str(port),
+            PRICEWATCH_DATABASE_URL="postgresql://pricewatch@localhost:5432/pricewatch",
         ),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -57,10 +58,13 @@ def server(tmp_path: Path) -> Iterator[tuple[str, list[str]]]:
     )
     lines = stream_lines(process)
     seen: list[str] = []
+    output_ended = False
     try:
         while True:
             line = lines.get(timeout=STARTUP_TIMEOUT_S)
-            assert line is not None, "сервер завершился до старта:\n" + "".join(seen)
+            if line is None:
+                output_ended = True
+                raise AssertionError("сервер завершился до старта:\n" + "".join(seen))
             seen.append(line)
             if "Application startup complete" in line:
                 break
@@ -68,8 +72,13 @@ def server(tmp_path: Path) -> Iterator[tuple[str, list[str]]]:
     finally:
         process.terminate()
         process.wait(timeout=STARTUP_TIMEOUT_S)
-        while (line := lines.get(timeout=STARTUP_TIMEOUT_S)) is not None:
-            seen.append(line)
+        # Маркер конца вывода читается один раз: если сервер упал при старте, он уже получен.
+        while not output_ended:
+            line = lines.get(timeout=STARTUP_TIMEOUT_S)
+            if line is None:
+                output_ended = True
+            else:
+                seen.append(line)
         assert process.stdout is not None
         process.stdout.close()
 

@@ -28,7 +28,7 @@ SECRET = "pw_7c1f0e9d"
 
 
 def make_settings() -> Settings:
-    return Settings(env="test", public_origin=ORIGIN, _env_file=None)  # type: ignore[call-arg]
+    return Settings(env="test", public_origin=ORIGIN, database_url="postgresql://pricewatch@localhost:5432/pricewatch", _env_file=None)  # type: ignore[call-arg]
 
 
 def make_app() -> FastAPI:

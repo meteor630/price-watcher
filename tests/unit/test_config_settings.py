@@ -24,6 +24,7 @@ def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
 def base_env(monkeypatch: pytest.MonkeyPatch) -> pytest.MonkeyPatch:
     monkeypatch.setenv("PRICEWATCH_ENV", "production")
     monkeypatch.setenv("PRICEWATCH_PUBLIC_ORIGIN", "https://prices.example.ru")
+    monkeypatch.setenv("PRICEWATCH_DATABASE_URL", "postgresql://pricewatch@localhost:5432/pricewatch")
     return monkeypatch
 
 
@@ -54,7 +55,8 @@ def test_reads_env_file_and_environment_wins(monkeypatch: pytest.MonkeyPatch, tm
 
     settings = load(
         tmp_path,
-        "PRICEWATCH_ENV=development\nPRICEWATCH_PUBLIC_ORIGIN=http://localhost:8000\nPRICEWATCH_LOG_LEVEL=DEBUG\n",
+        "PRICEWATCH_ENV=development\nPRICEWATCH_PUBLIC_ORIGIN=http://localhost:8000\n"
+        "PRICEWATCH_DATABASE_URL=postgresql://pricewatch@localhost:5432/pricewatch\nPRICEWATCH_LOG_LEVEL=DEBUG\n",
     )
 
     assert settings.env == "development"
@@ -179,3 +181,43 @@ def test_error_has_no_validation_chain(base_env: pytest.MonkeyPatch, tmp_path: P
 
     assert caught.value.__cause__ is None
     assert caught.value.__suppress_context__
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        f"mysql://user:{SECRETISH}@db/pricewatch",
+        f"postgresql://user:{SECRETISH}@db",
+        f"postgresql://user:{SECRETISH}@/pricewatch",
+        "not a url",
+    ],
+)
+def test_bad_database_url_rejected_without_value(base_env: pytest.MonkeyPatch, tmp_path: Path, url: str) -> None:
+    base_env.setenv("PRICEWATCH_DATABASE_URL", url)
+
+    message = config_error(tmp_path)
+
+    assert "PRICEWATCH_DATABASE_URL" in message
+    assert SECRETISH not in message
+
+
+def test_database_url_is_secret_and_registered_for_redaction(base_env: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from urllib.parse import quote
+
+    from pricewatch.observability.redaction import redact_text
+
+    password = "Pa55:/@" + SECRETISH
+    base_env.setenv("PRICEWATCH_DATABASE_URL", f"postgresql://pricewatch:{quote(password, safe='')}@db:5432/pricewatch")
+
+    settings = load(tmp_path)
+
+    assert SECRETISH not in repr(settings)
+    assert settings.database_url.get_secret_value().startswith("postgresql://pricewatch:")
+    assert SECRETISH not in redact_text(f"connection failed: password {password} rejected")
+    assert SECRETISH not in redact_text(f"dsn={settings.database_url.get_secret_value()}")
+
+
+def test_missing_database_url_is_named(base_env: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    base_env.delenv("PRICEWATCH_DATABASE_URL")
+
+    assert "PRICEWATCH_DATABASE_URL: переменная не задана" in config_error(tmp_path)

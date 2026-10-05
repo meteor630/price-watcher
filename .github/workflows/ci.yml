@@ -18,6 +18,21 @@ jobs:
     name: Тесты, границы модулей, карта
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+        env:
+          POSTGRES_PASSWORD: ci-only-not-secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      # Пароль одноразового контейнера CI; доступен только внутри прогона.
+      TEST_DATABASE_URL: postgresql://postgres:ci-only-not-secret@localhost:5432/postgres
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

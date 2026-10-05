@@ -77,7 +77,11 @@ def test_peer_without_ip_gives_none(peer: str | None) -> None:
 
 def make_client(peer: str, trusted: str) -> TestClient:
     settings = Settings(
-        env="test", public_origin="https://prices.example.ru", trusted_proxies=trusted, _env_file=None
+        env="test",
+        public_origin="https://prices.example.ru",
+        database_url="postgresql://pricewatch@localhost:5432/pricewatch",
+        trusted_proxies=trusted,
+        _env_file=None,
     )  # type: ignore[call-arg]
     app = create_app(settings)
 

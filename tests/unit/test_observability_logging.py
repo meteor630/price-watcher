@@ -229,3 +229,24 @@ def test_configure_logging_writes_json_to_stdout_once(monkeypatch: pytest.Monkey
     finally:
         root.handlers[:] = saved_handlers
         root.setLevel(saved_level)
+
+
+def test_registered_secret_is_removed_verbatim_and_url_encoded() -> None:
+    from urllib.parse import quote
+
+    from pricewatch.observability.redaction import register_secret
+
+    secret = "plain secret " + "q9W" + "e7R"
+    register_secret(secret)
+
+    text = f"ошибка: {secret} и в адресе {quote(secret, safe='')} и {secret.replace(' ', '+')}"
+
+    assert redact_text(text) == f"ошибка: {MASK} и в адресе {MASK} и {MASK}"
+
+
+def test_empty_secret_is_not_registered() -> None:
+    from pricewatch.observability.redaction import register_secret
+
+    register_secret("")
+
+    assert redact_text("обычный текст") == "обычный текст"

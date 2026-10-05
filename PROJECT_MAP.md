@@ -8,7 +8,8 @@
 
 - Команда: `uv sync` — установить окружение.
 - Команда: `uv run python -m pricewatch.bootstrap` — запустить сервер; настройки из окружения и .env.
-- Команда: `uv run pytest` — весь набор тестов.
+- Команда: `TEST_DATABASE_URL=postgresql://localhost/postgres uv run pytest` — весь набор тестов; без TEST_DATABASE_URL тесты базы падают с объяснением.
+- Команда: `LC_ALL=en_US.UTF-8 pg_ctl -D /opt/homebrew/var/postgresql@18 -l /opt/homebrew/var/log/postgresql@18.log start` — запустить локальный PostgreSQL 18 (Homebrew) до перезагрузки.
 - Команда: `uv run lint-imports` — границы модулей.
 - Команда: `uv run python tools/check_project_map.py` — карта против кода.
 - Команда: `uv run python tools/deps.py <модуль>` — прямые зависимые модуля.
@@ -49,7 +50,7 @@
 - Файлы: `.github/workflows/ci.yml` — CI на каждый push: тесты, import-linter, проверка карты, gitleaks по всей истории. Действия закреплены по хешу, gitleaks — с проверкой контрольной суммы.
 - Файлы: `.gitleaksignore` — ложные срабатывания gitleaks по точному отпечатку; только ненастоящие значения из тестов и только с согласия владельца.
 
-Зависимости рабочего кода: pydantic-settings (MIT), fastapi (MIT), uvicorn (BSD-3). Для разработки: pytest, import-linter, grimp, openapi-spec-validator, httpx2.
+Зависимости рабочего кода: pydantic-settings (MIT), fastapi (MIT), uvicorn (BSD-3), sqlalchemy (MIT), psycopg (LGPL-3.0, как неизменённая библиотека). Для разработки: pytest, import-linter, grimp, openapi-spec-validator, httpx2.
 
 ## Пакеты
 
@@ -71,8 +72,9 @@
 ### pricewatch.persistence
 - Путь: `src/pricewatch/persistence/`
 - Отвечает: модели БД, репозитории, миграции
-- Зависит от: —
-- Тесты: `uv run pytest tests/unit/test_package_layout.py`
+- Зависит от: `pricewatch.domain`
+- Тесты: `uv run pytest tests/integration/test_database_connection.py`
+- Файлы: `src/pricewatch/persistence/database.py` — подключение: малый пул, hide_parameters, DB_ERROR при недоступной базе.
 
 ### pricewatch.api
 - Путь: `src/pricewatch/api/`
@@ -134,8 +136,8 @@
 
 ### pricewatch.config
 - Путь: `src/pricewatch/config/`
-- Отвечает: настройки процесса из окружения и .env; ошибка без значений; не импортируется domain и application
-- Зависит от: —
+- Отвечает: настройки процесса из окружения и .env; ошибка без значений; секреты регистрируются для журнала; не импортируется domain и application
+- Зависит от: `pricewatch.observability`
 - Тесты: `uv run pytest tests/unit/test_config_settings.py tests/unit/test_package_layout.py`
 - Файлы: `src/pricewatch/config/settings.py` — Settings, load_settings, ConfigError.
 
@@ -173,6 +175,7 @@
 - Файлы: `tests/security/test_no_secrets_in_git.py` — нет .env, ключей и токенов в файлах, которые попадут в коммит; .env игнорируется, .env.example без секретов.
 - Файлы: `tests/contracts/` — проверки контракта API.
 - Файлы: `tests/unit/conftest.py` — фикстура project_copy: копия проекта для тестов, которые ломают код.
+- Файлы: `tests/conftest.py` — фикстура database_url: временная база PostgreSQL на прогон, удаляется в конце.
 
 ## Образец дизайна
 

@@ -9,10 +9,12 @@ import os
 from ipaddress import IPv4Network, IPv6Network, ip_network
 from pathlib import Path
 from typing import Annotated, Literal
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
-from pydantic import Field, ValidationError, field_validator, model_validator
+from pydantic import Field, SecretStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+from pricewatch.observability.redaction import register_secret
 
 ENV_PREFIX = "PRICEWATCH_"
 LOCAL_ENVIRONMENTS = {"development", "test"}
@@ -32,6 +34,7 @@ class Settings(BaseSettings):
 
     env: Literal["development", "test", "production"]
     public_origin: str
+    database_url: SecretStr
     trusted_proxies: Annotated[tuple[IPv4Network | IPv6Network, ...], NoDecode] = ()
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     listen_host: str = "127.0.0.1"
@@ -47,6 +50,16 @@ class Settings(BaseSettings):
             raise ValueError("только схема, домен и порт, без пути, параметров и логина")
         port = f":{parts.port}" if parts.port else ""
         return f"{parts.scheme}://{parts.hostname}{port}"
+
+    @field_validator("database_url")
+    @classmethod
+    def _postgres_url(cls, value: SecretStr) -> SecretStr:
+        parts = urlsplit(value.get_secret_value())
+        if parts.scheme not in {"postgresql", "postgresql+psycopg"}:
+            raise ValueError("нужен адрес вида postgresql://пользователь:пароль@хост:порт/база")
+        if not parts.hostname or parts.path.strip("/") == "":
+            raise ValueError("в адресе нужны хост и имя базы")
+        return value
 
     @field_validator("trusted_proxies", mode="before")
     @classmethod
@@ -71,9 +84,23 @@ def load_settings(env_file: Path | None = Path(".env")) -> Settings:
     if unknown:
         raise ConfigError("Неизвестные переменные окружения: " + ", ".join(unknown))
     try:
-        return Settings(_env_file=env_file)  # type: ignore[call-arg]
+        settings = Settings(_env_file=env_file)  # type: ignore[call-arg]
     except ValidationError as error:
         raise ConfigError(_describe(error)) from None
+    _register_secrets(settings)
+    return settings
+
+
+def _register_secrets(settings: Settings) -> None:
+    """Значения секретов и пароли внутри адресов вырезаются из журнала дословно."""
+    for name in Settings.model_fields:
+        value = getattr(settings, name)
+        if isinstance(value, SecretStr):
+            secret = value.get_secret_value()
+            register_secret(secret)
+            password = urlsplit(secret).password
+            if password:
+                register_secret(unquote(password))
 
 
 def _is_field(variable: str) -> bool:

@@ -1,13 +1,16 @@
 """Вырезание секретов из данных журнала.
 
-Два уровня:
+Три уровня:
 - поля с чувствительным именем (password, token, cookie…) заменяются целиком;
 - в тексте вырезаются Bearer-токены, логин и пароль в адресах, значения
-  чувствительных параметров URL и заголовков Authorization и Cookie.
+  чувствительных параметров URL и заголовков Authorization и Cookie;
+- значения настоящих секретов, зарегистрированные при загрузке настроек,
+  вырезаются дословно где угодно — так ловится и голый пароль в тексте ошибки.
 """
 
 import re
 from collections.abc import Mapping
+from urllib.parse import quote, quote_plus
 
 MASK = "[скрыто]"
 
@@ -30,11 +33,23 @@ _TEXT_PATTERNS = [
 ]
 
 
+_registered_secrets: set[str] = set()
+
+
+def register_secret(value: str) -> None:
+    """Запомнить значение секрета; оно и его URL-кодированные формы вырезаются из любого текста."""
+    if value:
+        _registered_secrets.update({value, quote(value, safe=""), quote_plus(value)})
+
+
 def is_sensitive_name(name: str) -> bool:
     return bool(_SENSITIVE_NAME.search(name))
 
 
 def redact_text(text: str) -> str:
+    # Длинные значения первыми: короткий секрет может быть частью длинного.
+    for secret in sorted(_registered_secrets, key=len, reverse=True):
+        text = text.replace(secret, MASK)
     for pattern, replacement in _TEXT_PATTERNS:
         text = pattern.sub(replacement, text)
     return text
