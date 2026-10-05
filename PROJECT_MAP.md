@@ -46,6 +46,8 @@
 - Файлы: `.python-version` — Python 3.13.
 - Файлы: `.gitignore`
 - Файлы: `.env.example` — все настройки с пояснениями, без секретов; копируется в .env.
+- Файлы: `.github/workflows/ci.yml` — CI на каждый push: тесты, import-linter, проверка карты, gitleaks по всей истории. Действия закреплены по хешу, gitleaks — с проверкой контрольной суммы.
+- Файлы: `.gitleaksignore` — ложные срабатывания gitleaks по точному отпечатку; только ненастоящие значения из тестов и только с согласия владельца.
 
 Зависимости рабочего кода: pydantic-settings (MIT), fastapi (MIT), uvicorn (BSD-3). Для разработки: pytest, import-linter, grimp, openapi-spec-validator, httpx2.
 
