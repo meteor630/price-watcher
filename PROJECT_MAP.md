@@ -63,13 +63,14 @@
 - Путь: `src/pricewatch/domain/`
 - Отвечает: сущности и правила расчётов; только стандартная библиотека
 - Зависит от: —
-- Тесты: `uv run pytest tests/unit/test_domain_errors.py tests/unit/test_domain_names.py tests/unit/test_domain_shopping.py tests/unit/test_domain_tokens.py tests/unit/test_domain_accounts.py tests/unit/test_domain_money.py tests/unit/test_domain_days.py`
+- Тесты: `uv run pytest tests/unit/test_domain_errors.py tests/unit/test_domain_names.py tests/unit/test_domain_shopping.py tests/unit/test_domain_tokens.py tests/unit/test_domain_accounts.py tests/unit/test_domain_money.py tests/unit/test_domain_days.py tests/unit/test_domain_pricing.py`
 - Файлы: `src/pricewatch/domain/errors.py` — коды ошибок, безопасные сообщения, базовое исключение PriceWatcherError.
 - Файлы: `src/pricewatch/domain/names.py` — очистка имён для показа, ключ сравнения (регистр, пробелы, «ё», NFKC), пределы длины и количества.
 - Файлы: `src/pricewatch/domain/shopping.py` — неизменяемые записи Category, Group, Item.
 - Файлы: `src/pricewatch/domain/tokens.py` — случайные токены и коды связки, HMAC с назначением, вывод следующего токена из предыдущего.
 - Файлы: `src/pricewatch/domain/accounts.py` — роли, User, правила логина и пароля (NFKC), отображаемое имя.
 - Файлы: `src/pricewatch/domain/money.py` — целые копейки, строки «12 990 ₽», «−652 ₽», процент с одним знаком (половины вверх), изменение Change.
+- Файлы: `src/pricewatch/domain/pricing.py` — наблюдение, действующая цена, участие ссылки (меньше 7 суток), статус ссылки и товара по порядку раздела 6, лучшая цена, «на проверке»; расчёт на любой момент.
 - Файлы: `src/pricewatch/domain/days.py` — сутки с 00:00 по Москве (zoneinfo + tzdata), начала периодов day/week/month/year (0/7/30/365 суток), подписи «5 окт».
 
 ### pricewatch.application
