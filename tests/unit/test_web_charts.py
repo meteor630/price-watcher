@@ -6,7 +6,7 @@ from datetime import date, timedelta
 import pytest
 
 from pricewatch.domain.charts import ChartPoint, PointStatus
-from pricewatch.web.charts import PADDING_Y, VIEW_HEIGHT, VIEW_WIDTH, plot
+from pricewatch.web.charts import CHART_HEIGHT, CHART_WIDTH, PADDING_Y, VIEW_HEIGHT, VIEW_WIDTH, chart, plot
 
 
 def points(*values: int | None) -> list[ChartPoint]:
@@ -78,3 +78,48 @@ def test_ranges_span_full_width(count: int) -> None:
 
     xs = numbers(chart.lines[0])[0::2]
     assert xs[0] == 0 and xs[-1] == VIEW_WIDTH
+
+
+# --- большой график ---
+
+
+
+def test_chart_grid_is_round_rubles_top_to_bottom() -> None:
+    drawn = chart(points(186_250_00, 186_250_00, 194_094_00, 194_094_00))
+    assert drawn is not None
+
+    labels = [label for _, label in drawn.grid]
+    assert labels == ["196 000", "194 000", "192 000", "190 000", "188 000", "186 000"]
+    assert drawn.grid[0][0] == "0" and drawn.grid[-1][0] == str(CHART_HEIGHT)
+    assert drawn.view_box == f"0 0 {CHART_WIDTH} {CHART_HEIGHT}"
+
+
+def test_chart_dates_hits_and_today_point() -> None:
+    drawn = chart(points(*[1000_00 + index * 100 for index in range(30)]))
+    assert drawn is not None
+
+    assert [(label.text, label.anchor) for label in drawn.x_labels] == [("01.10", "start"), ("11.10", "middle"), ("20.10", "middle"), ("30.10", "end")]
+    assert drawn.x_labels[0].percent == "0%" and drawn.x_labels[-1].percent == "100%"
+    assert len(drawn.hits) == 30 and drawn.hits[0].x == "0" and drawn.hits[0].label == "подпись"
+    assert drawn.last[0] == "100%"
+    assert drawn.summary.startswith("С 01.10 по 30.10: от 1 000 до 1 029")
+
+
+def test_chart_flat_price_in_middle_and_gaps() -> None:
+    flat = chart(points(500_00, 500_00))
+    gappy = chart(points(100_00, None, 300_00))
+    assert flat is not None and gappy is not None
+
+    assert flat.last[1] == "50%"
+    assert len(gappy.lines) == 2 and len(gappy.areas) == 2 and gappy.hits[1].y_percent is None
+
+
+def test_chart_axis_never_goes_below_zero() -> None:
+    drawn = chart(points(50, 50))
+    assert drawn is not None
+
+    assert all(not label.startswith("-") for _, label in drawn.grid)
+
+
+def test_chart_without_history() -> None:
+    assert chart(points(None, None)) is None

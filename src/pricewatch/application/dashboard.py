@@ -15,15 +15,15 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from enum import StrEnum
 
-from pricewatch.application.ports import PricedItem, StoreInfo, UnitOfWork
+from pricewatch.application.ports import StoreInfo, UnitOfWork
+from pricewatch.application.price_view import PricedRow, StoreView, load, price_text, store_view
 from pricewatch.domain.accounts import User
 from pricewatch.domain.charts import ChartPoint, ChartRange, chart_days, sum_chart
-from pricewatch.domain.days import Period, day_start, moscow_date, period_start
+from pricewatch.domain.days import Period, day_start, moscow_date
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
-from pricewatch.domain.money import Change, Direction, format_rub, percent_tenths, price_change
-from pricewatch.domain.pricing import ItemPrice, LinkInput, PriceStatus
-from pricewatch.domain.shopping import ItemState
-from pricewatch.domain.totals import BEFORE, Binding, TotalItem, in_total_shown, item_price_at, total, total_change
+from pricewatch.domain.money import Change, Direction, format_rub, percent_tenths
+from pricewatch.domain.pricing import PriceStatus
+from pricewatch.domain.totals import in_total_shown, total, total_change
 
 SPARKLINE_RANGE = ChartRange.MONTH
 PANEL_LIMIT_MAX = 100
@@ -35,13 +35,6 @@ class Panel(StrEnum):
     CHEAPER = "cheaper"
     PRICIER = "pricier"
     OUT_OF_STOCK = "out_of_stock"
-
-
-@dataclass(frozen=True, slots=True)
-class StoreView:
-    store_id: int
-    name: str
-    color_token: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,17 +115,6 @@ class PanelPage:
     next_offset: int | None
 
 
-@dataclass(frozen=True, slots=True)
-class _Row:
-    """Товар «в списке» с ценой сейчас и в начале периода."""
-
-    item: PricedItem
-    total_item: TotalItem
-    now: ItemPrice
-    before: ItemPrice
-    change: Change | None
-
-
 def dashboard(uow: UnitOfWork, user: User, period: Period, now: datetime) -> Dashboard:
     with uow:
         categories = uow.categories.list_active(user.id)
@@ -187,11 +169,11 @@ def panel_items(uow: UnitOfWork, user: User, panel: Panel, period: Period, now: 
         ItemChangeView(
             row.item.item_id,
             row.item.name,
-            _store_view(stores, row.now),
+            store_view(stores, row.now.best),
             row.item.category_id,
             names[row.item.category_id],
-            _price_text(row.before) if row.change is not None else None,
-            _price_text(row.now),
+            price_text(row.before.price_minor) if row.change is not None else None,
+            price_text(row.now.price_minor),
             row.change,
         )
         for row in page
@@ -200,32 +182,14 @@ def panel_items(uow: UnitOfWork, user: User, panel: Panel, period: Period, now: 
     return PanelPage(views, following if following < len(chosen) else None)
 
 
-def _rows(uow: UnitOfWork, user_id: int, period: Period, now: datetime) -> tuple[list[_Row], dict[int, StoreInfo]]:
-    """Товары «в списке» с привязками и наблюдениями, нужными для периода и графика за 30 дней."""
-    before_moment = period_start(period, now) - BEFORE
+def _rows(uow: UnitOfWork, user_id: int, period: Period, now: datetime) -> tuple[list[PricedRow], dict[int, StoreInfo]]:
+    """Товары «в списке» с ценами сейчас и в начале периода; наблюдения — с начала графика за 30 дней."""
     first_day, _ = chart_days(SPARKLINE_RANGE, now)[0]
-    since = min(before_moment, day_start(first_day))
-    items = [item for item in uow.price_data.items(user_id) if item.state is ItemState.ACTIVE]
-    bindings = uow.price_data.bindings(user_id)
-    stores = uow.price_data.stores(sorted({binding.store_id for binding in bindings}))
-    history = uow.price_data.observations(sorted({binding.tracked_link_id for binding in bindings}), since)
-    by_item: dict[int, list[Binding]] = {}
-    for binding in bindings:
-        link = LinkInput(binding.tracked_link_id, binding.store_id, stores[binding.store_id].enabled, history[binding.tracked_link_id])
-        by_item.setdefault(binding.item_id, []).append(Binding(link, binding.valid_from, binding.valid_to))
-    rows = []
-    for item in items:
-        total_item = TotalItem(item.item_id, item.state, item.quantity, item.in_total, item.include_stale, by_item.get(item.item_id, []))
-        now_price = item_price_at(total_item, now)
-        before_price = item_price_at(total_item, before_moment)
-        change = None
-        if now_price.participates and before_price.participates and now_price.price_minor is not None and before_price.price_minor is not None:
-            change = price_change(before_price.price_minor, now_price.price_minor)
-        rows.append(_Row(item, total_item, now_price, before_price, change))
-    return rows, stores
+    priced = load(uow, user_id, period, now, day_start(first_day))
+    return priced.rows, priced.stores
 
 
-def _panel_rows(rows: Sequence[_Row], panel: Panel) -> list[_Row]:
+def _panel_rows(rows: Sequence[PricedRow], panel: Panel) -> list[PricedRow]:
     if panel is Panel.TRACKED:
         chosen = [row for row in rows if row.now.links]
     elif panel is Panel.CHEAPER:
@@ -237,14 +201,14 @@ def _panel_rows(rows: Sequence[_Row], panel: Panel) -> list[_Row]:
     return sorted(chosen, key=lambda row: (*_magnitude(row), row.item.item_id))
 
 
-def _magnitude(row: _Row) -> tuple[int, int]:
+def _magnitude(row: PricedRow) -> tuple[int, int]:
     """Ключ сортировки: сначала большее изменение в процентах, затем в рублях; без изменения — в конце."""
     if row.change is None or row.before.price_minor is None:
         return (1, 0)
     return (-percent_tenths(row.change.change_minor, row.before.price_minor), -abs(row.change.change_minor))
 
 
-def _top_mover(rows: Sequence[_Row]) -> TopMover | None:
+def _top_mover(rows: Sequence[PricedRow]) -> TopMover | None:
     changed = [(row, row.change) for row in rows if row.change is not None and row.change.change_minor != 0]
     if not changed:
         return None
@@ -252,15 +216,10 @@ def _top_mover(rows: Sequence[_Row]) -> TopMover | None:
     return TopMover(best.item.item_id, best.item.name, change.percent_text, change.direction)
 
 
-def _store_view(stores: dict[int, StoreInfo], price: ItemPrice) -> StoreView | None:
-    if price.best is None:
-        return None
-    store = stores[price.best.store_id]
-    return StoreView(store.store_id, store.name, store.color_token)
-
-
-def _price_text(price: ItemPrice) -> str | None:
-    return None if price.price_minor is None else format_rub(price.price_minor)
+def run_status(uow: UnitOfWork, user: User) -> RunView:
+    """Статус последней проверки для шапки любой страницы."""
+    with uow:
+        return _run_view(uow, user)
 
 
 def _run_view(uow: UnitOfWork, user: User) -> RunView:

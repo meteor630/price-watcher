@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% from "_macros.html" import change_badges, period_switch, price_flags %}
+{% block title %}{{ detail.name }}{% endblock %}
+{% block content %}
+{% set since = period_since[detail.period] %}
+<nav class="crumbs" aria-label="Путь">
+  <a href="/web/">Главная</a><span aria-hidden="true"> › </span><a href="/web/categories/{{ detail.category_id }}">{{ detail.category_name }}</a><span aria-hidden="true"> › </span><span class="crumbs__here" aria-current="page">{{ detail.name }}</span>
+</nav>
+
+<section class="hero" aria-labelledby="hero-title">
+  <div class="hero__figures" id="hero-figures">
+    <p class="eyebrow">{{ detail.category_name }} · группа</p>
+    <h1 id="hero-title" class="hero__name">{{ detail.name }}</h1>
+    <p class="hero__since">Цены каждого магазина, изменение {{ since }} и самая низкая цена периода.</p>
+  </div>
+  {{ period_switch("/web/groups/" ~ detail.group_id, detail.period) }}
+</section>
+
+<div id="page-rest">
+  <section class="section" aria-label="Товары группы">
+    {% if not detail.items %}
+    <div class="empty">
+      <h3 class="empty__title">В группе пока нет товаров</h3>
+      <p class="empty__text">Товары этой группы появятся здесь вместе с ценами магазинов.</p>
+    </div>
+    {% else %}
+    <div class="table-wrap">
+      <table class="offers">
+        <thead>
+          <tr><th scope="col">Товар</th><th scope="col">Цены магазинов</th><th scope="col">Изменение</th><th scope="col">Минимум периода</th></tr>
+        </thead>
+        <tbody>
+          {% for item in detail.items %}
+          <tr data-item="{{ item.row.item_id }}">
+            <th scope="row" class="offers__name">{{ item.row.name }}<span class="offers__flags">{{ price_flags(item.row) }}</span></th>
+            <td data-label="Цены магазинов">
+              {% if item.offers %}
+              <ul class="offers__stores">
+                {% for offer in item.offers %}
+                <li class="{{ 'offers__store--best' if offer.best else '' }}">
+                  <span class="store-dot store-dot--{{ offer.store.color_token }}" aria-hidden="true"></span>{{ offer.store.name }}
+                  <span class="num offers__price">{{ offer.price_text or status_labels.get(offer.status.value, "—") }}</span>
+                  {% if offer.best %}<span class="visually-hidden">(лучшая цена)</span>{% endif %}
+                </li>
+                {% endfor %}
+              </ul>
+              {% else %}<span class="muted">нет ссылок</span>{% endif %}
+            </td>
+            <td data-label="Изменение">{{ change_badges(item.row.change) }}</td>
+            <td class="num" data-label="Минимум периода">
+              {% if item.minimum %}<span title="{{ item.minimum.day.strftime('%d.%m') }} · {{ item.minimum.store_name }}">{{ item.minimum.price_text }}</span>
+              <span class="offers__low-hint">{{ item.minimum.day.strftime('%d.%m') }} · {{ item.minimum.store_name }}</span>{% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

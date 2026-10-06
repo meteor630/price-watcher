@@ -11,8 +11,8 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from pricewatch.web.charts import plot
-from pricewatch.web.formats import ARROWS, PERIOD_NAMES, PERIOD_SINCE, long_date, period_index, run_line
+from pricewatch.web.charts import chart, plot
+from pricewatch.web.formats import ARROWS, CHART_RANGE_NAMES, PERIOD_NAMES, PERIOD_SINCE, STATUS_LABELS, long_date, period_index, run_line
 
 WEB_DIR = Path(__file__).parent
 TEMPLATES_DIR = WEB_DIR / "templates"
@@ -40,6 +40,9 @@ environment = Environment(
 environment.globals.update(
     static=static_url,
     plot=plot,
+    chart=chart,
+    status_labels=STATUS_LABELS,
+    chart_range_names=CHART_RANGE_NAMES,
     long_date=long_date,
     period_index=period_index,
     run_line=run_line,

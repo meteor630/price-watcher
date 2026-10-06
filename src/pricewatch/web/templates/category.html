@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% from "_macros.html" import change_badges, period_switch, price_flags %}
+{% block title %}{{ detail.name }}{% endblock %}
+{% block content %}
+{% set since = period_since[detail.period] %}
+{% set base = "/web/categories/" ~ detail.category_id %}
+<nav class="crumbs" aria-label="Путь"><a href="/web/">Главная</a><span aria-hidden="true"> › </span><span class="crumbs__here" aria-current="page">{{ detail.name }}</span></nav>
+
+<section class="hero" aria-labelledby="hero-title">
+  <div class="hero__figures" id="hero-figures">
+    <p class="eyebrow">Категория покупок</p>
+    <h1 id="hero-title" class="hero__name">{{ detail.name }}</h1>
+    <p class="hero__total num">{{ detail.total_text }}</p>
+    <p class="hero__delta">{{ change_badges(detail.change) }}<span class="hero__since">{{ since }} · только из-за цен</span></p>
+  </div>
+  {{ period_switch(base, detail.period) }}
+</section>
+
+<div id="page-rest">
+  <p class="summary">
+    {{ detail.in_total_count }} в итоге, ещё {{ detail.watching_count }} только наблюдаю.
+    <strong>Отметка «в итоге»</strong> — товар учитывается в сумме; без неё я только слежу за ценой.
+  </p>
+
+  <section class="section" aria-labelledby="rows-title">
+    <div class="section__head"><h2 id="rows-title" class="section__title">Позиции</h2></div>
+    {% if detail.in_total_count + detail.watching_count == 0 %}
+    <div class="empty">
+      <h3 class="empty__title">В категории пока нет товаров</h3>
+      <p class="empty__text">Когда вы добавите товары и ссылки на магазины, здесь появятся их цены и итог.</p>
+    </div>
+    {% else %}
+    <div class="rows">
+      {% for block in detail.groups %}
+      {% if block.group_id is not none %}
+      <div class="rows__group">
+        <h3 class="rows__group-name">{{ block.name }}</h3>
+        <span class="rows__group-total num">{{ block.total_text }}</span>
+        <a class="rows__group-link" href="/web/groups/{{ block.group_id }}">цены по магазинам ›</a>
+      </div>
+      {% endif %}
+      {% for row in block.items %}
+      <div class="row{% if not row.in_total %} row--watching{% endif %}" data-item="{{ row.item_id }}">
+        <span class="row__mark{% if row.in_total %} row__mark--on{% endif %}" role="img" aria-label="{{ 'в итоге' if row.in_total else 'только наблюдаю' }}"></span>
+        <div class="row__main">
+          <p class="row__name">{{ row.name }}</p>
+          <p class="row__meta">
+            {% if row.best_store %}<span class="store-dot store-dot--{{ row.best_store.color_token }}" aria-hidden="true"></span>{{ row.best_store.name }}{% endif %}
+            {% if row.unit_price_text %}<span class="row__qty num">{{ row.quantity }} шт × {{ row.unit_price_text }}</span>{% elif row.quantity > 1 %}<span class="row__qty num">{{ row.quantity }} шт</span>{% endif %}
+            {{ price_flags(row) }}
+          </p>
+        </div>
+        <div class="row__price num">
+          {% if row.line_price_text %}<span class="row__line">{{ row.line_price_text }}</span>{% else %}<span class="row__line row__line--none">—</span>{% endif %}
+          {% if row.regular_price_text %}<span class="row__regular">без карты {{ row.regular_price_text }}</span>{% endif %}
+        </div>
+        <div class="row__change">
+          {% if row.change %}<span class="pill pill--{{ row.change.direction.value }} num">{% if row.change.direction.value != "flat" %}<span aria-hidden="true">{{ arrows[row.change.direction.value] }}</span> {% endif %}{{ row.change.percent_text }}</span>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+      {% if block.group_id is not none and not block.items %}<p class="rows__empty">В группе пока нет товаров.</p>{% endif %}
+      {% endfor %}
+      <div class="rows__total">
+        <span>Итого</span>
+        <span class="rows__total-sum"><span class="rows__total-figure num">{{ detail.total_text }}</span> {{ change_badges(detail.change) }}</span>
+      </div>
+    </div>
+    {% endif %}
+  </section>
+</div>
+
+<section class="section panel-box" aria-labelledby="chart-title">
+  <div class="panel-box__head">
+    <div>
+      <h2 id="chart-title" class="section__title">Итог по дням</h2>
+      <p class="panel-box__lead"><span class="num panel-box__figure">{{ detail.total_text }}</span> итог сегодня</p>
+    </div>
+    <nav class="seg seg--small" aria-label="Диапазон графика" data-segmented data-active="{{ (chart_range_names | list).index(chart_range.value) }}">
+      <span class="seg__thumb" aria-hidden="true"></span>
+      {% for value, name in chart_range_names.items() %}
+      <a class="seg__option" href="{{ base }}/chart?range={{ value }}" data-seg-option="{{ loop.index0 }}" {% if value == chart_range.value %}aria-current="true"{% endif %}
+         hx-get="{{ base }}/chart?range={{ value }}" hx-target="#category-chart" hx-swap="innerHTML">{{ name }}</a>
+      {% endfor %}
+    </nav>
+  </div>
+  <div id="category-chart">{% include "fragments/category_chart.html" %}</div>
+  <p class="panel-box__note">Прошлые дни пересчитаны по сегодняшнему составу и количеству: добавленный товар не выглядит как подорожание.</p>
+</section>
+{% endblock %}

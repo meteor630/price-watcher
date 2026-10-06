@@ -46,7 +46,7 @@
 
 ## Конфигурация
 
-- Файлы: `pyproject.toml` — проект, зависимости, pytest, контракты import-linter.
+- Файлы: `pyproject.toml` — проект, зависимости, pytest (pythonpath: tests/integration и tests/security — общие помощники тестов), контракты import-linter.
 - Файлы: `uv.lock` — точные версии.
 - Файлы: `alembic.ini` — расположение миграций; адреса базы в нём нет.
 - Файлы: `.python-version` — Python 3.13.
@@ -86,11 +86,13 @@
 - Путь: `src/pricewatch/application/`
 - Отвечает: сценарии и интерфейсы репозиториев
 - Зависит от: `pricewatch.domain`
-- Тесты: `uv run pytest tests/unit/test_passwords.py tests/integration/test_create_admin_command.py tests/integration/test_registration.py tests/integration/test_web_login.py tests/integration/test_app_auth.py tests/integration/test_add_link.py tests/integration/test_worker_protocol.py tests/integration/test_runs.py tests/integration/test_store_pauses.py tests/integration/test_retention.py tests/integration/test_dashboard.py`
+- Тесты: `uv run pytest tests/unit/test_passwords.py tests/integration/test_create_admin_command.py tests/integration/test_registration.py tests/integration/test_web_login.py tests/integration/test_app_auth.py tests/integration/test_add_link.py tests/integration/test_worker_protocol.py tests/integration/test_runs.py tests/integration/test_store_pauses.py tests/integration/test_retention.py tests/integration/test_dashboard.py tests/integration/test_category.py`
 - Файлы: `src/pricewatch/application/ports.py` — интерфейсы репозиториев и единицы работы; общие правила владельца, версий, перестановки, удаления; LinkResolver — описание адреса от сборщика цен.
 - Файлы: `src/pricewatch/application/worker_protocol.py` — протокол worker: токен (HMAC WORKER, ротация с перекрытием), аренда 2 мин, продление, результат как недоверенный ввод, правила подозрительных изменений, автозакрытие ценового подозрения, первое название — эталон; блокировка и капча — пауза магазина по ступеням, задание ждёт без траты попытки; исчерпано — магазин отдыхает до следующего запуска, его ждущие задания закрываются ошибкой, уведомление store_paused администраторам; другой ответ снимает паузу; фото — по своему действующему заданию, путь записывается, если у ссылки его ещё нет.
 - Файлы: `src/pricewatch/application/runs.py` — запуски: ручной (только администратор; второй — RUN_IN_PROGRESS с прогрессом) и плановый по слоту, какие ссылки входят, остановка, истёкшая аренда (возврат, после 3 попыток TIMEOUT в историю), времена расписания из настроек.
-- Файлы: `src/pricewatch/application/dashboard.py` — главная: итог и изменение «только из-за цен», карточки категорий (график суммы за 30 дней, самый изменившийся товар), сводные панели и их списки по величине изменения, статус последней проверки, число изменений на проверке для администратора.
+- Файлы: `src/pricewatch/application/price_view.py` — общая часть страниц: товары «в списке» с ценой сейчас и в начале периода, строка товара (цена по карте и без карты, за количество, статус, «на проверке»).
+- Файлы: `src/pricewatch/application/category.py` — категория (блоки групп с суммами, итог, изменение), график категории по дням, группа (цены всех магазинов, лучшая, минимум периода с датой и магазином).
+- Файлы: `src/pricewatch/application/dashboard.py` — главная: итог и изменение «только из-за цен», карточки категорий (график суммы за 30 дней, самый изменившийся товар), сводные панели и их списки по величине изменения, статус последней проверки (и отдельно для шапки — run_status), число изменений на проверке для администратора.
 - Файлы: `src/pricewatch/application/retention.py` — данные пользователя, заблокированного 7 суток назад: товары, группы, категории мягко удаляются; удалённое 30 дней назад стирается окончательно вместе с содержимым и привязками ссылок; общий каталог и история цен не трогаются.
 - Файлы: `src/pricewatch/application/links.py` — добавление ссылки к товару: магазин создаётся сам, каталог без дублей, замена ссылки того же магазина, свежая цена (моложе суток) или срочное задание, лимит 20 новых ссылок в час.
 - Файлы: `src/pricewatch/application/passwords.py` — PasswordHasher: argon2id (argon2-cffi), нормализация, фиктивная проверка для выравнивания времени.
@@ -120,7 +122,7 @@
 - Путь: `src/pricewatch/api/`
 - Отвечает: маршруты `/api/v1`, `/web`, `/worker/v1`, `/internal/v1`; аутентификация
 - Зависит от: `pricewatch.application`, `pricewatch.config`, `pricewatch.domain`, `pricewatch.media`, `pricewatch.observability`, `pricewatch.web`
-- Тесты: `uv run pytest tests/unit/test_api_app.py tests/security/test_client_ip.py tests/security/test_web_session_http.py tests/security/test_app_auth_http.py tests/security/test_access_rules.py tests/integration/test_server_start.py tests/security/test_worker_http.py tests/security/test_web_pages.py tests/security/test_dashboard_http.py tests/security/test_web_home.py`
+- Тесты: `uv run pytest tests/unit/test_api_app.py tests/security/test_client_ip.py tests/security/test_web_session_http.py tests/security/test_app_auth_http.py tests/security/test_access_rules.py tests/integration/test_server_start.py tests/security/test_worker_http.py tests/security/test_web_pages.py tests/security/test_dashboard_http.py tests/security/test_web_home.py tests/security/test_categories_http.py tests/security/test_web_categories.py`
 - Файлы: `src/pricewatch/api/worker_v1.py` — /worker/v1/claim (с признаком need_image), /heartbeat, /result, /image (тело image/webp до 2 МБ, читается частями): только токен worker, строгие схемы (лишние поля и неверные типы — 422); вне контракта приложения.
 - Файлы: `src/pricewatch/api/app.py` — create_app: обработчики ошибок, CORS только своему домену, без автодокументации.
 - Файлы: `src/pricewatch/api/edge.py` — внешний слой: request_id, защитные заголовки, 500 без утечек, журнал запросов без строки запроса.
@@ -129,6 +131,9 @@
 - Файлы: `src/pricewatch/api/web_auth.py` — cookie pw_session (HttpOnly, Secure, SameSite=Lax), зависимость web_user: только cookie; для изменяющих — Origin и X-CSRF-Token.
 - Файлы: `src/pricewatch/api/v1_dashboard.py` — GET /api/v1/dashboard (ETag, 304) и /dashboard/items (непрозрачный курсор) по OpenAPI.
 - Файлы: `src/pricewatch/api/web_home.py` — главная сайта: страница, смена периода тем же адресом (htmx заменяет цифры и карточки), фрагмент списка панели страницами по 20.
+- Файлы: `src/pricewatch/api/v1_json.py` — общие части ответов /api/v1: изменение, точка графика, магазин, строка товара, время UTC.
+- Файлы: `src/pricewatch/api/v1_categories.py` — GET /api/v1/categories/{id} (ETag, 304) и /chart?range= по OpenAPI.
+- Файлы: `src/pricewatch/api/web_categories.py` — страницы категории (период тем же адресом, график фрагментом по диапазону) и группы.
 - Файлы: `src/pricewatch/api/web_pages.py` — / → /web/; вход и регистрация обычной формой (Origin = адрес сайта, без JS), недействительное приглашение — объяснение без формы, код приглашения в строке запроса; выход — htmx с CSRF.
 - Файлы: `src/pricewatch/api/web_errors.py` — ошибки сайта: нет сессии — на вход (htmx — HX-Redirect), иначе страница или фрагмент #flash с data-error-code; Retry-After при превышении попыток.
 - Файлы: `src/pricewatch/api/web_forms.py` — разбор application/x-www-form-urlencoded: до 16 КБ и 50 полей, повтор поля и чужой тип — VALIDATION_ERROR; без python-multipart.
@@ -140,13 +145,13 @@
 - Путь: `src/pricewatch/web/`
 - Отвечает: шаблоны, HTML-фрагменты, CSS, JS
 - Зависит от: `pricewatch.domain`
-- Тесты: `uv run pytest tests/unit/test_design_tokens.py tests/unit/test_fonts.py tests/unit/test_web_templates.py tests/security/test_web_pages.py tests/unit/test_package_layout.py tests/unit/test_web_charts.py tests/security/test_web_home.py`
+- Тесты: `uv run pytest tests/unit/test_design_tokens.py tests/unit/test_fonts.py tests/unit/test_web_templates.py tests/security/test_web_pages.py tests/unit/test_package_layout.py tests/unit/test_web_charts.py tests/security/test_web_home.py tests/security/test_web_categories.py`
 - Файлы: `src/pricewatch/web/templates.py` — Jinja2: автоэкранирование, неизвестная переменная — ошибка, адрес статики с меткой содержимого.
-- Файлы: `src/pricewatch/web/templates/` — base (шапка со статусом проверки, htmx без eval и встроенных стилей, CSRF в hx-headers), главная и фрагмент панели, общие макросы изменения и графика, вход, регистрация, недействительное приглашение, ошибка, фрагмент #flash; без встроенных скриптов и style= (CSP).
-- Файлы: `src/pricewatch/web/charts.py` — графики SVG с сервера: монотонная кривая Fritsch–Carlson без ложных выбросов, разрыв на днях без данных, ровная цена посередине.
+- Файлы: `src/pricewatch/web/templates/` — base (шапка со статусом проверки, htmx без eval и встроенных стилей, CSRF в hx-headers), главная и фрагмент панели, категория, группа, фрагмент графика категории, общие макросы (изменение, переключатель периода, графики, отметки статуса цены), вход, регистрация, недействительное приглашение, ошибка, фрагмент #flash; без встроенных скриптов и style= (CSP).
+- Файлы: `src/pricewatch/web/charts.py` — графики SVG с сервера: монотонная кривая Fritsch–Carlson без ложных выбросов, разрыв на днях без данных, ровная цена посередине; большой график — сетка «круглыми» рублями, даты, заливка, точка «сегодня», полосы наведения с готовой подписью.
 - Файлы: `src/pricewatch/web/formats.py` — подписи: дата «6 октября 2026», время по Москве, названия периодов, строка статуса проверки.
 - Файлы: `src/pricewatch/web/static/css/site.css` — компоненты страниц: сводка с переключателем периода, карточки категорий, графики, сводные панели с раскрытием по высоте содержимого, бейджи изменений, статус проверки.
-- Файлы: `src/pricewatch/web/static/js/app.js` — поведение без встроенного кода: подложка переключателя периода (откат при ошибке), одна открытая панель, «Свернуть» и Esc.
+- Файлы: `src/pricewatch/web/static/js/app.js` — поведение без встроенного кода: подложка переключателя периода (откат при ошибке), одна открытая панель, «Свернуть» и Esc, подсказка большого графика.
 - Файлы: `src/pricewatch/web/static/css/base.css` — каркас: фон, шапка, кнопки, поля, сообщения, карточка входа; только токены.
 - Файлы: `src/pricewatch/web/static/vendor/htmx-2.0.10.min.js`, `src/pricewatch/web/static/vendor/htmx.LICENSE.txt` — htmx 2.0.10 из npm (целостность sha512 сверена), 0BSD.
 - Файлы: `src/pricewatch/web/static/favicon.svg` — значок сайта: плитка «₽».

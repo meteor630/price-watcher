@@ -1,0 +1,2 @@
+{% from "_macros.html" import big_chart %}
+{{ big_chart(points, "Итог категории по дням, " ~ chart_range_names[chart_range.value] | lower) }}

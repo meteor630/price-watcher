@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import change_badges, sparkline %}
+{% from "_macros.html" import change_badges, period_switch, sparkline %}
 {% block title %}Главная{% endblock %}
 {% block content %}
 {% set since = period_since[board.period] %}
@@ -12,18 +12,10 @@
     <p class="hero__total num" data-total>{{ board.total_text }}</p>
     <p class="hero__delta">{{ change_badges(board.change) }}<span class="hero__since">{{ since }} · только из-за цен</span></p>
   </div>
-  <nav class="seg" aria-label="Период изменения" data-segmented data-active="{{ period_index(board.period) }}">
-    <span class="seg__thumb" aria-hidden="true"></span>
-    {% for period, name in period_names.items() %}
-    <a class="seg__option" href="/web/?period={{ period.value }}" data-seg-option="{{ loop.index0 }}"
-       {% if period == board.period %}aria-current="true"{% endif %}
-       hx-get="/web/?period={{ period.value }}" hx-select="#hero-figures" hx-target="#hero-figures" hx-swap="outerHTML"
-       hx-select-oob="#dashboard-rest" hx-push-url="true">{{ name }}</a>
-    {% endfor %}
-  </nav>
+  {{ period_switch("/web/", board.period) }}
 </section>
 
-<div id="dashboard-rest">
+<div id="page-rest">
   <p class="summary">
     {{ board.in_total_count }} в итоге, ещё {{ board.watching_count }} только наблюдаю.
     {{ since | capitalize }} изменений цен: {{ board.panels.cheaper + board.panels.pricier }}.
@@ -37,7 +29,7 @@
     {% if board.categories %}
     <div class="cats">
       {% for card in board.categories %}
-      <article class="cat" data-category="{{ card.category_id }}">
+      <a class="cat" href="/web/categories/{{ card.category_id }}" data-category="{{ card.category_id }}">
         {% set empty = card.in_total_count + card.watching_count == 0 %}
         <header class="cat__top">
           <h3 class="cat__name">{{ card.name }}</h3>
@@ -58,7 +50,7 @@
           {% endif %}
         </p>
         {% endif %}
-      </article>
+      </a>
       {% endfor %}
     </div>
     {% else %}

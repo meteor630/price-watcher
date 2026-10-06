@@ -30,8 +30,8 @@ class SqlPriceDataRepository:
 
     def items(self, user_id: int) -> list[PricedItem]:
         rows = self.connection.execute(
-            select(items.c.id, items.c.category_id, items.c.name, items.c.quantity, items.c.in_total, items.c.include_stale,
-                   items.c.state, items.c.purchased_at)
+            select(items.c.id, items.c.category_id, items.c.group_id, items.c.version, items.c.name, items.c.quantity, items.c.in_total,
+                   items.c.include_stale, items.c.state, items.c.purchased_at)
             .select_from(items.join(categories, categories.c.id == items.c.category_id).outerjoin(groups, groups.c.id == items.c.group_id))
             .where(
                 items.c.user_id == user_id,
@@ -39,10 +39,13 @@ class SqlPriceDataRepository:
                 categories.c.deleted_at.is_(None),
                 items.c.group_id.is_(None) | groups.c.deleted_at.is_(None),
             )
-            .order_by(categories.c.position, categories.c.id, items.c.position, items.c.id)
+            .order_by(categories.c.position, categories.c.id, groups.c.position.nulls_first(), items.c.group_id.nulls_first(), items.c.position, items.c.id)
         )
         return [
-            PricedItem(row.id, row.category_id, row.name, row.quantity, row.in_total, row.include_stale, ItemState(row.state), row.purchased_at)
+            PricedItem(
+                row.id, row.category_id, row.group_id, row.version, row.name, row.quantity, row.in_total, row.include_stale,
+                ItemState(row.state), row.purchased_at,
+            )
             for row in rows
         ]
 

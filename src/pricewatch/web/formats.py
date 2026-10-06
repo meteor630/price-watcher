@@ -8,6 +8,16 @@ MONTHS_GENITIVE = ("января", "февраля", "марта", "апреля
 PERIOD_NAMES = {Period.DAY: "Сутки", Period.WEEK: "Неделя", Period.MONTH: "Месяц", Period.YEAR: "Год"}
 PERIOD_SINCE = {Period.DAY: "за сутки", Period.WEEK: "за неделю", Period.MONTH: "за месяц", Period.YEAR: "за год"}
 ARROWS = {"down": "▼", "up": "▲", "flat": "●"}
+# Почему у товара такая цена (PriceStatus); у «ok» подписи нет.
+STATUS_LABELS = {
+    "check_failed": "не удалось проверить",
+    "stale": "цена не актуальна",
+    "out_of_stock": "нет в наличии",
+    "awaiting_check": "ожидает проверки",
+    "store_disabled": "магазин отключён",
+    "no_links": "нет ссылок на магазины",
+}
+CHART_RANGE_NAMES = {"week": "Неделя", "month": "Месяц", "year": "Год"}
 
 
 def period_index(period: Period) -> int:

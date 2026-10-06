@@ -113,7 +113,7 @@ def test_period_switch_and_panel_fragment(client: TestClient, engine: Engine) ->
     week = client.get("/web/", params={"period": "week"}, headers={"HX-Request": "true"})
     panel = client.get("/web/dashboard/items", params={"panel": "pricier", "period": "day"}, headers={"HX-Request": "true"})
 
-    assert week.status_code == 200 and 'id="hero-figures"' in week.text and 'id="dashboard-rest"' in week.text
+    assert week.status_code == 200 and 'id="hero-figures"' in week.text and 'id="page-rest"' in week.text
     assert "за неделю" in week.text
     assert panel.status_code == 200 and panel.text.count('class="change-row"') == 2
     assert "Подорожали за сутки" in panel.text and EVIL not in panel.text

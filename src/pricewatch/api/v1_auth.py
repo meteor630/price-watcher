@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -11,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 
 from pricewatch.api.app_auth import app_user
 from pricewatch.api.context import client_ip, get_context
+from pricewatch.api.v1_json import utc_iso
 from pricewatch.application.app_auth import DeviceUser, logout_device, pair, refresh
 from pricewatch.domain.accounts import TokenPair
 
@@ -31,11 +31,6 @@ class RefreshRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     refresh_token: Annotated[str, StringConstraints(min_length=1, max_length=200)]
-
-
-def utc_iso(moment: datetime) -> str:
-    """Дата-время для API — всегда UTC (openapi/v1.yaml, общие правила)."""
-    return moment.astimezone(UTC).isoformat()
 
 
 def token_response(tokens: TokenPair) -> JSONResponse:

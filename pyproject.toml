@@ -26,7 +26,7 @@ build-backend = "uv_build"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Вспомогательные модули тестов (не test_*), импортируются явно.
-pythonpath = ["tests/integration"]
+pythonpath = ["tests/integration", "tests/security"]
 addopts = ["-ra", "--strict-markers", "--strict-config", "--import-mode=importlib"]
 xfail_strict = true
 filterwarnings = ["error"]

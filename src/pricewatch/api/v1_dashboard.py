@@ -14,13 +14,11 @@ from fastapi.responses import JSONResponse
 
 from pricewatch.api.app_auth import app_user
 from pricewatch.api.context import get_context
-from pricewatch.api.v1_auth import utc_iso
+from pricewatch.api.v1_json import change_json, point_json, store_json, utc_iso
 from pricewatch.application.app_auth import DeviceUser
-from pricewatch.application.dashboard import CategoryCard, Dashboard, ItemChangeView, Panel, RunView, StoreView, dashboard, panel_items
-from pricewatch.domain.charts import ChartPoint
+from pricewatch.application.dashboard import CategoryCard, Dashboard, ItemChangeView, Panel, RunView, dashboard, panel_items
 from pricewatch.domain.days import Period
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
-from pricewatch.domain.money import Change
 
 router = APIRouter(prefix="/api/v1")
 
@@ -117,20 +115,6 @@ def item_change_json(item: ItemChangeView) -> dict[str, Any]:
         "new_price_text": item.new_price_text,
         "change": change_json(item.change),
     }
-
-
-def change_json(change: Change | None) -> dict[str, Any] | None:
-    if change is None:
-        return None
-    return {"direction": change.direction.value, "change_minor": change.change_minor, "change_text": change.change_text, "percent_text": change.percent_text}
-
-
-def point_json(point: ChartPoint) -> dict[str, Any]:
-    return {"date": point.day.isoformat(), "value_minor": point.value_minor, "label": point.label, "status": point.status.value}
-
-
-def store_json(store: StoreView | None) -> dict[str, Any] | None:
-    return None if store is None else {"id": store.store_id, "name": store.name, "color_token": store.color_token}
 
 
 def run_json(run: RunView) -> dict[str, Any]:

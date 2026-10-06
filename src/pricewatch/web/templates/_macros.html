@@ -21,3 +21,49 @@
 </svg>
 {% endif %}
 {% endmacro %}
+
+{# Переключатель периода: ссылки (без JS — обычный переход), htmx заменяет #hero-figures и #page-rest. #}
+{% macro period_switch(base_url, current) %}
+<nav class="seg" aria-label="Период изменения" data-segmented data-active="{{ period_index(current) }}">
+  <span class="seg__thumb" aria-hidden="true"></span>
+  {% for period, name in period_names.items() %}
+  <a class="seg__option" href="{{ base_url }}?period={{ period.value }}" data-seg-option="{{ loop.index0 }}"
+     {% if period == current %}aria-current="true"{% endif %}
+     hx-get="{{ base_url }}?period={{ period.value }}" hx-select="#hero-figures" hx-target="#hero-figures" hx-swap="outerHTML"
+     hx-select-oob="#page-rest" hx-push-url="true">{{ name }}</a>
+  {% endfor %}
+</nav>
+{% endmacro %}
+
+{# Большой график: сетка с суммами слева, даты снизу, точка «сегодня», подсказка при наведении (app.js). #}
+{% macro big_chart(points, label) %}
+{% set drawn = chart(points) %}
+{% if drawn is none %}
+<p class="chart-empty chart-empty--big">История появится после первых проверок цен.</p>
+{% else %}
+<figure class="bigchart" data-chart>
+  <div class="bigchart__y" aria-hidden="true">{% for _, text in drawn.grid %}<span>{{ text }}</span>{% endfor %}</div>
+  <div class="bigchart__plot">
+    <svg class="bigchart__svg" viewBox="{{ drawn.view_box }}" preserveAspectRatio="none" role="img" aria-label="{{ label }}. {{ drawn.summary }}" focusable="false">
+      {% for y, _ in drawn.grid %}<line class="bigchart__grid" x1="0" x2="1000" y1="{{ y }}" y2="{{ y }}"/>{% endfor %}
+      {% for area in drawn.areas %}<path class="bigchart__area" d="{{ area }}"/>{% endfor %}
+      {% for line in drawn.lines %}<path class="bigchart__line" d="{{ line }}"/>{% endfor %}
+      {% for hit in drawn.hits %}<rect class="bigchart__hit" x="{{ hit.x }}" y="0" width="{{ hit.width }}" height="300" data-label="{{ hit.label }}"{% if hit.y_percent %} data-y="{{ hit.y_percent }}"{% endif %}/>{% endfor %}
+    </svg>
+    <svg class="bigchart__marks" aria-hidden="true" focusable="false">
+      <circle class="bigchart__today" cx="{{ drawn.last[0] }}" cy="{{ drawn.last[1] }}" r="4"/>
+      <circle class="bigchart__focus" cx="0" cy="0" r="5" data-chart-focus/>
+    </svg>
+    <p class="bigchart__tip" role="status" data-chart-tip hidden></p>
+  </div>
+  <svg class="bigchart__x" aria-hidden="true" focusable="false">
+    {% for mark in drawn.x_labels %}<text x="{{ mark.percent }}" y="14" text-anchor="{{ mark.anchor }}">{{ mark.text }}</text>{% endfor %}
+  </svg>
+</figure>
+{% endif %}
+{% endmacro %}
+
+{% macro price_flags(row) %}
+{% if status_labels.get(row.price_status.value) %}<span class="flag flag--{{ row.price_status.value }}">{{ status_labels[row.price_status.value] }}</span>{% endif %}
+{% if row.under_review %}<span class="flag flag--review">на проверке</span>{% endif %}
+{% endmacro %}

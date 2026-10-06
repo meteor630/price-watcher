@@ -88,3 +88,48 @@
     }
   });
 })();
+
+/*
+ * Подсказка большого графика: при наведении или касании показывает готовую подпись дня
+ * («5 окт · 873 010 ₽») и точку на линии. Подписи и координаты приходят с сервера в data-*.
+ */
+(() => {
+  "use strict";
+
+  function hide(figure) {
+    figure.querySelector("[data-chart-tip]").hidden = true;
+    figure.querySelector("[data-chart-focus]").classList.remove("is-on");
+  }
+
+  function show(figure, hit) {
+    const tip = figure.querySelector("[data-chart-tip]");
+    const focus = figure.querySelector("[data-chart-focus]");
+    const center = (Number(hit.getAttribute("x")) + Number(hit.getAttribute("width")) / 2) / 10;
+    tip.textContent = hit.dataset.label;
+    tip.style.left = `${center}%`;
+    tip.hidden = false;
+    if (hit.dataset.y) {
+      focus.setAttribute("cx", `${center}%`);
+      focus.setAttribute("cy", hit.dataset.y);
+      focus.classList.add("is-on");
+    } else {
+      focus.classList.remove("is-on");
+    }
+  }
+
+  function onPointer(event) {
+    const hit = event.target.closest(".bigchart__hit");
+    if (hit) {
+      show(hit.closest("[data-chart]"), hit);
+    }
+  }
+
+  document.addEventListener("pointermove", onPointer);
+  document.addEventListener("pointerdown", onPointer);
+  document.addEventListener("pointerout", (event) => {
+    const figure = event.target.closest && event.target.closest("[data-chart]");
+    if (figure && !figure.contains(event.relatedTarget)) {
+      hide(figure);
+    }
+  });
+})();

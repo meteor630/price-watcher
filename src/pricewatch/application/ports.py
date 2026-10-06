@@ -219,6 +219,8 @@ class PricedItem:
 
     item_id: int
     category_id: int
+    group_id: int | None
+    version: int
     name: str
     quantity: int
     in_total: bool
