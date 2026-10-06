@@ -31,6 +31,7 @@ from pricewatch.persistence.app_auth_repositories import (
 )
 from pricewatch.persistence.auth_repositories import SqlAuthFailureRepository, SqlSessionRepository
 from pricewatch.persistence.invite_repository import SqlInviteRepository
+from pricewatch.persistence.price_data_repository import SqlPriceDataRepository
 from pricewatch.persistence.shopping_repositories import (
     SqlCategoryRepository,
     SqlGroupRepository,
@@ -77,6 +78,7 @@ class SqlUnitOfWork:
         self.observations = SqlObservationRepository(self._connection)
         self.queue = SqlQueueRepository(self._connection)
         self.workers = SqlWorkerRepository(self._connection)
+        self.price_data = SqlPriceDataRepository(self._connection)
         self.settings = SqlSettingRepository(self._connection)
         self.notifications = SqlNotificationRepository(self._connection)
         return self

@@ -1,0 +1,96 @@
+"""Графики сайта как SVG с сервера (решение 06.10.2026): плавная линия без ложных выбросов.
+
+- Линия — монотонная кубическая интерполяция (Fritsch–Carlson): между двумя ценами кривая
+  не уходит выше большей и ниже меньшей, поэтому график не рисует цен, которых не было.
+- Дни без значения разрывают линию: пропуск виден, его не замазывает прямая.
+- Координаты в условной системе `viewBox`; толщину линии держит CSS (vector-effect),
+  поэтому график растягивается по ширине карточки без искажения линии.
+- Ровная цена — линия посередине высоты, а не по нижнему краю.
+"""
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+from fractions import Fraction
+
+from pricewatch.domain.charts import ChartPoint
+
+VIEW_WIDTH = 300
+VIEW_HEIGHT = 64
+PADDING_Y = 6
+
+
+@dataclass(frozen=True, slots=True)
+class Plot:
+    view_box: str
+    # Отрезки линии (между пропусками) в синтаксисе SVG path.
+    lines: tuple[str, ...]
+
+
+def plot(points: Sequence[ChartPoint], width: int = VIEW_WIDTH, height: int = VIEW_HEIGHT) -> Plot | None:
+    """`None` — истории нет (нет ни одного значения)."""
+    values = [point.value_minor for point in points]
+    known = [value for value in values if value is not None]
+    if not known:
+        return None
+    low, high = min(known), max(known)
+    step = Fraction(width, max(len(points) - 1, 1))
+
+    def y(value: int) -> Fraction:
+        if high == low:
+            return Fraction(height, 2)
+        usable = height - 2 * PADDING_Y
+        return PADDING_Y + Fraction(high - value, high - low) * usable
+
+    segments: list[list[tuple[Fraction, Fraction]]] = [[]]
+    for index, value in enumerate(values):
+        if value is None:
+            if segments[-1]:
+                segments.append([])
+            continue
+        segments[-1].append((index * step if len(points) > 1 else Fraction(width, 2), y(value)))
+    segments = [segment for segment in segments if segment]
+    return Plot(f"0 0 {width} {height}", tuple(_path(segment) for segment in segments))
+
+
+def _path(segment: Sequence[tuple[Fraction, Fraction]]) -> str:
+    if len(segment) == 1:
+        x, y = segment[0]
+        return f"M{_n(x)} {_n(y)} h0.01"
+    tangents = _monotone_tangents(segment)
+    parts = [f"M{_n(segment[0][0])} {_n(segment[0][1])}"]
+    for index in range(len(segment) - 1):
+        (x0, y0), (x1, y1) = segment[index], segment[index + 1]
+        third = (x1 - x0) / 3
+        parts.append(
+            f"C{_n(x0 + third)} {_n(y0 + tangents[index] * third)} {_n(x1 - third)} {_n(y1 - tangents[index + 1] * third)} {_n(x1)} {_n(y1)}"
+        )
+    return " ".join(parts)
+
+
+def _monotone_tangents(segment: Sequence[tuple[Fraction, Fraction]]) -> list[Fraction]:
+    """Касательные Fritsch–Carlson: кривая монотонна там, где монотонны данные."""
+    slopes = [(y1 - y0) / (x1 - x0) for (x0, y0), (x1, y1) in zip(segment, segment[1:], strict=False)]
+    tangents = [slopes[0]] + [
+        Fraction(0) if left * right <= 0 else (left + right) / 2 for left, right in zip(slopes, slopes[1:], strict=False)
+    ] + [slopes[-1]]
+    for index, slope in enumerate(slopes):
+        if slope == 0:
+            tangents[index] = tangents[index + 1] = Fraction(0)
+            continue
+        a, b = tangents[index] / slope, tangents[index + 1] / slope
+        total = a * a + b * b
+        if total > 9:
+            # Ограничение длины касательных: иначе кривая проскакивает за соседнюю цену.
+            scale = Fraction(3) / _sqrt(total)
+            tangents[index], tangents[index + 1] = scale * a * slope, scale * b * slope
+    return tangents
+
+
+def _sqrt(value: Fraction) -> Fraction:
+    return Fraction(float(value) ** 0.5).limit_denominator(10_000)
+
+
+def _n(value: Fraction) -> str:
+    """Координата с двумя знаками: короче разметка, точности для экрана достаточно."""
+    text = f"{float(value):.2f}".rstrip("0").rstrip(".")
+    return "0" if text == "-0" else text

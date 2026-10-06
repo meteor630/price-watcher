@@ -21,6 +21,7 @@ from pricewatch.application.ports import (
     LinkTarget,
     NewObservation,
     PendingObservation,
+    RunInfo,
     RunProgress,
     StorePause,
     StoreRecord,
@@ -388,6 +389,18 @@ class SqlQueueRepository:
             _progress().where(parse_runs.c.kind.in_(("scheduled", "manual")), parse_runs.c.status.in_(ACTIVE_RUN_STATUSES))
         ).one_or_none()
         return None if row is None else RunProgress(*row)
+
+    def latest_run(self) -> RunInfo | None:
+        row = self.connection.execute(
+            _progress()
+            .add_columns(parse_runs.c.started_at, parse_runs.c.finished_at)
+            .where(parse_runs.c.kind.in_(("scheduled", "manual")))
+            .order_by(parse_runs.c.id.desc())
+            .limit(1)
+        ).one_or_none()
+        if row is None:
+            return None
+        return RunInfo(RunProgress(row.id, row.kind, row.status, row.total, row.done, row.failed), row.started_at, row.finished_at)
 
     def enqueue_run(self, run_id: int, purchased_since: datetime, now: datetime) -> RunProgress:
         tracked = (items.c.state == "active") | ((items.c.state == "purchased") & (items.c.purchased_at > purchased_since))

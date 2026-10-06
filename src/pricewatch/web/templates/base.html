@@ -11,7 +11,9 @@
   <link rel="stylesheet" href="{{ static('css/fonts.css') }}">
   <link rel="stylesheet" href="{{ static('css/tokens.css') }}">
   <link rel="stylesheet" href="{{ static('css/base.css') }}">
+  <link rel="stylesheet" href="{{ static('css/site.css') }}">
   <script src="{{ static('vendor/htmx-2.0.10.min.js') }}" defer></script>
+  <script src="{{ static('js/app.js') }}" defer></script>
 </head>
 <body{% if session_user is defined and session_user %} hx-headers='{"X-CSRF-Token": "{{ session_user.csrf_token }}"}'{% endif %}>
   <a class="skip-link" href="#main">К содержимому</a>
@@ -23,6 +25,10 @@
       </a>
       {% if session_user is defined and session_user %}
       <div class="top__meta">
+        {% if header_run is defined and header_run %}
+        {% set line, tone = run_line(header_run.status, header_run.done, header_run.failed, header_run.total, header_run.finished_at) %}
+        <p class="run-status" data-run-status="{{ header_run.status }}"><span class="dot dot--{{ tone }}" aria-hidden="true"></span><span class="run-status__text">{{ line }}</span></p>
+        {% endif %}
         <span class="top__user" data-user-name>{{ session_user.user.display_name }}</span>
         <button class="btn btn--ghost btn--small" type="button" hx-post="/web/logout" data-logout>Выйти</button>
       </div>

@@ -141,6 +141,8 @@ class ItemRow(Base):
     full_name: Mapped[str | None] = mapped_column(Text)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     in_total: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    # Устаревшая цена снова включена в итог отметкой «в итоге» (с предупреждением, раздел 6).
+    include_stale: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     # Жизненный цикл (раздел 6): очередь проверяет товары в списке и купленные меньше 14 суток назад.
     state: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
     purchased_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

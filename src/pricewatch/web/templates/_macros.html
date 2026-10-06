@@ -1,0 +1,23 @@
+{# Общие кусочки страниц: изменение цены, график. Деньги и проценты приходят готовыми строками с сервера. #}
+
+{% macro change_badges(change, compact=false) %}
+{% if change is none %}
+<span class="delta delta--none">сравнить пока не с чем</span>
+{% elif change.direction.value == "flat" %}
+<span class="delta delta--flat">без изменений</span>
+{% else %}
+<span class="delta delta--{{ change.direction.value }} num"><span aria-hidden="true">{{ arrows[change.direction.value] }}</span> {{ change.change_text }}</span>
+<span class="pill pill--{{ change.direction.value }} num"><span aria-hidden="true">{{ arrows[change.direction.value] }}</span> {{ change.percent_text }}</span>
+{% endif %}
+{% endmacro %}
+
+{% macro sparkline(points, label) %}
+{% set chart = plot(points) %}
+{% if chart is none %}
+<p class="chart-empty">График появится после первых проверок цен.</p>
+{% else %}
+<svg class="sparkline" viewBox="{{ chart.view_box }}" preserveAspectRatio="none" role="img" aria-label="{{ label }}" focusable="false">
+  {% for line in chart.lines %}<path class="sparkline__line" d="{{ line }}"/>{% endfor %}
+</svg>
+{% endif %}
+{% endmacro %}

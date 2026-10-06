@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% from "_macros.html" import change_badges, sparkline %}
+{% block title %}Главная{% endblock %}
+{% block content %}
+{% set since = period_since[board.period] %}
+<p class="crumbs"><span class="crumbs__here" aria-current="page">Главная</span></p>
+
+<section class="hero" aria-labelledby="hero-title">
+  <div class="hero__figures" id="hero-figures">
+    <p class="eyebrow">Сводка на {{ long_date(board.as_of) }}</p>
+    <h1 id="hero-title" class="hero__title">Всё, что хочу купить</h1>
+    <p class="hero__total num" data-total>{{ board.total_text }}</p>
+    <p class="hero__delta">{{ change_badges(board.change) }}<span class="hero__since">{{ since }} · только из-за цен</span></p>
+  </div>
+  <nav class="seg" aria-label="Период изменения" data-segmented data-active="{{ period_index(board.period) }}">
+    <span class="seg__thumb" aria-hidden="true"></span>
+    {% for period, name in period_names.items() %}
+    <a class="seg__option" href="/web/?period={{ period.value }}" data-seg-option="{{ loop.index0 }}"
+       {% if period == board.period %}aria-current="true"{% endif %}
+       hx-get="/web/?period={{ period.value }}" hx-select="#hero-figures" hx-target="#hero-figures" hx-swap="outerHTML"
+       hx-select-oob="#dashboard-rest" hx-push-url="true">{{ name }}</a>
+    {% endfor %}
+  </nav>
+</section>
+
+<div id="dashboard-rest">
+  <p class="summary">
+    {{ board.in_total_count }} в итоге, ещё {{ board.watching_count }} только наблюдаю.
+    {{ since | capitalize }} изменений цен: {{ board.panels.cheaper + board.panels.pricier }}.
+  </p>
+
+  <section class="section" aria-labelledby="cats-title">
+    <div class="section__head">
+      <h2 id="cats-title" class="section__title">Категории покупок</h2>
+      <p class="eyebrow">Изменение {{ since }}</p>
+    </div>
+    {% if board.categories %}
+    <div class="cats">
+      {% for card in board.categories %}
+      <article class="cat" data-category="{{ card.category_id }}">
+        {% set empty = card.in_total_count + card.watching_count == 0 %}
+        <header class="cat__top">
+          <h3 class="cat__name">{{ card.name }}</h3>
+          <p class="cat__count">{% if empty %}пусто{% else %}{{ card.in_total_count }} в итоге{% if card.watching_count %} · {{ card.watching_count }} наблюдаю{% endif %}{% endif %}</p>
+        </header>
+        {% if empty %}
+        <p class="cat__empty">В категории пока нет товаров.</p>
+        {% else %}
+        <p class="cat__total num">{{ card.total_text }}</p>
+        <p class="cat__delta">{{ change_badges(card.change) }}</p>
+        <div class="cat__chart">{{ sparkline(card.sparkline, "Сумма категории «" ~ card.name ~ "» за 30 дней") }}</div>
+        <p class="cat__foot">
+          {% if card.top_mover %}
+          <span class="cat__mover">Сильнее всего: {{ card.top_mover.name }}</span>
+          <span class="pill pill--{{ card.top_mover.direction.value }} num"><span aria-hidden="true">{{ arrows[card.top_mover.direction.value] }}</span> {{ card.top_mover.percent_text }}</span>
+          {% else %}
+          <span class="cat__mover">Цены позиций не менялись</span>
+          {% endif %}
+        </p>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">
+      <h3 class="empty__title">Список пока пуст</h3>
+      <p class="empty__text">Категории и товары появятся здесь, когда вы их добавите.</p>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="section" aria-label="Сводные показатели">
+    <div class="stats">
+      {% for panel, title in panels.items() %}
+      <button class="stat stat--{{ panel.value }}" type="button" aria-expanded="false" aria-controls="panel-drawer" data-panel="{{ panel.value }}"
+              hx-get="/web/dashboard/items?panel={{ panel.value }}&amp;period={{ board.period.value }}" hx-target="#panel-drawer-body" hx-swap="innerHTML">
+        <b class="stat__value num">{{ board.panels[panel.value] }}</b>
+        <span class="stat__label">{{ title }}</span>
+      </button>
+      {% endfor %}
+    </div>
+    <div id="panel-drawer" class="drawer" data-drawer>
+      <div class="drawer__inner"><div id="panel-drawer-body" class="drawer__body" aria-live="polite"></div></div>
+    </div>
+  </section>
+</div>
+{% endblock %}

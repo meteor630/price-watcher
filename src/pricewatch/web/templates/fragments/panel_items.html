@@ -1,0 +1,36 @@
+{% from "_macros.html" import change_badges %}
+{% if first %}
+<div class="drawer__head">
+  <h3 class="drawer__title">{{ title }} {{ period_since[period] }}</h3>
+  <button class="btn btn--ghost btn--small" type="button" data-drawer-close>Свернуть</button>
+</div>
+{% if not page.items %}<p class="drawer__empty">{{ empty }}</p>{% endif %}
+<ul class="changes" data-changes>
+{% endif %}
+  {% for row in page.items %}
+  <li class="change-row">
+    <div class="change-row__main">
+      <p class="change-row__name">{{ row.name }}</p>
+      <p class="change-row__meta">
+        {% if row.store %}<span class="store-dot store-dot--{{ row.store.color_token }}" aria-hidden="true"></span>{{ row.store.name }} · {% endif %}{{ row.category_name }}
+      </p>
+    </div>
+    <div class="change-row__prices num">
+      {% if row.old_price_text %}<span class="change-row__old">{{ row.old_price_text }}</span><span aria-hidden="true"> → </span>{% endif %}
+      <span class="change-row__new">{{ row.new_price_text or "нет цены" }}</span>
+    </div>
+    <div class="change-row__badge">
+      {% if row.change and row.change.direction.value != "flat" %}<span class="pill pill--{{ row.change.direction.value }} num"><span aria-hidden="true">{{ arrows[row.change.direction.value] }}</span> {{ row.change.percent_text }}</span>{% endif %}
+    </div>
+  </li>
+  {% endfor %}
+  {% if page.next_offset is not none %}
+  <li class="changes__more">
+    <button class="btn btn--ghost btn--small" type="button"
+            hx-get="/web/dashboard/items?panel={{ panel.value }}&amp;period={{ period.value }}&amp;offset={{ page.next_offset }}"
+            hx-target="closest li" hx-swap="outerHTML">Показать ещё</button>
+  </li>
+  {% endif %}
+{% if first %}
+</ul>
+{% endif %}

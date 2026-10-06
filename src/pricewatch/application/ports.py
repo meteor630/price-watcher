@@ -21,7 +21,8 @@ from types import TracebackType
 from typing import Protocol, Self
 
 from pricewatch.domain.accounts import Device, Invite, Role, User, WebSession
-from pricewatch.domain.shopping import Category, Group, Item
+from pricewatch.domain.pricing import Observation
+from pricewatch.domain.shopping import Category, Group, Item, ItemState
 
 
 class Unchanged:
@@ -209,6 +210,58 @@ class PurgedCounts:
     items: int = 0
 
 
+# --- Чтение цен для страниц (этап 7) ---
+
+
+@dataclass(frozen=True, slots=True)
+class PricedItem:
+    """Товар для расчёта цен: сегодняшние количество, отметки и состояние."""
+
+    item_id: int
+    category_id: int
+    name: str
+    quantity: int
+    in_total: bool
+    include_stale: bool
+    state: ItemState
+    purchased_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class LinkBinding:
+    item_id: int
+    tracked_link_id: int
+    store_id: int
+    valid_from: datetime
+    valid_to: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class StoreInfo:
+    store_id: int
+    name: str
+    color_token: str
+    enabled: bool
+
+
+class PriceDataRepository(Protocol):
+    def items(self, user_id: int) -> list[PricedItem]:
+        """Неудалённые товары в неудалённых категориях и группах, в порядке категорий и позиций."""
+        ...
+    def bindings(self, user_id: int) -> list[LinkBinding]:
+        """Все привязки ссылок к этим товарам, в том числе закрытые: история цены не обрывается."""
+        ...
+    def stores(self, store_ids: Sequence[int]) -> dict[int, StoreInfo]: ...
+    def observations(self, tracked_link_ids: Sequence[int], since: datetime) -> dict[int, list[Observation]]:
+        """Наблюдения ссылок, нужные для расчёта на любой момент начиная с `since`: всё с `since`
+        и раньше — начиная с последнего успешного подтверждённого до `since` (или последнего любого,
+        если успешных не было). Более старая история на такие расчёты не влияет."""
+        ...
+    def pending_reviews(self) -> int:
+        """Число изменений, ждущих решения администратора."""
+        ...
+
+
 # --- Сбор цен и очередь (этап 6) ---
 
 
@@ -393,6 +446,13 @@ class RunProgress:
 
 
 @dataclass(frozen=True, slots=True)
+class RunInfo:
+    progress: RunProgress
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
 class ExpiredTask:
     task: LeasedTask
     attempt: int
@@ -422,6 +482,9 @@ class QueueRepository(Protocol):
     def slot_taken(self, slot_key: str) -> bool: ...
     def active_run(self) -> RunProgress | None:
         """Идущий плановый или ручной запуск."""
+        ...
+    def latest_run(self) -> RunInfo | None:
+        """Последний плановый или ручной запуск (идущий или завершённый)."""
         ...
     def enqueue_run(self, run_id: int, purchased_since: datetime, now: datetime) -> RunProgress:
         """Задания запуска: ссылки действующих привязок активных товаров и купленных позже `purchased_since`,
@@ -486,6 +549,7 @@ class UnitOfWork(Protocol):
     observations: ObservationRepository
     queue: QueueRepository
     workers: WorkerRepository
+    price_data: PriceDataRepository
     settings: SettingRepository
     notifications: NotificationRepository
 
