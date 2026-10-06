@@ -1,0 +1,20 @@
+<dialog class="dialog" data-modal aria-labelledby="delete-title">
+  <form class="dialog__body" hx-post="/web/categories/{{ category.category_id }}/delete" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">
+    <h2 id="delete-title" class="dialog__title">Удалить «{{ category.name }}»?</h2>
+    <p class="dialog__text">В категории {{ count_word(category.item_count, "товар", "товара", "товаров") }}. Что сделать с ними?</p>
+    <input type="hidden" name="version" value="{{ category.version }}">
+    {% if others %}
+    <label class="radio"><input type="radio" name="choice" value="move" checked data-autofocus> Перенести в категорию</label>
+    <select class="input" name="move_to" aria-label="Куда перенести товары">
+      {% for other in others %}<option value="{{ other.category_id }}">{{ other.name }}</option>{% endfor %}
+    </select>
+    <label class="radio"><input type="radio" name="choice" value="delete"> Удалить вместе с категорией</label>
+    {% else %}
+    <p class="dialog__text">Других категорий нет — товары удалятся вместе с ней.</p>
+    {% endif %}
+    <div class="dialog__actions">
+      <button class="btn btn--ghost" type="button" data-dialog-close>Отмена</button>
+      <button class="btn btn--danger" type="submit">Удалить</button>
+    </div>
+  </form>
+</dialog>

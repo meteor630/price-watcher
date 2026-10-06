@@ -562,6 +562,8 @@ FOREIGN_CALLS: dict[str, Callable[[SqlUnitOfWork, int, dict[str, int]], object]]
     "items.restore": lambda w, u, r: w.items.restore(u, r["deleted_item"]),
     "items.reorder_ungrouped": lambda w, u, r: w.items.reorder(u, r["category"], None, [], 1),
     "items.reorder_grouped": lambda w, u, r: w.items.reorder(u, r["category"], r["group"], [r["item"]], 1),
+    "items.move_category_items": lambda w, u, r: w.items.move_category_items(u, r["category"], r["category"]),
+    "items.ungroup_items": lambda w, u, r: w.items.ungroup_items(u, r["group"]),
 }
 
 

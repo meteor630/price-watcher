@@ -61,3 +61,7 @@ def test_templates_have_no_inline_code(template: str) -> None:
     assert not re.search(r"\sstyle=", source), "атрибут style запрещён CSP"
     assert not re.search(r"\son[a-z]+=", source), "обработчики on…= запрещены CSP"
     assert "|safe" not in source.replace(" ", ""), "отключать экранирование нельзя"
+
+
+def test_template_variable_may_be_called_name() -> None:
+    assert 'value="Дом"' in render("fragments/rename_form.html", action="/web/x", name="Дом", version=1)

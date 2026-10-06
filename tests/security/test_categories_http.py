@@ -60,3 +60,63 @@ def test_bad_parameters_are_refused(client: TestClient, engine: Engine, path: st
 
 def test_category_needs_app_token(client: TestClient) -> None:
     assert client.get("/api/v1/categories/1").status_code == 401
+
+
+# --- порядок категорий ---
+
+import uuid  # noqa: E402
+
+
+def categories_with_order(engine: Engine, count: int = 3) -> tuple[int, list[int], int]:
+    user = run_sql(engine, "INSERT INTO users (login, password_hash, role, display_name) VALUES ('o' || md5(random()::text), 'h', 'user', 'O') RETURNING id")
+    ids = [run_sql(engine, "INSERT INTO categories (user_id, name, name_normalized, position) VALUES (:u, :n, :n, :p) RETURNING id", u=user, n=f"к{index}", p=index) for index in range(count)]
+    version = run_sql(engine, "SELECT categories_order_version FROM users WHERE id = :u", u=user)
+    return user, ids, version
+
+
+def reorder(client: TestClient, headers: dict, body: dict, key: str | None = None):  # type: ignore[no-untyped-def]
+    return client.put("/api/v1/categories/order", json=body, headers=headers | {"Idempotency-Key": key or uuid.uuid4().hex})
+
+
+def test_reorder_matches_contract_and_replays(client: TestClient, engine: Engine) -> None:
+    user, ids, version = categories_with_order(engine)
+    headers = bearer(client, engine, user)
+    key = uuid.uuid4().hex
+    body = {"ids": list(reversed(ids)), "version": version}
+
+    first, again = reorder(client, headers, body, key), reorder(client, headers, body, key)
+
+    assert first.status_code == 200 and first.json() == again.json() == {"ids": list(reversed(ids)), "version": version + 1}
+    schema("OrderState").validate(first.json())
+    assert [card["id"] for card in client.get("/api/v1/dashboard", headers=headers).json()["categories"]] == list(reversed(ids))
+
+
+def test_reorder_with_old_version_conflicts(client: TestClient, engine: Engine) -> None:
+    user, ids, version = categories_with_order(engine)
+    headers = bearer(client, engine, user)
+    reorder(client, headers, {"ids": ids[::-1], "version": version})
+
+    response = reorder(client, headers, {"ids": ids, "version": version})
+
+    assert response.status_code == 409 and response.json()["error"]["code"] == "VERSION_CONFLICT"
+    assert response.json()["error"]["details"]["current"] == {"ids": ids[::-1], "version": version + 1}  # актуальный порядок
+
+
+@pytest.mark.parametrize("make_body", [lambda ids, v: {"ids": ids[:-1], "version": v}, lambda ids, v: {"ids": ids + ids[:1], "version": v},
+                                       lambda ids, v: {"ids": [], "version": v}, lambda ids, v: {"ids": ids, "version": "1"},
+                                       lambda ids, v: {"ids": ids, "version": v, "extra": 1}])
+def test_bad_reorder_is_refused(client: TestClient, engine: Engine, make_body) -> None:  # type: ignore[no-untyped-def]
+    user, ids, version = categories_with_order(engine)
+
+    response = reorder(client, bearer(client, engine, user), make_body(ids, version))
+
+    assert response.status_code == 422 and response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_reorder_needs_key_and_own_categories(client: TestClient, engine: Engine) -> None:
+    user, ids, version = categories_with_order(engine)
+    _, foreign, _ = categories_with_order(engine, count=1)
+    headers = bearer(client, engine, user)
+
+    assert client.put("/api/v1/categories/order", json={"ids": ids, "version": version}, headers=headers).status_code == 422
+    assert reorder(client, headers, {"ids": ids[:-1] + foreign, "version": version}).status_code == 422

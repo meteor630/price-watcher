@@ -1,0 +1,7 @@
+<form class="rename-form" hx-post="{{ action }}" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">
+  <input type="hidden" name="version" value="{{ version }}">
+  <label class="visually-hidden" for="rename-input">Новое имя</label>
+  <input class="input input--inline" id="rename-input" name="name" type="text" value="{{ name }}" maxlength="60" required autocomplete="off" data-autofocus>
+  <button class="btn btn--primary btn--small" type="submit">Сохранить</button>
+  <a class="btn btn--ghost btn--small" href="/web/settings/categories">Отмена</a>
+</form>

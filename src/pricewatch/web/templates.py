@@ -13,7 +13,9 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from pricewatch.web.charts import chart, plot
 from pricewatch.domain.days import Period
-from pricewatch.web.formats import ARROWS, CHART_RANGE_NAMES, PERIOD_NAMES, PERIOD_SINCE, STATUS_LABELS, long_date, moscow_moment, period_index, run_line
+from pricewatch.web.formats import (
+    ARROWS, CHART_RANGE_NAMES, PERIOD_NAMES, PERIOD_SINCE, STATUS_LABELS, count_word, long_date, moscow_moment, period_index, run_line, swapped_order,
+)
 
 WEB_DIR = Path(__file__).parent
 TEMPLATES_DIR = WEB_DIR / "templates"
@@ -47,6 +49,8 @@ environment.globals.update(
     long_date=long_date,
     moscow_moment=moscow_moment,
     period_day=Period.DAY,
+    swapped_order=swapped_order,
+    count_word=count_word,
     period_index=period_index,
     run_line=run_line,
     period_names=PERIOD_NAMES,
@@ -55,5 +59,6 @@ environment.globals.update(
 )
 
 
-def render(name: str, **context: object) -> str:
-    return environment.get_template(name).render(**context)
+def render(template: str, /, **context: object) -> str:
+    """Имя шаблона — только позиционно: переменные шаблона могут называться как угодно (в том числе name)."""
+    return environment.get_template(template).render(**context)

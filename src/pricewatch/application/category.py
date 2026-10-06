@@ -141,3 +141,46 @@ def group_detail(uow: UnitOfWork, user: User, group_id: int, period: Period, now
 def _block(group_id: int | None, name: str | None, version: int | None, rows: list[PricedRow], stores: dict[int, StoreInfo], now: datetime) -> GroupBlock:
     amount = total([row.total_item for row in rows], now)
     return GroupBlock(group_id, name, version, [item_row(row, stores) for row in rows], amount, format_rub(amount))
+
+
+@dataclass(frozen=True, slots=True)
+class GroupOverview:
+    group_id: int
+    name: str
+    version: int
+    item_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class CategoryOverview:
+    category_id: int
+    name: str
+    version: int
+    item_count: int
+    total_text: str
+    groups: list[GroupOverview]
+
+
+@dataclass(frozen=True, slots=True)
+class CategoriesOverview:
+    order_version: int
+    categories: list[CategoryOverview]
+
+
+def categories_overview(uow: UnitOfWork, user: User, now: datetime) -> CategoriesOverview:
+    """Настройки «Категории»: порядок, число товаров «в списке», итог и группы каждой категории."""
+    with uow:
+        categories = uow.categories.list_active(user.id)
+        order_version = uow.categories.order_version(user.id)
+        groups = {category.id: uow.groups.list_in_category(user.id, category.id) for category in categories}
+        priced = load(uow, user.id, Period.DAY, now, now)
+    overview = []
+    for category in categories:
+        rows = [row for row in priced.rows if row.item.category_id == category.id]
+        overview.append(
+            CategoryOverview(
+                category.id, category.name, category.version, len(rows), format_rub(total([row.total_item for row in rows], now)),
+                [GroupOverview(group.id, group.name, group.version, sum(1 for row in rows if row.item.group_id == group.id)) for group in groups[category.id]],
+            )
+        )
+    return CategoriesOverview(order_version, overview)

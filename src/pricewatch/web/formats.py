@@ -47,3 +47,22 @@ def run_line(status: str, done: int, failed: int, total: int, finished_at: datet
     if status == "finished" and finished_at is not None:
         return f"Парсер: {moscow_moment(finished_at)}", "ok"
     return "Проверок ещё не было", "idle"
+
+
+def swapped_order(ids: list[int], first: int, second: int) -> str:
+    """Порядок «через запятую» с переставленными соседями — для кнопок «выше/ниже»."""
+    order = list(ids)
+    order[first], order[second] = order[second], order[first]
+    return ",".join(str(value) for value in order)
+
+
+def count_word(count: int, one: str, few: str, many: str) -> str:
+    """«1 товар», «3 товара», «5 товаров»."""
+    tail = count % 100
+    if 11 <= tail <= 14:
+        return f"{count} {many}"
+    if count % 10 == 1:
+        return f"{count} {one}"
+    if 2 <= count % 10 <= 4:
+        return f"{count} {few}"
+    return f"{count} {many}"

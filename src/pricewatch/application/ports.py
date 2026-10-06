@@ -188,6 +188,12 @@ class ItemRepository(Protocol):
     def reorder(
         self, user_id: int, category_id: int, group_id: int | None, ids: Sequence[int], parent_version: int
     ) -> int: ...
+    def move_category_items(self, user_id: int, category_id: int, target_category_id: int) -> int:
+        """Перенести все товары категории в другую категорию без группы, в конец списка; число перенесённых."""
+        ...
+    def ungroup_items(self, user_id: int, group_id: int) -> int:
+        """Товары группы — в «без группы» той же категории, в конец списка; число перенесённых."""
+        ...
 
 
 class PersonalDataRepository(Protocol):

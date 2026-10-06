@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="{{ static('css/base.css') }}">
   <link rel="stylesheet" href="{{ static('css/site.css') }}">
   <script src="{{ static('vendor/htmx-2.0.10.min.js') }}" defer></script>
+  <script src="{{ static('vendor/sortable-1.15.7.min.js') }}" defer></script>
   <script src="{{ static('js/app.js') }}" defer></script>
 </head>
 <body{% if session_user is defined and session_user %} hx-headers='{"X-CSRF-Token": "{{ session_user.csrf_token }}"}'{% endif %}>
@@ -29,6 +30,9 @@
         {% set line, tone = run_line(header_run.status, header_run.done, header_run.failed, header_run.total, header_run.finished_at) %}
         <p class="run-status" data-run-status="{{ header_run.status }}"><span class="dot dot--{{ tone }}" aria-hidden="true"></span><span class="run-status__text">{{ line }}</span></p>
         {% endif %}
+        <a class="gear" href="/web/settings" aria-label="Настройки" title="Настройки">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+        </a>
         <span class="top__user" data-user-name>{{ session_user.user.display_name }}</span>
         <button class="btn btn--ghost btn--small" type="button" hx-post="/web/logout" data-logout>Выйти</button>
       </div>
@@ -38,6 +42,6 @@
   <main id="main" class="wrap main">
     {% block content %}{% endblock %}
   </main>
-  <div id="flash" class="flash" role="status" aria-live="polite">{% if flash_message is defined and flash_message %}<p class="alert alert--error" role="alert">{{ flash_message }}</p>{% endif %}</div>
+  <div id="flash" class="flash" role="status" aria-live="polite">{% if flash_message is defined and flash_message %}<p class="alert alert--error" role="alert">{{ flash_message }}</p>{% endif %}{% if toast is defined and toast %}<div class="toast" data-toast><span>{{ toast }}</span><button class="toast__undo" type="button" hx-post="/web/undo" hx-vals='{"token": "{{ undo_token }}"}'>Отменить</button><span class="toast__bar" aria-hidden="true"></span></div>{% endif %}</div>
 </body>
 </html>

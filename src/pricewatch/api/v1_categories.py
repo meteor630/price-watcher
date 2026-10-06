@@ -1,4 +1,4 @@
-"""Категория для приложения: GET /api/v1/categories/{id} и /categories/{id}/chart по openapi/v1.yaml.
+"""Категории для приложения: GET /api/v1/categories/{id}, /chart и PUT /categories/order по openapi/v1.yaml.
 
 Ответ категории несёт ETag; тот же ETag в If-None-Match даёт 304. Чужая и удалённая категория — 404.
 """
@@ -9,14 +9,18 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, Request, Response
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 from pricewatch.api.app_auth import app_user
 from pricewatch.api.context import get_context
+from pricewatch.api.idempotency import idempotent
 from pricewatch.api.v1_json import change_json, item_row_json, point_json
 from pricewatch.application.app_auth import DeviceUser
 from pricewatch.application.category import CategoryDetail, category_chart, category_detail
+from pricewatch.application.shopping import reorder_categories
 from pricewatch.domain.charts import ChartRange
 from pricewatch.domain.days import Period
+from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 
 router = APIRouter(prefix="/api/v1")
 
@@ -32,6 +36,27 @@ def category_route(request: Request, category_id: CategoryId, period: Period = P
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers={"ETag": etag, "Cache-Control": PRIVATE})
     return JSONResponse(body, headers={"ETag": etag, "Cache-Control": PRIVATE})
+
+
+class ReorderRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    ids: Annotated[list[Annotated[int, Field(ge=1, le=2**62)]], Field(min_length=1, max_length=500)]
+    version: Annotated[int, Field(ge=1)]
+
+
+@router.put("/categories/order")
+def categories_order_route(request: Request, body: ReorderRequest, user: DeviceUser = Depends(app_user)) -> JSONResponse:
+    """Полный упорядоченный список категорий и версия порядка из /dashboard; ответ — новый порядок."""
+    if len(set(body.ids)) != len(body.ids):
+        raise PriceWatcherError(ErrorCode.VALIDATION_ERROR, {"fields": {"ids": "not_unique"}})
+    context = get_context(request)
+
+    def run() -> dict[str, Any]:
+        version = reorder_categories(context.unit_of_work(), user.user, body.ids, body.version)
+        return {"ids": body.ids, "version": version}
+
+    return idempotent(request, user.user.id, body.model_dump(), run)
 
 
 @router.get("/categories/{category_id}/chart")

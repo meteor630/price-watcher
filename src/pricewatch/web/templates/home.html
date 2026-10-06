@@ -27,9 +27,15 @@
       <p class="eyebrow">Изменение {{ since }}</p>
     </div>
     {% if board.categories %}
-    <div class="cats">
+    <form id="order-home" class="visually-hidden" data-sort-form hx-post="/web/categories/order" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">
+      <input type="hidden" name="ids" value="{{ board.categories | map(attribute='category_id') | join(',') }}">
+      <input type="hidden" name="version" value="{{ board.categories_order_version }}">
+      <input type="hidden" name="view" value="home"><input type="hidden" name="period" value="{{ board.period.value }}">
+    </form>
+    <p class="visually-hidden">Порядок карточек меняется перетаскиванием или кнопками в настройках.</p>
+    <div class="cats" data-sortable="order-home">
       {% for card in board.categories %}
-      <a class="cat" href="/web/categories/{{ card.category_id }}" data-category="{{ card.category_id }}">
+      <a class="cat" href="/web/categories/{{ card.category_id }}" data-category="{{ card.category_id }}" data-id="{{ card.category_id }}">
         {% set empty = card.in_total_count + card.watching_count == 0 %}
         <header class="cat__top">
           <h3 class="cat__name">{{ card.name }}</h3>

@@ -28,6 +28,7 @@ class Purpose(StrEnum):
     ACCESS = "access"
     REFRESH = "refresh"
     WORKER = "worker"
+    UNDO = "undo"
 
 
 def new_token() -> str:

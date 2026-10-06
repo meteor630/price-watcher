@@ -133,3 +133,107 @@
     }
   });
 })();
+
+/*
+ * Перетаскивание (SortableJS), окна подтверждения, сообщения с «Отменить», автофокус.
+ * Порядок после перетаскивания пишется в скрытую форму [data-sort-form], отправляет её htmx —
+ * тот же путь, что у кнопок «выше/ниже». На телефоне перетаскивание начинается после удержания,
+ * поэтому обычная прокрутка не мешает.
+ */
+(() => {
+  "use strict";
+
+  const TOAST_MS = 3000;
+  const HOLD_MS = 350;
+
+  function initSortables(root) {
+    for (const list of root.querySelectorAll("[data-sortable]")) {
+      if (list.sortable) {
+        continue;
+      }
+      const form = document.getElementById(list.dataset.sortable);
+      list.sortable = Sortable.create(list, {
+        animation: 180,
+        handle: list.dataset.sortHandle || undefined,
+        delay: HOLD_MS,
+        delayOnTouchOnly: true,
+        ghostClass: "is-ghost",
+        chosenClass: "is-chosen",
+        onEnd(event) {
+          if (event.oldIndex === event.newIndex) {
+            return;
+          }
+          form.elements.ids.value = list.sortable.toArray().join(",");
+          if (navigator.vibrate) {
+            navigator.vibrate(10);
+          }
+          htmx.trigger(form, "submit");
+        },
+      });
+    }
+  }
+
+  function armToasts(root) {
+    for (const toast of root.querySelectorAll("[data-toast]")) {
+      if (toast.armed) {
+        continue;
+      }
+      toast.armed = true;
+      setTimeout(() => {
+        // Нажатие или фокус на «Отменить» не должны пропасть вместе с сообщением.
+        if (toast.contains(document.activeElement)) {
+          toast.addEventListener("focusout", () => toast.remove(), { once: true });
+        } else {
+          toast.remove();
+        }
+      }, TOAST_MS);
+    }
+  }
+
+  function focusFirst(root) {
+    const field = root.querySelector("[data-autofocus]");
+    if (field) {
+      field.focus();
+      if (field.select) {
+        field.select();
+      }
+    }
+  }
+
+  function closeDialog(dialog) {
+    if (dialog.open) {
+      dialog.close();
+    }
+    dialog.remove();
+  }
+
+  htmx.onLoad((root) => {
+    initSortables(root);
+    armToasts(root);
+  });
+
+  document.addEventListener("htmx:afterSwap", (event) => {
+    const target = event.detail.target;
+    const dialog = target.querySelector && target.querySelector("dialog[data-modal]");
+    if (dialog) {
+      // Esc закрывает окно средствами браузера; после этого оно больше не нужно.
+      dialog.addEventListener("close", () => dialog.remove(), { once: true });
+      dialog.showModal();
+    }
+    focusFirst(target);
+  });
+
+  document.addEventListener("htmx:afterRequest", (event) => {
+    const dialog = event.detail.elt.closest && event.detail.elt.closest("dialog[data-modal]");
+    if (dialog && event.detail.successful) {
+      closeDialog(dialog);
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    const closer = event.target.closest("[data-dialog-close]");
+    if (closer) {
+      closeDialog(closer.closest("dialog"));
+    }
+  });
+})();

@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Настройки — категории{% endblock %}
+{% block content %}
+<nav class="crumbs" aria-label="Путь"><a href="/web/">Главная</a><span aria-hidden="true"> › </span><span class="crumbs__here" aria-current="page">Настройки</span></nav>
+<h1 class="page-title">Настройки</h1>
+<p class="summary">Порядок категорий здесь тот же, что на главной: перетащите строку за ручку или нажмите стрелки. Удалённое можно вернуть кнопкой «Отменить».</p>
+
+<nav class="tabs" aria-label="Разделы настроек">
+  <a class="tabs__tab" href="/web/settings/categories" aria-current="page">Категории</a>
+</nav>
+
+<div id="page-rest">
+  <form class="add-form" hx-post="/web/settings/categories" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">
+    <label class="field__label" for="new-category">Новая категория</label>
+    <div class="add-form__row">
+      <input class="input" id="new-category" name="name" type="text" maxlength="60" required autocomplete="off" placeholder="Например, «Кухня»">
+      <button class="btn btn--primary" type="submit">Добавить</button>
+    </div>
+  </form>
+
+  {% if not overview.categories %}
+  <div class="empty"><h2 class="empty__title">Категорий пока нет</h2><p class="empty__text">Добавьте первую — товары живут внутри категорий.</p></div>
+  {% else %}
+  {% set ids = overview.categories | map(attribute="category_id") | list %}
+  <form id="order-categories" class="visually-hidden" data-sort-form hx-post="/web/categories/order" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">
+    <input type="hidden" name="ids" value="{{ ids | join(',') }}"><input type="hidden" name="version" value="{{ overview.order_version }}"><input type="hidden" name="view" value="settings">
+  </form>
+  <ol class="edit-list" data-sortable="order-categories" data-sort-handle=".drag-handle--category">
+    {% for entry in overview.categories %}
+    <li class="edit-row" data-id="{{ entry.category_id }}">
+      <div class="edit-row__main">
+        <span class="drag-handle drag-handle--category" aria-hidden="true" title="Перетащите, чтобы изменить порядок">⋮⋮</span>
+        <div class="edit-row__text" id="name-category-{{ entry.category_id }}">
+          <a class="edit-row__name" href="/web/categories/{{ entry.category_id }}">{{ entry.name }}</a>
+          <span class="edit-row__meta">{{ count_word(entry.item_count, "товар", "товара", "товаров") }} · <span class="num">{{ entry.total_text }}</span></span>
+        </div>
+        <div class="edit-row__actions">
+          <button class="icon-btn" type="button" aria-label="Выше: {{ entry.name }}" {% if loop.first %}disabled{% endif %}
+                  hx-post="/web/categories/order" hx-vals='{"ids": "{{ swapped_order(ids, loop.index0, loop.index0 - 1) if not loop.first else '' }}", "version": "{{ overview.order_version }}", "view": "settings"}'
+                  hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">↑</button>
+          <button class="icon-btn" type="button" aria-label="Ниже: {{ entry.name }}" {% if loop.last %}disabled{% endif %}
+                  hx-post="/web/categories/order" hx-vals='{"ids": "{{ swapped_order(ids, loop.index0, loop.index0 + 1) if not loop.last else '' }}", "version": "{{ overview.order_version }}", "view": "settings"}'
+                  hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">↓</button>
+          <button class="btn btn--ghost btn--small" type="button" hx-get="/web/categories/{{ entry.category_id }}/rename" hx-target="#name-category-{{ entry.category_id }}" hx-swap="innerHTML">Переименовать</button>
+          {% if entry.item_count %}
+          <button class="btn btn--danger btn--small" type="button" hx-get="/web/categories/{{ entry.category_id }}/delete" hx-target="#dialog" hx-swap="innerHTML">Удалить</button>
+          {% else %}
+          <button class="btn btn--danger btn--small" type="button" hx-post="/web/categories/{{ entry.category_id }}/delete" hx-vals='{"version": "{{ entry.version }}"}'
+                  hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">Удалить</button>
+          {% endif %}
+        </div>
+      </div>
+
+      <details class="groups">
+        <summary class="groups__summary">Группы ({{ entry.groups | length }})</summary>
+        {% if entry.groups %}
+        {% set group_ids = entry.groups | map(attribute="group_id") | list %}
+        <form id="order-groups-{{ entry.category_id }}" class="visually-hidden" data-sort-form hx-post="/web/categories/{{ entry.category_id }}/groups/order" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">
+          <input type="hidden" name="ids" value="{{ group_ids | join(',') }}"><input type="hidden" name="version" value="{{ entry.version }}">
+        </form>
+        <ol class="edit-list edit-list--nested" data-sortable="order-groups-{{ entry.category_id }}" data-sort-handle=".drag-handle--group">
+          {% for group in entry.groups %}
+          <li class="edit-row edit-row--nested" data-id="{{ group.group_id }}">
+            <div class="edit-row__main">
+              <span class="drag-handle drag-handle--group" aria-hidden="true">⋮⋮</span>
+              <div class="edit-row__text" id="name-group-{{ group.group_id }}">
+                <span class="edit-row__name">{{ group.name }}</span>
+                <span class="edit-row__meta">{{ count_word(group.item_count, "товар", "товара", "товаров") }}</span>
+              </div>
+              <div class="edit-row__actions">
+                <button class="icon-btn" type="button" aria-label="Выше: {{ group.name }}" {% if loop.first %}disabled{% endif %}
+                        hx-post="/web/categories/{{ entry.category_id }}/groups/order" hx-vals='{"ids": "{{ swapped_order(group_ids, loop.index0, loop.index0 - 1) if not loop.first else '' }}", "version": "{{ entry.version }}"}'
+                        hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">↑</button>
+                <button class="icon-btn" type="button" aria-label="Ниже: {{ group.name }}" {% if loop.last %}disabled{% endif %}
+                        hx-post="/web/categories/{{ entry.category_id }}/groups/order" hx-vals='{"ids": "{{ swapped_order(group_ids, loop.index0, loop.index0 + 1) if not loop.last else '' }}", "version": "{{ entry.version }}"}'
+                        hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">↓</button>
+                <button class="btn btn--ghost btn--small" type="button" hx-get="/web/groups/{{ group.group_id }}/rename" hx-target="#name-group-{{ group.group_id }}" hx-swap="innerHTML">Переименовать</button>
+                {% if group.item_count %}
+                <button class="btn btn--danger btn--small" type="button" hx-get="/web/groups/{{ group.group_id }}/delete" hx-target="#dialog" hx-swap="innerHTML">Удалить</button>
+                {% else %}
+                <button class="btn btn--danger btn--small" type="button" hx-post="/web/groups/{{ group.group_id }}/delete" hx-vals='{"version": "{{ group.version }}", "items": "keep"}'
+                        hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">Удалить</button>
+                {% endif %}
+              </div>
+            </div>
+          </li>
+          {% endfor %}
+        </ol>
+        {% endif %}
+        <form class="add-form add-form--inline" hx-post="/web/categories/{{ entry.category_id }}/groups" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">
+          <label class="visually-hidden" for="new-group-{{ entry.category_id }}">Новая группа в «{{ entry.name }}»</label>
+          <div class="add-form__row">
+            <input class="input" id="new-group-{{ entry.category_id }}" name="name" type="text" maxlength="60" required autocomplete="off" placeholder="Новая группа">
+            <button class="btn btn--ghost" type="submit">Добавить группу</button>
+          </div>
+        </form>
+      </details>
+    </li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+</div>
+<div id="dialog"></div>
+{% endblock %}

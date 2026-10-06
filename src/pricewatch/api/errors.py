@@ -1,7 +1,9 @@
 """Ответы об ошибках по схеме ErrorResponse из openapi/v1.yaml и HTTP-статусы кодов; на страницах сайта — HTML (web_errors)."""
 
+import dataclasses
 import logging
 from collections.abc import Mapping
+from enum import Enum
 from types import MappingProxyType
 
 from fastapi import Request
@@ -79,8 +81,21 @@ def error_response(
         error["retry_after_seconds"] = retry_after
         extra_headers["Retry-After"] = str(retry_after)
     if rest:
-        error["details"] = rest
+        error["details"] = _jsonable(rest)
     return JSONResponse({"error": error}, status_code=status, headers=extra_headers)
+
+
+def _jsonable(value: object) -> object:
+    """Детали ошибки в JSON: записи domain (например, актуальное состояние при конфликте) — словарями."""
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return {field.name: _jsonable(getattr(value, field.name)) for field in dataclasses.fields(value)}
+    if isinstance(value, Mapping):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, Enum):
+        return value.value
+    return value
 
 
 # Ответ 401 приложению называет схему входа (RFC 6750); сайт входит по cookie, ему заголовок не нужен.

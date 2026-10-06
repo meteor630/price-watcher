@@ -450,6 +450,38 @@ class SqlItemRepository:
             raise _conflict(self.get(user_id, item_id))
         return _to_item(row)
 
+    def move_category_items(self, user_id: int, category_id: int, target_category_id: int) -> int:
+        SqlCategoryRepository(self.connection).get(user_id, target_category_id)
+        self.parents.bump_item_parent(user_id, target_category_id, None)
+        rows = self.connection.execute(
+            select(items.c.id)
+            .select_from(items.outerjoin(groups, groups.c.id == items.c.group_id))
+            .where(items.c.user_id == user_id, items.c.category_id == category_id, items.c.deleted_at.is_(None))
+            .order_by(groups.c.position.nulls_first(), items.c.position, items.c.id)
+        ).scalars().all()
+        return self._append(user_id, list(rows), target_category_id)
+
+    def ungroup_items(self, user_id: int, group_id: int) -> int:
+        group = SqlGroupRepository(self.connection).get(user_id, group_id)
+        self.parents.bump_item_parent(user_id, group.category_id, None)
+        rows = self.connection.execute(
+            select(items.c.id)
+            .where(items.c.user_id == user_id, items.c.group_id == group_id, items.c.deleted_at.is_(None))
+            .order_by(items.c.position, items.c.id)
+        ).scalars().all()
+        return self._append(user_id, list(rows), group.category_id)
+
+    def _append(self, user_id: int, ids: list[int], category_id: int) -> int:
+        """Товары — в конец «без группы» категории, в прежнем порядке."""
+        start = self.connection.execute(select(self._next_position(category_id, None))).scalar_one()
+        for offset, item_id in enumerate(ids):
+            self.connection.execute(
+                update(items)
+                .where(items.c.id == item_id, items.c.user_id == user_id)
+                .values(category_id=category_id, group_id=None, position=start + offset, version=items.c.version + 1, updated_at=func.now())
+            )
+        return len(ids)
+
     def delete(self, user_id: int, item_id: int, version: int) -> None:
         current = self.get(user_id, item_id)
         self.parents.bump_item_parent(user_id, current.category_id, current.group_id)
