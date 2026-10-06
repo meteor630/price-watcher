@@ -130,10 +130,12 @@
 - Путь: `src/pricewatch/parsers/`
 - Отвечает: registry, общий парсер, адаптеры магазинов, нормализаторы
 - Зависит от: `pricewatch.domain`
-- Тесты: `uv run pytest tests/unit/test_package_layout.py tests/unit/test_parsers_urls.py tests/unit/test_parsers_registry.py tests/unit/test_parsers_fetch.py`
+- Тесты: `uv run pytest tests/unit/test_package_layout.py tests/unit/test_parsers_urls.py tests/unit/test_parsers_registry.py tests/unit/test_parsers_fetch.py tests/unit/test_parsers_prices.py tests/unit/test_parsers_generic.py`
 - Файлы: `src/pricewatch/parsers/urls.py` — только https по имени (IP в любой записи, логин, порт — INVALID_URL), punycode, без фрагмента и меток рекламы, параметры по порядку; имя магазина без www. и m.
 - Файлы: `src/pricewatch/parsers/contract.py` — ParsedProduct (цены в копейках, только RUB, регион) и интерфейс адаптера StoreParser.
 - Файлы: `src/pricewatch/parsers/fetch.py` — SafeFetcher на httpx2: одно разрешение имени на шаг, все адреса публичные (NAT64, IPv4 в IPv6, многоадресные учтены), соединение на проверенный адрес с SNI по имени, перенаправления вручную до 5, предел 5 МБ после распаковки и 20 с на всё, прокси окружения игнорируются.
+- Файлы: `src/pricewatch/parsers/prices.py` — цена в копейки без float: строгий разбор структурированных значений; кандидаты из текста через price-parser только при явном знаке рубля.
+- Файлы: `src/pricewatch/parsers/generic.py` — общий парсер: JSON-LD (@graph, AggregateOffer, priceSpecification) → Open Graph и meta → микроразметка; не рубли — UNSUPPORTED_CURRENCY; без цены — PRICE_NOT_FOUND с кандидатами; коды ответа магазина → ошибки сбора цен.
 - Файлы: `src/pricewatch/parsers/registry.py` — адаптер по имени сайта: поддомены относятся к магазину, похожие имена — нет; одно имя — один адаптер.
 
 ### pricewatch.worker

@@ -20,6 +20,7 @@ import socket
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from typing import Protocol
 from urllib.parse import urljoin
 
 import httpx2
@@ -58,6 +59,12 @@ class FetchResponse:
             return self.body.decode(charset, errors="replace")
         except LookupError:
             return self.body.decode("utf-8", errors="replace")
+
+
+class Fetcher(Protocol):
+    """Загрузчик страниц для адаптеров; рабочая реализация — SafeFetcher."""
+
+    def fetch(self, url: NormalizedUrl, *, accept: str = ...) -> FetchResponse: ...
 
 
 def is_public_address(ip: IpAddress) -> bool:
