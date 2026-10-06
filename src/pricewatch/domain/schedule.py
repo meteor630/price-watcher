@@ -6,11 +6,13 @@
   создать плановый запуск дважды, даже если планировщиков два.
 - Наступивший слот — последний из промежутка (после, сейчас]. Планировщик после старта берёт
   промежуток от начала текущих суток: так выполняется один пропущенный запуск за сутки.
+- Следующий запуск — ближайший слот позже текущего момента: до него отдыхает магазин,
+  исчерпавший паузы.
 """
 
 import re
 from collections.abc import Sequence
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 
 from pricewatch.domain.days import MOSCOW, moscow_date
 
@@ -49,3 +51,10 @@ def due_slot(times: Sequence[time], after: datetime, now: datetime) -> str | Non
                 due = (moment, slot_key(day, at))
         day += timedelta(days=1)
     return None if due is None else due[1]
+
+
+def next_slot_at(times: Sequence[time], now: datetime) -> datetime:
+    """Момент ближайшего слота позже `now` (сегодня или завтра по Москве), в UTC."""
+    today = moscow_date(now)
+    moments = [datetime.combine(today + timedelta(days=shift), at, MOSCOW) for shift in (0, 1) for at in times]
+    return min(moment for moment in moments if moment > now).astimezone(UTC)

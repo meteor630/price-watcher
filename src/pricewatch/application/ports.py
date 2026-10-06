@@ -234,12 +234,28 @@ class ItemLinkRecord:
     valid_from: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class StorePause:
+    store_id: int
+    display_name: str
+    canonical_host: str
+    reason: str | None
+    level: int
+
+
 class StoreRepository(Protocol):
     def get_or_create(self, target: LinkTarget, now: datetime) -> StoreRecord:
         """Магазин по имени сайта; нет — создаётся. Одновременное создание даёт одну строку."""
         ...
     def learn(self, store_id: int, fetch_method: str | None, site_name: str | None) -> None:
         """Запомнить сработавший способ; у созданного автоматически магазина — название с сайта вместо имени сайта."""
+        ...
+    def pause_state(self, store_id: int) -> StorePause:
+        """Причина и ступень паузы магазина (строка блокируется до конца транзакции)."""
+        ...
+    def pause(self, store_id: int, reason: str, level: int, until: datetime) -> None: ...
+    def clear_pause(self, store_id: int) -> None:
+        """Магазин ответил не блокировкой и не капчей: пауза и ступень сбрасываются."""
         ...
 
 
@@ -392,8 +408,22 @@ class QueueRepository(Protocol):
         """Выданные задания с истёкшей арендой (блокируются до конца транзакции)."""
         ...
     def requeue(self, task_id: int) -> None: ...
+    def wait_paused(self, task: LeasedTask) -> None:
+        """Вернуть задание в очередь до конца паузы магазина; попыткой это не считается."""
+        ...
+    def finish_exhausted(self, task: LeasedTask, error_code: str, duration_ms: int | None, now: datetime) -> int:
+        """Паузы магазина исчерпаны: закрыть задание и все ждущие задания его магазина этой ошибкой,
+        учесть их в запусках; число закрытых ждущих."""
+        ...
     def cancel(self, task: LeasedTask, now: datetime) -> None:
         """Отменить задание остановленного запуска; активных не осталось — запуск завершён."""
+        ...
+
+
+class NotificationRepository(Protocol):
+    def notify_admins(self, kind: str, dedup_key: str, payload: dict[str, object], now: datetime) -> int:
+        """Уведомление каждому действующему администратору: в колокольчик и в Telegram, если он привязан.
+        Повтор с тем же dedup_key не создаёт новых строк. Число созданных."""
         ...
 
 
@@ -423,6 +453,7 @@ class UnitOfWork(Protocol):
     queue: QueueRepository
     workers: WorkerRepository
     settings: SettingRepository
+    notifications: NotificationRepository
 
     def __enter__(self) -> Self: ...
     def __exit__(

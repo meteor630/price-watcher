@@ -1,4 +1,4 @@
-"""Таблицы PostgreSQL: пользователи, вход (этап 3), личный список покупок (этап 2), сбор цен и очередь (этап 6).
+"""Таблицы PostgreSQL: пользователи, вход (этап 3), личный список покупок (этап 2), сбор цен, очередь и уведомления (этап 6).
 
 Схема — DEVELOPMENT_ARCHITECTURE.md, раздел 5. Ограничения стоят в базе, а не только
 в коде: составные внешние ключи не дают положить группу в чужую категорию или товар
@@ -544,4 +544,35 @@ class SettingRow(Base):
         ForeignKeyConstraint(["updated_by"], ["users.id"]),
         CheckConstraint("key ~ '^[a-z_]{1,60}$'", name="key_format"),
         CheckConstraint("version >= 1", name="version"),
+    )
+
+
+class NotificationRow(Base):
+    """Уведомление одному получателю в одном канале; одинаковые склеиваются по dedup_key.
+
+    Telegram-строки забирает бот (sent_at, attempts), строки колокольчика читает администратор (read_at).
+    """
+
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    channel: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    dedup_key: Mapped[str] = mapped_column(Text, nullable=False)
+    payload_json: Mapped[Any] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        ForeignKeyConstraint(["user_id"], ["users.id"]),
+        CheckConstraint("channel IN ('telegram', 'in_app')", name="channel"),
+        CheckConstraint("kind ~ '^[a-z_]{1,60}$'", name="kind_format"),
+        CheckConstraint("char_length(dedup_key) BETWEEN 1 AND 200", name="dedup_key_length"),
+        CheckConstraint("attempts >= 0", name="attempts"),
+        CheckConstraint("sent_at IS NULL OR channel = 'telegram'", name="sent_only_telegram"),
+        CheckConstraint("read_at IS NULL OR channel = 'in_app'", name="read_only_in_app"),
+        UniqueConstraint("user_id", "channel", "dedup_key"),
     )

@@ -102,7 +102,12 @@ def expire_leases(uow: UnitOfWork, now: datetime) -> ExpiredLeases:
 def schedule_times(uow: UnitOfWork) -> tuple[time, ...]:
     """Времена плановых проверок; настройку не задавали — 09:00 по Москве."""
     with uow:
-        raw = uow.settings.get(CHECK_TIMES_SETTING)
+        return configured_times(uow)
+
+
+def configured_times(uow: UnitOfWork) -> tuple[time, ...]:
+    """То же внутри уже открытой транзакции."""
+    raw = uow.settings.get(CHECK_TIMES_SETTING)
     return DEFAULT_TIMES if raw is None else parse_times(raw)
 
 

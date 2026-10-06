@@ -10,16 +10,23 @@
 - Успешная проверка проходит правила подозрительных изменений (раздел 6): смена названия или скачок
   цены ждут решения администратора; ценовое подозрение закрывается само, если новая цена вернулась
   в порог. Первое название ссылки становится эталонным.
+- Блокировка (403/429) или капча ставят магазин на паузу по ступеням (domain.store_pause). Пока ступени
+  не исчерпаны, задание ждёт в очереди, в историю ничего не пишется. Исчерпаны — магазин отдыхает до
+  следующего планового запуска, задание и все ждущие задания магазина закрываются этой ошибкой,
+  администраторы получают уведомление. Любой другой ответ магазина снимает паузу.
 """
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from pricewatch.application.ports import ClaimedTask, NewObservation, UnitOfWork
+from pricewatch.application.ports import ClaimedTask, LeasedTask, NewObservation, UnitOfWork
+from pricewatch.application.runs import configured_times
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.names import clean_name
 from pricewatch.domain.pricing import Availability, Confirmation
 from pricewatch.domain.review import ReviewKind, Thresholds, closes_price_review, review
+from pricewatch.domain.schedule import next_slot_at
+from pricewatch.domain.store_pause import PAUSE_REASONS, next_step
 from pricewatch.domain.tokens import Purpose, keyed_hash, new_token
 
 LEASE = timedelta(minutes=2)
@@ -115,6 +122,15 @@ def submit_result(
         task = uow.queue.leased(worker_id, task_id, now)
         if task is None:
             raise PriceWatcherError(ErrorCode.NOT_FOUND)
+        exhausted = False
+        if checked.status in {reason.value for reason in PAUSE_REASONS}:
+            exhausted = _pause_store(uow, task, ErrorCode(checked.status), now)
+            if not exhausted:
+                uow.queue.wait_paused(task)
+                uow.commit()
+                return
+        else:
+            uow.stores.clear_pause(task.store_id)
         confirmation = Confirmation.CONFIRMED
         if checked.status == "ok":
             confirmation = _review(uow, task.tracked_link_id, checked, thresholds)
@@ -125,9 +141,30 @@ def submit_result(
                 checked.availability, checked.title, task.region_code, confirmation.value, checked.source,
             )
         )
-        failed = checked.status != "ok"
-        uow.queue.finish(task, failed, checked.status if failed else None, checked.duration_ms, now)
+        if exhausted:
+            uow.queue.finish_exhausted(task, checked.status, checked.duration_ms, now)
+        else:
+            failed = checked.status != "ok"
+            uow.queue.finish(task, failed, checked.status if failed else None, checked.duration_ms, now)
         uow.commit()
+
+
+def _pause_store(uow: UnitOfWork, task: LeasedTask, reason: ErrorCode, now: datetime) -> bool:
+    """Поставить магазин на следующую ступень паузы; True — ступени исчерпаны."""
+    state = uow.stores.pause_state(task.store_id)
+    step = next_step(reason, state.reason, state.level)
+    if step.delay is not None:
+        uow.stores.pause(task.store_id, reason.value, step.level, now + step.delay)
+        return False
+    until = next_slot_at(configured_times(uow), now)
+    uow.stores.pause(task.store_id, reason.value, step.level, until)
+    uow.notifications.notify_admins(
+        "store_paused",
+        f"store_paused:{task.store_id}:{until.isoformat()}",
+        {"store": state.display_name, "host": state.canonical_host, "reason": reason.value, "paused_until": until.isoformat()},
+        now,
+    )
+    return True
 
 
 def _review(uow: UnitOfWork, tracked_link_id: int, result: WorkerResult, thresholds: Thresholds) -> Confirmation:

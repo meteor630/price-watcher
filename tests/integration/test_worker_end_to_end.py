@@ -6,7 +6,7 @@
 
 import uuid
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -95,10 +95,25 @@ def test_added_link_is_checked_and_price_lands_in_history(server: TestClient, en
 def test_store_error_lands_in_history_with_its_code(server: TestClient, engine: Engine) -> None:
     link_id, _ = added_link(engine)
 
+    worker(server, engine, FakeParsers(PriceWatcherError(ErrorCode.PRICE_NOT_FOUND))).step()
+
+    with engine.connect() as db:
+        assert db.execute(text("SELECT status FROM price_observations WHERE tracked_link_id = :l"), {"l": link_id}).scalar_one() == "PRICE_NOT_FOUND"
+
+
+def test_captcha_pauses_store_and_task_waits(server: TestClient, engine: Engine) -> None:
+    link_id, _ = added_link(engine)
+
     worker(server, engine, FakeParsers(PriceWatcherError(ErrorCode.CAPTCHA))).step()
 
     with engine.connect() as db:
-        assert db.execute(text("SELECT status FROM price_observations WHERE tracked_link_id = :l"), {"l": link_id}).scalar_one() == "CAPTCHA"
+        assert db.execute(text("SELECT count(*) FROM price_observations WHERE tracked_link_id = :l"), {"l": link_id}).scalar_one() == 0
+        assert db.execute(text("SELECT status, attempt FROM check_tasks WHERE tracked_link_id = :l"), {"l": link_id}).one() == ("queued", 0)
+        paused = db.execute(
+            text("SELECT s.pause_reason, s.pause_level, s.paused_until FROM stores s JOIN tracked_links l ON l.store_id = s.id WHERE l.id = :l"), {"l": link_id}
+        ).one()
+    assert (paused.pause_reason, paused.pause_level) == ("CAPTCHA", 1)
+    assert paused.paused_until == NOW + timedelta(seconds=15)
 
 
 def test_empty_queue(server: TestClient, engine: Engine) -> None:

@@ -16,6 +16,7 @@ from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 
 from pricewatch.persistence.collection_repositories import (
     SqlItemLinkRepository,
+    SqlNotificationRepository,
     SqlObservationRepository,
     SqlQueueRepository,
     SqlSettingRepository,
@@ -75,6 +76,7 @@ class SqlUnitOfWork:
         self.queue = SqlQueueRepository(self._connection)
         self.workers = SqlWorkerRepository(self._connection)
         self.settings = SqlSettingRepository(self._connection)
+        self.notifications = SqlNotificationRepository(self._connection)
         return self
 
     def commit(self) -> None:

@@ -22,9 +22,10 @@ AUTH_TABLES = {
     "users", "categories", "groups", "items",
     "invites", "web_sessions", "devices", "refresh_tokens", "access_tokens", "pairing_codes", "auth_failures",
 }
-TABLES = AUTH_TABLES | {
+COLLECTION_TABLES = AUTH_TABLES | {
     "stores", "tracked_links", "item_links", "parse_runs", "check_tasks", "workers", "price_observations", "settings",
 }
+TABLES = COLLECTION_TABLES | {"notifications"}
 
 
 def tables(url: str) -> set[str]:
@@ -57,6 +58,10 @@ def test_upgrade_downgrade_upgrade(empty_database_url: str) -> None:
 
     command.upgrade(config, "head")
     assert tables(empty_database_url) == TABLES
+    assert revision(empty_database_url) == "0004"
+
+    command.downgrade(config, "0003")
+    assert tables(empty_database_url) == COLLECTION_TABLES
     assert revision(empty_database_url) == "0003"
 
     command.downgrade(config, "0002")

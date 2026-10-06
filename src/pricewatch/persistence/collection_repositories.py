@@ -22,6 +22,7 @@ from pricewatch.application.ports import (
     NewObservation,
     PendingObservation,
     RunProgress,
+    StorePause,
     StoreRecord,
     WorkerAuth,
 )
@@ -30,6 +31,7 @@ from pricewatch.persistence.models import (
     CheckTaskRow,
     ItemLinkRow,
     ItemRow,
+    NotificationRow,
     ParseRunRow,
     PriceObservationRow,
     SettingRow,
@@ -49,6 +51,7 @@ price_observations: Table = PriceObservationRow.__table__
 workers: Table = WorkerRow.__table__
 users: Table = UserRow.__table__
 settings: Table = SettingRow.__table__
+notifications: Table = NotificationRow.__table__
 SITE_NAME_MAX = 100
 PALETTE_SIZE = 8
 ACTIVE_TASK = check_tasks.c.status.in_(("queued", "leased"))
@@ -98,6 +101,24 @@ class SqlStoreRepository:
                 .where(stores.c.id == store_id, stores.c.auto_created.is_(True), stores.c.display_name == stores.c.canonical_host)
                 .values(display_name=site_name[:SITE_NAME_MAX])
             )
+
+    def pause_state(self, store_id: int) -> StorePause:
+        row = self.connection.execute(
+            select(stores.c.id, stores.c.display_name, stores.c.canonical_host, stores.c.pause_reason, stores.c.pause_level)
+            .where(stores.c.id == store_id)
+            .with_for_update()
+        ).one()
+        return StorePause(row.id, row.display_name, row.canonical_host, row.pause_reason, row.pause_level)
+
+    def pause(self, store_id: int, reason: str, level: int, until: datetime) -> None:
+        self.connection.execute(update(stores).where(stores.c.id == store_id).values(paused_until=until, pause_reason=reason, pause_level=level))
+
+    def clear_pause(self, store_id: int) -> None:
+        self.connection.execute(
+            update(stores)
+            .where(stores.c.id == store_id, (stores.c.pause_level != 0) | stores.c.paused_until.is_not(None))
+            .values(paused_until=None, pause_reason=None, pause_level=0)
+        )
 
     def _find(self, host: str) -> StoreRecord | None:
         row = self.connection.execute(
@@ -423,6 +444,41 @@ class SqlQueueRepository:
             update(check_tasks).where(check_tasks.c.id == task_id).values(status="queued", worker_id=None, lease_until=None, heartbeat_at=None)
         )
 
+    def wait_paused(self, task: LeasedTask) -> None:
+        # Выдача прибавила попытку; пауза магазина — не сбой worker, попытка возвращается.
+        self.connection.execute(
+            update(check_tasks)
+            .where(check_tasks.c.id == task.task_id)
+            .values(status="queued", worker_id=None, lease_until=None, heartbeat_at=None, attempt=check_tasks.c.attempt - 1)
+        )
+
+    def finish_exhausted(self, task: LeasedTask, error_code: str, duration_ms: int | None, now: datetime) -> int:
+        queued = self.connection.execute(
+            select(check_tasks.c.id, check_tasks.c.run_id)
+            .where(
+                check_tasks.c.status == "queued",
+                check_tasks.c.tracked_link_id.in_(select(tracked_links.c.id).where(tracked_links.c.store_id == task.store_id)),
+            )
+            .order_by(check_tasks.c.id)
+            .with_for_update(of=check_tasks)
+        ).all()
+        per_run: dict[int, int] = {}
+        for row in queued:
+            per_run[row.run_id] = per_run.get(row.run_id, 0) + 1
+        run_ids = sorted(per_run.keys() | {task.run_id})
+        # Запуски блокируются по возрастанию номера: два таких результата одновременно не ждут друг друга по кругу.
+        self.connection.execute(select(parse_runs.c.id).where(parse_runs.c.id.in_(run_ids)).order_by(parse_runs.c.id).with_for_update())
+        if queued:
+            self.connection.execute(
+                update(check_tasks).where(check_tasks.c.id.in_([row.id for row in queued])).values(status="failed", error_code=error_code, finished_at=now)
+            )
+        for run_id, count in per_run.items():
+            self.connection.execute(update(parse_runs).where(parse_runs.c.id == run_id).values(failed=parse_runs.c.failed + count))
+        self.finish(task, True, error_code, duration_ms, now)
+        for run_id in run_ids:
+            self._close_if_drained(run_id, now)
+        return len(queued)
+
     def cancel(self, task: LeasedTask, now: datetime) -> None:
         self.connection.execute(
             update(check_tasks).where(check_tasks.c.id == task.task_id).values(status="cancelled", lease_until=None, finished_at=now)
@@ -497,6 +553,28 @@ class SqlSettingRepository:
 
     def get(self, key: str) -> object | None:
         return self.connection.execute(select(settings.c.value_json).where(settings.c.key == key)).scalar_one_or_none()
+
+
+class SqlNotificationRepository:
+    def __init__(self, connection: Connection) -> None:
+        self.connection = connection
+
+    def notify_admins(self, kind: str, dedup_key: str, payload: dict[str, object], now: datetime) -> int:
+        admins = self.connection.execute(
+            select(users.c.id, users.c.telegram_chat_id).where(users.c.role == "admin", users.c.disabled_at.is_(None)).order_by(users.c.id)
+        ).all()
+        rows = [
+            {"user_id": admin.id, "channel": channel, "kind": kind, "dedup_key": dedup_key, "payload_json": payload, "created_at": now}
+            for admin in admins
+            for channel in ("in_app", "telegram")
+            if channel == "in_app" or admin.telegram_chat_id is not None
+        ]
+        if not rows:
+            return 0
+        created = self.connection.execute(
+            insert(notifications).values(rows).on_conflict_do_nothing(index_elements=["user_id", "channel", "dedup_key"]).returning(notifications.c.id)
+        ).all()
+        return len(created)
 
 
 def _progress() -> Select:

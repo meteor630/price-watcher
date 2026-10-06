@@ -1,11 +1,11 @@
 """Расписание: времена из настройки, ключ слота, наступивший слот и пропущенный запуск."""
 
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 
 import pytest
 
 from pricewatch.domain.days import MOSCOW, day_start
-from pricewatch.domain.schedule import DEFAULT_TIMES, due_slot, parse_times, slot_key
+from pricewatch.domain.schedule import DEFAULT_TIMES, due_slot, next_slot_at, parse_times, slot_key
 
 
 def msk(day: int, hour: int, minute: int = 0, second: int = 0) -> datetime:
@@ -61,3 +61,12 @@ def test_tick_over_midnight() -> None:
 def test_naive_time_refused() -> None:
     with pytest.raises(ValueError):
         due_slot(DEFAULT_TIMES, datetime(2026, 10, 5, 8), msk(5, 9))
+
+
+def test_next_slot_later_today_or_tomorrow() -> None:
+    times = parse_times(["09:00", "21:00"])
+
+    assert next_slot_at(times, msk(5, 8)) == msk(5, 9)
+    assert next_slot_at(times, msk(5, 9)) == msk(5, 21)  # слот, наступивший ровно сейчас, уже не следующий
+    assert next_slot_at(times, msk(5, 22)) == msk(6, 9)
+    assert next_slot_at(times, msk(5, 22)).utcoffset() == timedelta(0)  # как всё время в системе — в UTC
