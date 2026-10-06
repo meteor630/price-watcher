@@ -1,0 +1,35 @@
+{
+ "result": true,
+ "data": {
+  "@context": "https://schema.org/",
+  "@type": "Product",
+  "name": "Корпус LIAN LI O11 Vision-M [G99.O11VMW.R0] белый",
+  "description": "Корпус Lian Li PC-O11 Vision-M [G99.O11VMW.R0] относится к формату Mini-Tower. Это значит, что в среднеразмерном боксе можно объединить все необходимые для работы ПК компоненты. Собран он из закаленного стекла, а также пластика, стали и алюминия. Выглядит такая конструкция максимально прозрачно. Модель поддерживает установку вентиляторов и системы жидкостного охлаждения. Материнская плата формата Micro-ATX или Mini-ITX устанавливается в корпус Lian Li PC-O11 Vision-M [G99.O11VMW.R0] вертикально.",
+  "sku": "5667780",
+  "offers": {
+   "@type": "Offer",
+   "url": "https://www.dns-shop.ru/product/941bee591c43d582/korpus-lian-li-o11-vision-m-g99o11vmwr0-belyj/",
+   "availability": "https://schema.org/InStock",
+   "price": 7799,
+   "priceCurrency": "RUB"
+  },
+  "aggregateRating": {
+   "@type": "AggregateRating",
+   "ratingValue": 4.95,
+   "worstRating": 1,
+   "bestRating": 5,
+   "reviewCount": 19
+  },
+  "image": [
+   "https://c.dns-shop.ru/thumb/st1/fit/300/300/c9799e91d9bfa0b33f90de49668be54f/c8fa37ce9789a9f80df285347df6fa83fc97c6649690ddbc1c1fddea7d2394e2.jpg",
+   "https://c.dns-shop.ru/thumb/st1/fit/300/300/7b725c03aa223f168ae8e91e12bf3df7/2e6d2dbca024d92ee00f37f421d2c1d3a73cbfe2a70f8b8a4bd412ef6d529de6.jpg",
+   "https://c.dns-shop.ru/thumb/st1/fit/300/300/584af5771d6a5f291efa0b79f2796407/4fce66352d7dadfae0962c29fd1025b4a33977cf1f2ee0d0b48d247d1bdc90e3.jpg"
+  ],
+  "brand": {
+   "@type": "Brand",
+   "name": "Lian Li"
+  }
+ },
+ "message": "",
+ "errors": []
+}

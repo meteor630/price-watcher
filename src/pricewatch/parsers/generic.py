@@ -138,6 +138,28 @@ def parse_html(html: str, page_url: NormalizedUrl, region_code: str) -> ParsedPr
     image = _image([_image_url(product.get("image")) for product in products] + [page.meta.get("og:image")], page_url)
     site_name = _first_text([page.meta.get("og:site_name")])
 
+    product = _choose(offers, title, image, site_name, region_code)
+    if product is None:
+        raise PriceWatcherError(ErrorCode.PRICE_NOT_FOUND, {"candidates": list(text_candidates(page.texts))})
+    return product
+
+
+def product_from_json_ld(node: Mapping[str, Any], page_url: NormalizedUrl, region_code: str, site_name: str | None = None) -> ParsedProduct:
+    """Один товар в записи schema.org (как в JSON-LD) — для магазинов, отдающих её отдельным JSON."""
+    products = list(_walk_products(node))
+    if not products:
+        raise PriceWatcherError(ErrorCode.LAYOUT_CHANGED, {"reason": "not_a_product"})
+    offers = [offer for product in products for offer in _product_offers(product)]
+    title = _first_text([_text(product.get("name")) for product in products])
+    image = _image([_image_url(product.get("image")) for product in products], page_url)
+    product = _choose(offers, title, image, site_name, region_code)
+    if product is None:
+        raise PriceWatcherError(ErrorCode.PRICE_NOT_FOUND)
+    return product
+
+
+def _choose(offers: list[_Offer], title: str | None, image: str | None, site_name: str | None, region_code: str) -> ParsedProduct | None:
+    """Самое дешёвое предложение в наличии в рублях; все нет в наличии — товар без цены; иначе None."""
     priced = [offer for offer in offers if offer.price_minor is not None]
     rubles = [offer for offer in priced if is_ruble(offer.currency)]
     if priced and not rubles:
@@ -149,7 +171,7 @@ def parse_html(html: str, page_url: NormalizedUrl, region_code: str) -> ParsedPr
         return ParsedProduct(title, best.price_minor, None, availability, image, region_code, site_name=site_name)
     if any(offer.availability is Availability.OUT_OF_STOCK for offer in offers):
         return ParsedProduct(title, None, None, Availability.OUT_OF_STOCK, image, region_code, site_name=site_name)
-    raise PriceWatcherError(ErrorCode.PRICE_NOT_FOUND, {"candidates": list(text_candidates(page.texts))})
+    return None
 
 
 def _json_ld_products(block: str) -> Iterator[Mapping[str, Any]]:
