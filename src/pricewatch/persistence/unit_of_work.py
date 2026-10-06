@@ -14,6 +14,13 @@ from sqlalchemy.exc import InterfaceError, OperationalError, SQLAlchemyError
 
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 
+from pricewatch.persistence.collection_repositories import (
+    SqlItemLinkRepository,
+    SqlObservationRepository,
+    SqlQueueRepository,
+    SqlStoreRepository,
+    SqlTrackedLinkRepository,
+)
 from pricewatch.persistence.app_auth_repositories import (
     SqlDeviceRepository,
     SqlPairingCodeRepository,
@@ -59,6 +66,11 @@ class SqlUnitOfWork:
         self.categories = SqlCategoryRepository(self._connection)
         self.groups = SqlGroupRepository(self._connection)
         self.items = SqlItemRepository(self._connection)
+        self.stores = SqlStoreRepository(self._connection)
+        self.tracked_links = SqlTrackedLinkRepository(self._connection)
+        self.item_links = SqlItemLinkRepository(self._connection)
+        self.observations = SqlObservationRepository(self._connection)
+        self.queue = SqlQueueRepository(self._connection)
         return self
 
     def commit(self) -> None:

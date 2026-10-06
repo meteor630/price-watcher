@@ -81,8 +81,9 @@
 - Путь: `src/pricewatch/application/`
 - Отвечает: сценарии и интерфейсы репозиториев
 - Зависит от: `pricewatch.domain`
-- Тесты: `uv run pytest tests/unit/test_passwords.py tests/integration/test_create_admin_command.py tests/integration/test_registration.py tests/integration/test_web_login.py tests/integration/test_app_auth.py`
-- Файлы: `src/pricewatch/application/ports.py` — интерфейсы репозиториев и единицы работы; общие правила владельца, версий, перестановки, удаления.
+- Тесты: `uv run pytest tests/unit/test_passwords.py tests/integration/test_create_admin_command.py tests/integration/test_registration.py tests/integration/test_web_login.py tests/integration/test_app_auth.py tests/integration/test_add_link.py`
+- Файлы: `src/pricewatch/application/ports.py` — интерфейсы репозиториев и единицы работы; общие правила владельца, версий, перестановки, удаления; LinkResolver — описание адреса от сборщика цен.
+- Файлы: `src/pricewatch/application/links.py` — добавление ссылки к товару: магазин создаётся сам, каталог без дублей, замена ссылки того же магазина, свежая цена (моложе суток) или срочное задание, лимит 20 новых ссылок в час.
 - Файлы: `src/pricewatch/application/passwords.py` — PasswordHasher: argon2id (argon2-cffi), нормализация, фиктивная проверка для выравнивания времени.
 - Файлы: `src/pricewatch/application/app_auth.py` — вход приложения: код связки (лимит по IP), устройство, ротация refresh (вывод через HMAC, окно 60 с, повтор позже — отзыв устройства), access-токен, выход.
 - Файлы: `src/pricewatch/application/web_auth.py` — вход на сайт: лимиты до проверки пароля, неотличимые отказы, сессия, выход, CSRF-токен как HMAC сессии.
@@ -92,10 +93,11 @@
 - Путь: `src/pricewatch/persistence/`
 - Отвечает: модели БД, репозитории, миграции
 - Зависит от: `pricewatch.application`, `pricewatch.config`, `pricewatch.domain`, `pricewatch.observability`
-- Тесты: `uv run pytest tests/integration/test_database_connection.py tests/integration/test_migrations.py tests/integration/test_schema_constraints.py tests/integration/test_shopping_repositories.py tests/integration/test_concurrency.py tests/integration/test_schema_check.py tests/integration/test_user_repository.py tests/integration/test_database_failures.py tests/integration/test_queue_schema.py`
+- Тесты: `uv run pytest tests/integration/test_database_connection.py tests/integration/test_migrations.py tests/integration/test_schema_constraints.py tests/integration/test_shopping_repositories.py tests/integration/test_concurrency.py tests/integration/test_schema_check.py tests/integration/test_user_repository.py tests/integration/test_database_failures.py tests/integration/test_queue_schema.py tests/integration/test_collection_repositories.py`
 - Файлы: `src/pricewatch/persistence/database.py` — подключение: малый пул, hide_parameters, соединение в UTC, DB_ERROR при недоступной базе.
 - Файлы: `src/pricewatch/persistence/models.py` — таблицы списка покупок (составные ключи владельца), входа (в *_hash только HMAC в hex — проверка в базе) и сбора цен с очередью: магазины, ссылки, привязки, наблюдения, запуски, задания, worker, настройки; гарантии раздела 8 — частичными уникальными индексами; имена ограничений по правилу.
 - Файлы: `src/pricewatch/persistence/migrations/`, `src/pricewatch/persistence/migrations/versions/` — миграции Alembic; env.py берёт адрес базы из настроек (config) и пишет журнал в JSON (observability).
+- Файлы: `src/pricewatch/persistence/collection_repositories.py` — магазины, ссылки каталога, привязки, наблюдения, срочные задания: вставка ON CONFLICT по уникальным индексам; условие частичного индекса — буквально (общий план подготовленного запроса).
 - Файлы: `src/pricewatch/persistence/schema.py` — настройка Alembic из кода, без alembic.ini; ревизия кода и базы, SchemaMismatch с подсказкой.
 - Файлы: `src/pricewatch/persistence/shopping_repositories.py` — репозитории категорий, групп, товаров; изменения состава списка блокируют родителя подъёмом его версии.
 - Файлы: `src/pricewatch/persistence/unit_of_work.py` — SqlUnitOfWork: одно соединение и транзакция; без commit — откат; недоступность, обрыв и взаимная блокировка → DB_ERROR (503).
@@ -130,7 +132,7 @@
 - Путь: `src/pricewatch/parsers/`
 - Отвечает: registry, общий парсер, адаптеры магазинов, нормализаторы
 - Зависит от: `pricewatch.domain`
-- Тесты: `uv run pytest tests/unit/test_package_layout.py tests/unit/test_parsers_urls.py tests/unit/test_parsers_registry.py tests/unit/test_parsers_fetch.py tests/unit/test_parsers_prices.py tests/unit/test_parsers_generic.py tests/unit/test_parsers_egress.py tests/integration/test_browser_egress.py tests/unit/test_parsers_wildberries.py tests/unit/test_parsers_regard.py tests/unit/test_parsers_visual.py tests/integration/test_visual_in_chrome.py tests/unit/test_parsers_universal.py tests/unit/test_parsers_dns.py tests/unit/test_parsers_ozon.py tests/unit/test_parsers_yandex_market.py tests/unit/test_parsers_avito.py`
+- Тесты: `uv run pytest tests/unit/test_package_layout.py tests/unit/test_parsers_urls.py tests/unit/test_parsers_registry.py tests/unit/test_parsers_fetch.py tests/unit/test_parsers_prices.py tests/unit/test_parsers_generic.py tests/unit/test_parsers_egress.py tests/integration/test_browser_egress.py tests/unit/test_parsers_wildberries.py tests/unit/test_parsers_regard.py tests/unit/test_parsers_visual.py tests/integration/test_visual_in_chrome.py tests/unit/test_parsers_universal.py tests/unit/test_parsers_dns.py tests/unit/test_parsers_ozon.py tests/unit/test_parsers_yandex_market.py tests/unit/test_parsers_avito.py tests/unit/test_parsers_catalog.py`
 - Файлы: `src/pricewatch/parsers/urls.py` — только https по имени (IP в любой записи, логин, порт — INVALID_URL), punycode, без фрагмента и меток рекламы, параметры по порядку; имя магазина без www. и m.
 - Файлы: `src/pricewatch/parsers/contract.py` — ParsedProduct (цены в копейках, только RUB, регион, источник цены, название сайта, заметки) и интерфейс адаптера StoreParser.
 - Файлы: `src/pricewatch/parsers/fetch.py` — SafeFetcher на httpx2: cookies магазина только на его сайт и поддомены; одно разрешение имени на шаг, все адреса публичные (NAT64, IPv4 в IPv6, многоадресные учтены), соединение на проверенный адрес с SNI по имени, перенаправления вручную до 5, предел 5 МБ после распаковки и 20 с на всё, прокси окружения игнорируются.
@@ -149,6 +151,7 @@
 - Файлы: `tests/fixtures/stores/yandex_market` — карточки в продаже и снятой с продажи от 06.10.2026, сокращённые до JSON-LD, h1, региона и priceDetails.
 - Файлы: `src/pricewatch/parsers/stores/avito.py` — Авито: только браузер с профилем, где проверка пройдена вручную; цена продавца из JSON-LD; снятое объявление — по надписи «снято с публикации», она важнее JSON-LD; защита — CAPTCHA.
 - Файлы: `tests/fixtures/stores/avito` — действующее и снятое объявления от 06.10.2026, сокращённые до og, JSON-LD и h1; тексты продавцов заменены.
+- Файлы: `src/pricewatch/parsers/catalog.py` — справочник магазинов (реализует LinkResolver): известный магазин — карточка по его правилам и данные магазина, другой сайт — общий парсер, магазин создаётся сам; паузы 2 с, 5 с, 60 с.
 - Файлы: `src/pricewatch/parsers/stores/regard.py` — Регард без браузера: cookie city_id (Санкт-Петербург — 137), город подтверждается town.cookieTownId из __NEXT_DATA__, цена — общим парсером.
 - Файлы: `tests/fixtures/stores/regard` — настоящая страница товара от 06.10.2026, сокращённая: JSON-LD целиком (с похожими товарами) и состояние города.
 - Файлы: `tests/fixtures/stores/wildberries` — образцы ответов WB от 06.10.2026: карточка товара, геоданные Санкт-Петербурга (без IP и подписи).

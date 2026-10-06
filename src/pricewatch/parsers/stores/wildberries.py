@@ -47,7 +47,7 @@ class WildberriesParser:
         if region_code not in REGIONS:
             raise PriceWatcherError(ErrorCode.REGION_MISMATCH, {"region": region_code})
         city, latitude, longitude = REGIONS[region_code]
-        page_url = normalize_url(f"https://www.wildberries.ru/catalog/{article}/detail.aspx")
+        page_url = canonical_url(url)
         geo_url = normalize_url(
             "https://user-geo-data.wildberries.ru/get-geo-info"
             f"?currency=RUB&latitude={latitude}&longitude={longitude}&locale=ru&address={quote(city)}&dt=0"
@@ -62,6 +62,11 @@ class WildberriesParser:
             detail_url = normalize_url(f"https://www.wildberries.ru{DETAIL_PATH}?appType=1&curr=rub&dest={dest}&spp=30&nm={article}")
             (detail,) = opened.fetch_json([detail_url], headers)
             return product_from_detail(detail, article, region_code, card_image(opened.page, article))
+
+
+def canonical_url(url: NormalizedUrl) -> NormalizedUrl:
+    """Карточка товара без параметров: /catalog/<артикул>/detail.aspx."""
+    return normalize_url(f"https://www.wildberries.ru/catalog/{article_id(url)}/detail.aspx")
 
 
 def article_id(url: NormalizedUrl) -> int:

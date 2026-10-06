@@ -14,11 +14,11 @@ from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.parsers.contract import ParsedProduct
 from pricewatch.parsers.fetch import Fetcher
 from pricewatch.parsers.generic import check_status, parse_html
-from pricewatch.parsers.urls import NormalizedUrl
+from pricewatch.parsers.urls import NormalizedUrl, normalize_url
 
 KEY = "regard"
 REGION_TOWNS = {"spb": 137}
-PRODUCT_PATH = re.compile(r"^/product/\d+(/|$)")
+PRODUCT_PATH = re.compile(r"^/product/\d+(?:/[^?#/]*)?")
 NEXT_DATA = re.compile(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', re.S)
 
 
@@ -30,8 +30,7 @@ class RegardParser:
         self._fetcher = fetcher
 
     def parse(self, url: NormalizedUrl, region_code: str) -> ParsedProduct:
-        if not PRODUCT_PATH.match(url.url.split(url.host, 1)[1]):
-            raise PriceWatcherError(ErrorCode.INVALID_URL)
+        url = canonical_url(url)
         town = REGION_TOWNS.get(region_code)
         if town is None:
             raise PriceWatcherError(ErrorCode.REGION_MISMATCH, {"region": region_code})
@@ -42,6 +41,14 @@ class RegardParser:
         if page_town != town:
             raise PriceWatcherError(ErrorCode.REGION_MISMATCH, {"town": page_town})
         return parse_html(html, response.url, region_code)
+
+
+def canonical_url(url: NormalizedUrl) -> NormalizedUrl:
+    """Карточка товара без параметров: /product/<номер>/<название>."""
+    match = PRODUCT_PATH.match(url.url.split(url.host, 1)[1])
+    if match is None:
+        raise PriceWatcherError(ErrorCode.INVALID_URL)
+    return normalize_url(f"https://www.regard.ru{match.group(0)}")
 
 
 def selected_town(html: str) -> int | None:

@@ -188,6 +188,86 @@ class ItemRepository(Protocol):
     ) -> int: ...
 
 
+# --- Сбор цен и очередь (этап 6) ---
+
+
+class LinkTarget(Protocol):
+    """Что сборщик цен знает об адресе: приведённая ссылка и магазин (реализация — pricewatch.parsers.catalog)."""
+
+    @property
+    def normalized_url(self) -> str: ...
+    @property
+    def store_host(self) -> str: ...
+    @property
+    def parser_key(self) -> str: ...
+    @property
+    def store_name(self) -> str: ...
+    @property
+    def has_card_price(self) -> bool: ...
+    @property
+    def min_delay_ms(self) -> int: ...
+    @property
+    def auto_created(self) -> bool: ...
+
+
+class LinkResolver(Protocol):
+    def resolve(self, raw_url: str) -> LinkTarget:
+        """Привести адрес и определить магазин; плохой адрес — INVALID_URL."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class StoreRecord:
+    id: int
+    canonical_host: str
+    display_name: str
+    parser_key: str
+    enabled: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ItemLinkRecord:
+    id: int
+    item_id: int
+    tracked_link_id: int
+    store_id: int
+    valid_from: datetime
+
+
+class StoreRepository(Protocol):
+    def get_or_create(self, target: LinkTarget, now: datetime) -> StoreRecord:
+        """Магазин по имени сайта; нет — создаётся. Одновременное создание даёт одну строку."""
+        ...
+
+
+class TrackedLinkRepository(Protocol):
+    def get_or_create(self, store_id: int, normalized_url: str, region_code: str, now: datetime) -> int:
+        """Номер ссылки каталога; одновременное добавление одной страницы даёт одну строку."""
+        ...
+
+
+class ItemLinkRepository(Protocol):
+    def lock_item(self, user_id: int, item_id: int) -> None:
+        """Заблокировать товар владельца до конца транзакции; чужой или удалённый — NOT_FOUND."""
+        ...
+    def active_for_store(self, item_id: int, store_id: int) -> ItemLinkRecord | None: ...
+    def bind(self, user_id: int, item_id: int, tracked_link_id: int, store_id: int, now: datetime) -> ItemLinkRecord: ...
+    def close(self, item_link_id: int, now: datetime) -> None: ...
+    def added_since(self, user_id: int, since: datetime) -> list[datetime]:
+        """Время привязок пользователя позже `since`, по возрастанию — для лимита новых ссылок."""
+        ...
+
+
+class ObservationRepository(Protocol):
+    def has_confirmed_success_since(self, tracked_link_id: int, since: datetime) -> bool: ...
+
+
+class QueueRepository(Protocol):
+    def enqueue_on_add(self, tracked_link_id: int, now: datetime) -> int:
+        """Срочное задание на одну ссылку (запуск вида on_add); уже есть активное — его номер."""
+        ...
+
+
 class UnitOfWork(Protocol):
     """Одна транзакция. Выход без commit() — откат."""
 
@@ -201,6 +281,11 @@ class UnitOfWork(Protocol):
     categories: CategoryRepository
     groups: GroupRepository
     items: ItemRepository
+    stores: StoreRepository
+    tracked_links: TrackedLinkRepository
+    item_links: ItemLinkRepository
+    observations: ObservationRepository
+    queue: QueueRepository
 
     def __enter__(self) -> Self: ...
     def __exit__(
