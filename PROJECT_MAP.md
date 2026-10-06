@@ -53,7 +53,7 @@
 - Файлы: `.github/workflows/ci.yml` — CI на каждый push: тесты, import-linter, проверка карты на Linux и на Windows (PostgreSQL 18 сборки EDB), gitleaks по всей истории. Действия закреплены по хешу, gitleaks и PostgreSQL для Windows — с проверкой контрольной суммы.
 - Файлы: `.gitleaksignore` — ложные срабатывания gitleaks по точному отпечатку; только ненастоящие значения из тестов и только с согласия владельца.
 
-Зависимости рабочего кода: pydantic-settings (MIT), fastapi (MIT), uvicorn (BSD-3), sqlalchemy (MIT), psycopg (LGPL-3.0, как неизменённая библиотека), alembic (MIT), argon2-cffi (MIT), tzdata (Apache-2.0). Для разработки: pytest, import-linter, grimp, openapi-spec-validator, httpx2.
+Зависимости рабочего кода: pydantic-settings (MIT), fastapi (MIT), uvicorn (BSD-3), sqlalchemy (MIT), psycopg (LGPL-3.0, как неизменённая библиотека), alembic (MIT), argon2-cffi (MIT), tzdata (Apache-2.0), httpx2 (BSD-3), price-parser (BSD-3). Для разработки: pytest, import-linter, grimp, openapi-spec-validator.
 
 ## Пакеты
 
@@ -129,8 +129,11 @@
 ### pricewatch.parsers
 - Путь: `src/pricewatch/parsers/`
 - Отвечает: registry, общий парсер, адаптеры магазинов, нормализаторы
-- Зависит от: —
-- Тесты: `uv run pytest tests/unit/test_package_layout.py`
+- Зависит от: `pricewatch.domain`
+- Тесты: `uv run pytest tests/unit/test_package_layout.py tests/unit/test_parsers_urls.py tests/unit/test_parsers_registry.py`
+- Файлы: `src/pricewatch/parsers/urls.py` — только https по имени (IP в любой записи, логин, порт — INVALID_URL), punycode, без фрагмента и меток рекламы, параметры по порядку; имя магазина без www. и m.
+- Файлы: `src/pricewatch/parsers/contract.py` — ParsedProduct (цены в копейках, только RUB, регион) и интерфейс адаптера StoreParser.
+- Файлы: `src/pricewatch/parsers/registry.py` — адаптер по имени сайта: поддомены относятся к магазину, похожие имена — нет; одно имя — один адаптер.
 
 ### pricewatch.worker
 - Путь: `src/pricewatch/worker/`
@@ -251,6 +254,11 @@
 | Ротация refresh-токенов, сессии | своя реализация по разделу 4 архитектуры; access-токен — случайная строка, в базе HMAC | RFC 9700 (OAuth 2.0 Security BCP), схема ротации с обнаружением повтора Auth0 — как образец | fastapi-users (режим поддержки, нет refresh), Authlib (сервер OAuth2 целиком), simplejwt (только Django, нет семей) |
 | Ограничение попыток входа | своя таблица неудачных попыток в PostgreSQL | — | slowapi и limits (нет хранилища PostgreSQL), fastapi-limiter (нужен Redis) |
 | Часовой пояс Москвы | `zoneinfo` стандартной библиотеки с данными пакета tzdata | github.com/python/tzdata, Apache-2.0 | фиксированное +3 (правила менялись в 2011 и 2014), системная база (может отсутствовать в образе) |
+| HTTP-клиент парсера | httpx2 | github.com/pydantic/httpx2, BSD-3 | httpx (Starlette уже требует httpx2; два клиента не нужны) |
+| Защита от SSRF | своя на httpx2: одно разрешение имени, проверка адреса, соединение на проверенный адрес, проверка каждого перенаправления | подход httpx-secure (github.com/Zaczero/pkgs, 0BSD) | httpx-secure (нужен второй клиент httpx, только async), ssrf-guard (новый, без истории), Advocate (в архиве) |
+| Структурированные данные | свой разбор JSON-LD и meta/Open Graph на стандартной библиотеке | случаи `@graph` и AggregateOffer — по extruct (github.com/scrapinghub/extruct, BSD-3) и changedetection.io (Apache-2.0) | extruct (lxml, rdflib и ещё 5 пакетов, выпуск 11.2024) |
+| Цена из текста | price-parser → Decimal → копейки с проверкой точности | github.com/scrapinghub/price-parser, BSD-3 | свой разбор (меньше форматов) |
+| Wildberries | открытый JSON card.wb.ru/cards/v4/detail | подход из github.com/Duff89/wildberries_parser (без лицензии — код не копируется) | браузер (медленно) |
 | CSRF | свой токен, привязанный к серверной сессии, и проверка Origin | — | starlette-csrf (не развивается с 2023), fastapi-csrf-protect (вторая cookie и секрет) |
 
 Шрифты, лицензия SIL OFL 1.1, источник — npm-пакеты @fontsource-variable:

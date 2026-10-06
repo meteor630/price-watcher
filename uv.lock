@@ -450,6 +450,18 @@ wheels = [
 ]
 
 [[package]]
+name = "price-parser"
+version = "0.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "attrs" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/54/c7/217521864c88b4ee862fea2fbf49b0eb64be43fe9e4ca696362ea1b4ecef/price_parser-0.5.1.tar.gz", hash = "sha256:6861919270cba24a21c70f30e1444338eb2b03ca2bf2d2ddaaa3287176cfab4c", size = 34441, upload-time = "2026-03-19T11:33:24.102Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9d/99/734dd8b0a0ae187aeeb4d7b35bf6aa85bc755842aff7a2b146885c293811/price_parser-0.5.1-py3-none-any.whl", hash = "sha256:d401fb2a866e86103a19383396bee5ac7f72408a9db6bf3c6edf3210e4212910", size = 14800, upload-time = "2026-03-19T11:33:22.722Z" },
+]
+
+[[package]]
 name = "pricewatch"
 version = "0.1.0"
 source = { editable = "." }
@@ -457,6 +469,8 @@ dependencies = [
     { name = "alembic" },
     { name = "argon2-cffi" },
     { name = "fastapi" },
+    { name = "httpx2" },
+    { name = "price-parser" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic-settings" },
     { name = "sqlalchemy" },
@@ -467,7 +481,6 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "grimp" },
-    { name = "httpx2" },
     { name = "import-linter" },
     { name = "openapi-spec-validator" },
     { name = "pytest" },
@@ -478,6 +491,8 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.20.0" },
     { name = "argon2-cffi", specifier = ">=25.1.0" },
     { name = "fastapi", specifier = ">=0.142.2" },
+    { name = "httpx2", specifier = ">=2.13.1" },
+    { name = "price-parser", specifier = ">=0.5.1" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
     { name = "pydantic-settings", specifier = ">=2.15" },
     { name = "sqlalchemy", specifier = ">=2.1.3" },
@@ -488,7 +503,6 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "grimp", specifier = ">=3.17" },
-    { name = "httpx2", specifier = ">=2.13.1" },
     { name = "import-linter", specifier = ">=2.15" },
     { name = "openapi-spec-validator", specifier = ">=0.9.0" },
     { name = "pytest", specifier = ">=9.1.1" },
