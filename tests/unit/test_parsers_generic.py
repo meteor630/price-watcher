@@ -236,3 +236,34 @@ def test_generic_parser_refuses_non_html() -> None:
         GenericParser(fetcher).parse(PAGE, "spb")
 
     assert caught.value.code is ErrorCode.LAYOUT_CHANGED
+
+
+def test_json_ld_price_is_not_mixed_with_other_products_microdata() -> None:
+    # Регард, 06.10.2026: в JSON-LD — сам товар за 42 100 ₽, а в микроразметке ниже — рекомендованный
+    # товар за 14 340 ₽ («нет в наличии» у другого). Источники идут по очереди, а не смешиваются.
+    product = {**PRODUCT, "offers": {"price": "42100.00", "priceCurrency": "RUB", "availability": "https://schema.org/InStock"}}
+    body = '<div itemscope><meta itemprop="price" content="14340"><link itemprop="availability" href="https://schema.org/InStock"></div>'
+
+    assert parse(page(json_ld=product, body=body)).price_minor == 4_210_000
+
+
+def test_json_ld_out_of_stock_is_not_overridden_by_other_products_microdata() -> None:
+    product = {**PRODUCT, "offers": {"availability": "https://schema.org/OutOfStock"}}
+    body = '<div itemscope><meta itemprop="price" content="14340"></div>'
+
+    assert parse(page(json_ld=product, body=body)).availability is Availability.OUT_OF_STOCK
+
+
+def test_related_products_nested_in_product_are_ignored() -> None:
+    # Регард, 06.10.2026: внутри JSON-LD товара — похожие товары со своими предложениями.
+    related = {"@type": "Product", "name": "Другой процессор", "offers": {"price": "14340", "priceCurrency": "RUB", "availability": "InStock"}}
+    product = {**PRODUCT, "offers": {"price": "42100.00", "priceCurrency": "RUB", "availability": "InStock"}, "isSimilarTo": [related]}
+
+    assert parse(page(json_ld=product)).price_minor == 4_210_000
+
+
+def test_product_group_variants_are_read() -> None:
+    variant = {"@type": "Product", "name": "Лампа белая", "offers": {"price": "990", "priceCurrency": "RUB", "availability": "InStock"}}
+    group = {"@context": "https://schema.org", "@type": "ProductGroup", "name": "Лампа", "hasVariant": [variant]}
+
+    assert parse(page(json_ld=group)).price_minor == 99_000

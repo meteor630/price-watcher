@@ -18,7 +18,8 @@ Worker стоит в домашней сети, поэтому каждый ша
 import ipaddress
 import socket
 import time
-from collections.abc import Callable, Iterable
+import re
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Protocol
 from urllib.parse import urljoin
@@ -32,6 +33,7 @@ MAX_BYTES = 5 * 1024 * 1024
 MAX_REDIRECTS = 5
 TOTAL_TIMEOUT_S = 20.0
 TIMEOUT = httpx2.Timeout(connect=5.0, read=10.0, write=5.0, pool=5.0)
+COOKIE_TOKEN = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36"
 # Хорошо известный префикс NAT64: внутри лежит IPv4, который и нужно проверять.
@@ -64,7 +66,15 @@ class FetchResponse:
 class Fetcher(Protocol):
     """Загрузчик страниц для адаптеров; рабочая реализация — SafeFetcher."""
 
-    def fetch(self, url: NormalizedUrl, *, accept: str = ...) -> FetchResponse: ...
+    def fetch(self, url: NormalizedUrl, *, accept: str = ..., cookies: Mapping[str, str] | None = ...) -> FetchResponse: ...
+
+
+def _cookie_header(cookies: Mapping[str, str]) -> str:
+    # Значения задаёт код адаптера, но разделители и переводы строк всё равно не пропускаются.
+    for name, value in cookies.items():
+        if not COOKIE_TOKEN.match(name) or not COOKIE_TOKEN.match(value):
+            raise ValueError("недопустимая cookie")
+    return "; ".join(f"{name}={value}" for name, value in cookies.items())
 
 
 def is_public_address(ip: IpAddress) -> bool:
@@ -109,11 +119,16 @@ class SafeFetcher:
     def close(self) -> None:
         self._client.close()
 
-    def fetch(self, url: NormalizedUrl, *, accept: str = "text/html,application/xhtml+xml") -> FetchResponse:
+    def fetch(
+        self, url: NormalizedUrl, *, accept: str = "text/html,application/xhtml+xml", cookies: Mapping[str, str] | None = None
+    ) -> FetchResponse:
+        """`cookies` — настройки магазина (например, город); уходят только на сайт этого магазина."""
         deadline = self._clock() + self._total_timeout_s
+        cookie_header = _cookie_header(cookies or {})
         current = url
         for _ in range(MAX_REDIRECTS + 1):
-            response = self._fetch_once(current, accept, deadline)
+            same_store = current.store_host == url.store_host or current.store_host.endswith("." + url.store_host)
+            response = self._fetch_once(current, accept, cookie_header if same_store else None, deadline)
             location = response.headers.get("location") if response.status_code in REDIRECT_STATUSES else None
             if location is None:
                 body = self._read_limited(response, deadline)
@@ -123,13 +138,16 @@ class SafeFetcher:
             current = normalize_url(urljoin(current.url, location))
         raise PriceWatcherError(ErrorCode.BLOCKED, {"reason": "too_many_redirects"})
 
-    def _fetch_once(self, url: NormalizedUrl, accept: str, deadline: float) -> httpx2.Response:
+    def _fetch_once(self, url: NormalizedUrl, accept: str, cookie_header: str | None, deadline: float) -> httpx2.Response:
         address = self._pinned_address(url.host)
         target = httpx2.URL(url.url).copy_with(host=str(address))
+        headers = {"Host": url.host, "Accept": accept, "Accept-Language": "ru-RU,ru;q=0.9", "User-Agent": USER_AGENT}
+        if cookie_header:
+            headers["Cookie"] = cookie_header
         request = self._client.build_request(
             "GET",
             target,
-            headers={"Host": url.host, "Accept": accept, "Accept-Language": "ru-RU,ru;q=0.9", "User-Agent": USER_AGENT},
+            headers=headers,
             # Сертификат проверяется по имени магазина, хотя соединение идёт на адрес.
             extensions={"sni_hostname": url.host},
         )

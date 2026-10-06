@@ -332,3 +332,43 @@ def test_network_failures_become_timeout(failure: Exception) -> None:
 
     assert caught.value.code is ErrorCode.TIMEOUT
     assert caught.value.__cause__ is failure  # причина сохраняется для журнала
+
+
+# --- cookies магазина ---
+
+
+def test_store_cookie_is_sent_to_store_and_its_subdomains_only() -> None:
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        host = request.headers["Host"]
+        if host == "www.shop.example":
+            return httpx2.Response(302, headers={"location": "https://spb.shop.example/p"})
+        if host == "spb.shop.example":
+            return httpx2.Response(302, headers={"location": "https://tracker.example/p"})
+        return httpx2.Response(200, content=b"ok")
+
+    client, recorder = fetcher(respond)
+
+    client.fetch(normalize_url("https://www.shop.example/p"), cookies={"city_id": "137"})
+
+    assert [(r.headers["Host"], r.headers.get("Cookie")) for r in recorder.requests] == [
+        ("www.shop.example", "city_id=137"),
+        ("spb.shop.example", "city_id=137"),
+        ("tracker.example", None),  # чужой сайт cookie магазина не получает
+    ]
+
+
+def test_no_cookie_header_by_default() -> None:
+    client, recorder = fetcher(ok())
+
+    fetch(client, "https://shop.example/p")
+
+    assert "Cookie" not in recorder.requests[0].headers
+
+
+@pytest.mark.parametrize("cookies", [{"city": "1; admin=1"}, {"a b": "1"}, {"city": "1\r\nX: y"}, {"": "1"}])
+def test_cookie_with_separators_is_rejected(cookies: dict[str, str]) -> None:
+    client, recorder = fetcher(ok())
+
+    with pytest.raises(ValueError):
+        client.fetch(normalize_url("https://shop.example/p"), cookies=cookies)
+    assert recorder.requests == []

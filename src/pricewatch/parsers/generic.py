@@ -130,8 +130,10 @@ def parse_html(html: str, page_url: NormalizedUrl, region_code: str) -> ParsedPr
     page = collector.page
 
     products = [product for block in page.json_ld for product in _json_ld_products(block)]
-    offers = [offer for product in products for offer in _product_offers(product)]
-    offers += _meta_offers(page)
+    # Источники по очереди, без смешивания: микроразметка ниже на странице бывает у рекомендованных
+    # товаров, и её цена не должна перебивать цену самого товара из JSON-LD.
+    sources = ([offer for product in products for offer in _product_offers(product)], _meta_offers(page), _microdata_offers(page))
+    offers = next((source for source in sources if _informative(source)), [])
     title = _first_text([_text(product.get("name")) for product in products] + [page.meta.get("og:title"), page.itemprops.get("name"), page.title])
     image = _image([_image_url(product.get("image")) for product in products] + [page.meta.get("og:image")], page_url)
 
@@ -164,10 +166,14 @@ def _walk_products(node: Any) -> Iterator[Mapping[str, Any]]:
     elif isinstance(node, dict):
         types = node.get("@type")
         type_names = {types} if isinstance(types, str) else set(types) if isinstance(types, list) else set()
-        if type_names & {"Product", "ProductModel", "IndividualProduct", "ProductGroup"}:
+        if type_names & {"Product", "ProductModel", "IndividualProduct"}:
+            # Внутрь товара не заходим: там бывают похожие и сопутствующие товары со своими ценами.
             yield node
-        for key, value in node.items():
-            if key != "offers":
+        elif "ProductGroup" in type_names:
+            yield node
+            yield from _walk_products(node.get("hasVariant"))
+        else:
+            for value in node.values():
                 yield from _walk_products(value)
 
 
@@ -186,16 +192,23 @@ def _product_offers(product: Mapping[str, Any]) -> Iterator[_Offer]:
         yield _Offer(_price(raw_price), _text(currency), _availability(_text(offer.get("availability"))))
 
 
+def _informative(offers: list[_Offer]) -> bool:
+    return any(offer.price_minor is not None or offer.availability is not Availability.UNKNOWN for offer in offers)
+
+
 def _meta_offers(page: _Page) -> list[_Offer]:
-    offers = []
     meta_price = next((page.meta[key] for key in META_PRICE if key in page.meta), None)
     meta_availability = next((page.meta[key] for key in META_AVAILABILITY if key in page.meta), None)
-    if meta_price is not None or meta_availability is not None:
-        currency = next((page.meta[key] for key in META_CURRENCY if key in page.meta), None)
-        offers.append(_Offer(_price(meta_price), currency, _availability(meta_availability)))
-    if "price" in page.itemprops or "availability" in page.itemprops:
-        offers.append(_Offer(_price(page.itemprops.get("price")), page.itemprops.get("priceCurrency"), _availability(page.itemprops.get("availability"))))
-    return offers
+    if meta_price is None and meta_availability is None:
+        return []
+    currency = next((page.meta[key] for key in META_CURRENCY if key in page.meta), None)
+    return [_Offer(_price(meta_price), currency, _availability(meta_availability))]
+
+
+def _microdata_offers(page: _Page) -> list[_Offer]:
+    if "price" not in page.itemprops and "availability" not in page.itemprops:
+        return []
+    return [_Offer(_price(page.itemprops.get("price")), page.itemprops.get("priceCurrency"), _availability(page.itemprops.get("availability")))]
 
 
 def _price(value: object) -> int | None:
