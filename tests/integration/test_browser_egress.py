@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
-from pricewatch.parsers.browser import BrowserFetcher, BrowserPage, looks_blocked
+from pricewatch.parsers.browser import BrowserFetcher, BrowserPage, JsonReply, OpenPage, looks_blocked
 from pricewatch.parsers.urls import normalize_url
 
 
@@ -72,6 +72,17 @@ def test_every_browser_request_goes_through_proxy(fetcher: BrowserFetcher, trap:
     assert any(record.getMessage() == "Браузер: запрос отклонён" for record in caplog.records)  # запросы дошли до прокси
 
 
+def test_json_from_inside_page_to_internal_address_is_refused(fetcher: BrowserFetcher, trap: int) -> None:
+    tab = fetcher.context("trap-test").new_page()
+    tab.set_content("<html></html>")
+
+    with OpenPage(BrowserPage(normalize_url("https://shop.example/"), "about:blank", 200, ""), tab) as opened:
+        replies = opened.fetch_json([normalize_url("https://trap.example/api"), normalize_url("https://internal.example/api")])
+
+    assert replies == [JsonReply(0, None), JsonReply(0, None)]
+    assert Trap.hits == 0
+
+
 def test_page_on_internal_address_is_refused_before_opening(fetcher: BrowserFetcher) -> None:
     with pytest.raises(PriceWatcherError) as caught:
         fetcher.fetch(normalize_url("https://internal.example/p"), "test", lambda page: True)
@@ -106,9 +117,13 @@ def run_with(fetcher: BrowserFetcher, monkeypatch: pytest.MonkeyPatch, pages: li
     events: list[str] = []
     queue = iter(pages)
 
+    class FakeTab:
+        def close(self) -> None:
+            events.append("close")
+
     def fake_open(url, store_key, ready, timeout_s):  # type: ignore[no-untyped-def]
         events.append("open")
-        return next(queue)
+        return next(queue), FakeTab()
 
     monkeypatch.setattr(fetcher, "_open", fake_open)
     monkeypatch.setattr(fetcher, "_reset_profile", lambda: events.append("reset"))
@@ -120,17 +135,17 @@ def run_with(fetcher: BrowserFetcher, monkeypatch: pytest.MonkeyPatch, pages: li
 def test_ready_page_is_returned_at_once(fetcher: BrowserFetcher, monkeypatch: pytest.MonkeyPatch) -> None:
     result, events = run_with(fetcher, monkeypatch, [page()])
 
-    assert (result.html, events) == ("<html>товар</html>", ["open"])
+    assert (result.html, events) == ("<html>товар</html>", ["open", "close"])
 
 
 def test_blocked_profile_is_reset_and_retried_once(fetcher: BrowserFetcher, monkeypatch: pytest.MonkeyPatch) -> None:
     result, events = run_with(fetcher, monkeypatch, [page(498, ""), page(498, "")])
 
-    assert events == ["open", "reset", "open"]
+    assert events == ["open", "close", "reset", "open", "close"]  # каждая вкладка закрыта
     assert result.status == 498  # вторая попытка — последняя; решение за адаптером
 
 
 def test_not_ready_but_not_blocked_is_not_retried(fetcher: BrowserFetcher, monkeypatch: pytest.MonkeyPatch) -> None:
     _, events = run_with(fetcher, monkeypatch, [page(200, "<html>пусто</html>")])
 
-    assert events == ["open"]
+    assert events == ["open", "close"]

@@ -1,0 +1,16 @@
+{
+ "latitude": 59.8983,
+ "longitude": 30.2618,
+ "address": "Санкт-Петербург",
+ "xinfo": "appType=1&curr=rub&dest=-1185367&spp=30",
+ "destinations": [
+  -1216601,
+  -337422,
+  -1114809,
+  -1185367
+ ],
+ "locale": "ru",
+ "shard": 0,
+ "currency": "RUB",
+ "dt": 0
+}

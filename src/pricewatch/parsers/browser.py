@@ -10,7 +10,8 @@ Playwright, у которого закрыты признаки управляе
 - у каждого магазина свой постоянный профиль: cookies, выданные защитой, переживают перезапуск;
   если магазин пометил профиль как робота, профиль стирается и делается вторая попытка;
 - ждём не загрузку, а результат: защита сначала показывает проверку и перезагружает страницу;
-- JSON, который страница запрашивает сама, сохраняется — его читают адаптеры;
+- JSON, который страница запрашивает сама, сохраняется — его читают адаптеры; адаптер может и сам
+  запросить JSON изнутри открытой страницы (`open` → `fetch_json`) — с cookies, выданными защитой магазина;
 - картинки отключены настройкой Chrome: цене они не нужны.
 
 Защита от SSRF: Chrome ходит в сеть только через проверяющий прокси `EgressProxy` — документ,
@@ -23,6 +24,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Protocol
 
 from patchright.sync_api import BrowserContext, Error, Page, Playwright, Response, sync_playwright
 
@@ -54,17 +56,46 @@ BLOCK_MARKERS = (
 )
 
 
+# Заголовки запросов страницы не сохраняются целиком: cookies и авторизация — секреты сессии.
+SECRET_HEADERS = frozenset({"cookie", "authorization", "proxy-authorization"})
+
+
+@dataclass(frozen=True, slots=True)
+class CapturedJson:
+    """JSON, который страница запросила сама: адрес, тело и заголовки её запроса (без cookies)."""
+
+    url: str
+    body: str
+    request_headers: dict[str, str]
+
+
 @dataclass
 class BrowserPage:
     url: NormalizedUrl
     final_url: str
     status: int
     html: str
-    # JSON-ответы, которые страница получила сама: (адрес, тело).
-    json: list[tuple[str, str]] = field(default_factory=list)
+    json: list[CapturedJson] = field(default_factory=list)
 
 
 Ready = Callable[[BrowserPage], bool]
+
+# fetch() изнутри страницы: тот же источник, cookies магазина. Тело больше предела не передаётся.
+FETCH_JSON_JS = """async ([urls, headers, maxBytes]) => Promise.all(urls.map(async (url) => {
+    try {
+        const response = await fetch(url, {credentials: "include", headers: headers});
+        const text = await response.text();
+        return [response.status, text.length > maxBytes ? null : text];
+    } catch (error) {
+        return [0, null];
+    }
+}))"""
+
+
+@dataclass(frozen=True, slots=True)
+class JsonReply:
+    status: int  # 0 — запрос не дошёл (сеть, прокси отказал)
+    body: str | None  # None — нет ответа или он больше предела
 
 
 def looks_blocked(page: BrowserPage) -> bool:
@@ -81,6 +112,43 @@ def _snapshot(tab: Page) -> str | None:
         return tab.content()
     except Error:
         return None
+
+
+class OpenPage:
+    """Открытая страница магазина: из неё можно запрашивать JSON с cookies магазина. Закрывается `with`."""
+
+    def __init__(self, page: BrowserPage, tab: Page | None) -> None:
+        self.page = page
+        self._tab = tab
+
+    def __enter__(self) -> "OpenPage":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        if self._tab is not None:
+            self._tab.close()
+            self._tab = None
+
+    def fetch_json(self, requests: list[NormalizedUrl], headers: dict[str, str] | None = None) -> list[JsonReply]:
+        """Запросы изнутри страницы — тот же источник, cookies магазина, тот же проверяющий прокси.
+
+        `headers` — обычно заголовки, которые сайт сам ставит своим запросам (см. CapturedJson).
+        """
+        if self._tab is None:
+            raise RuntimeError("страница уже закрыта")
+        try:
+            raw = self._tab.evaluate(
+                FETCH_JSON_JS, [[request.url for request in requests], headers or {"accept": "application/json"}, CAPTURED_MAX_BYTES]
+            )
+        except Error as error:
+            raise PriceWatcherError(ErrorCode.TIMEOUT, {"reason": "browser_failed"}) from error
+        return [JsonReply(int(status), body) for status, body in raw]
+
+
+class StoreBrowser(Protocol):
+    """То, что нужно адаптеру от браузера; рабочая реализация — BrowserFetcher."""
+
+    def open(self, url: NormalizedUrl, store_key: str, ready: Ready, timeout_s: float = ...) -> OpenPage: ...
 
 
 class BrowserFetcher:
@@ -104,11 +172,21 @@ class BrowserFetcher:
         Если товар не появился, а страница похожа на заглушку защиты, профиль магазина стирается
         и делается вторая, последняя попытка.
         """
+        with self.open(url, store_key, ready, timeout_s) as opened:
+            return opened.page
+
+    def open(self, url: NormalizedUrl, store_key: str, ready: Ready, timeout_s: float = 25.0) -> OpenPage:
+        """Как `fetch`, но страница остаётся открытой для запросов JSON изнутри неё."""
+        page, tab = self._load(url, store_key, ready, timeout_s)
+        return OpenPage(page, tab)
+
+    def _load(self, url: NormalizedUrl, store_key: str, ready: Ready, timeout_s: float) -> tuple[BrowserPage, Page]:
         if public_address(url.host, self._resolver) is None:
             raise PriceWatcherError(ErrorCode.INVALID_URL)
-        page = self._open(url, store_key, ready, timeout_s)
+        page, tab = self._open(url, store_key, ready, timeout_s)
         if ready(page) or not looks_blocked(page):
-            return page
+            return page, tab
+        tab.close()
         self._reset_profile()
         return self._open(url, store_key, ready, timeout_s)
 
@@ -129,7 +207,8 @@ class BrowserFetcher:
         )
         return self._context
 
-    def _open(self, url: NormalizedUrl, store_key: str, ready: Ready, timeout_s: float) -> BrowserPage:
+    def _open(self, url: NormalizedUrl, store_key: str, ready: Ready, timeout_s: float) -> tuple[BrowserPage, Page]:
+        """Загрузить страницу и дождаться результата; вкладку закрывает вызывающий."""
         tab = self.context(store_key).new_page()
         result = BrowserPage(url, url.url, 0, "")
         tab.on("response", lambda response: _record(tab, response, result))
@@ -145,10 +224,9 @@ class BrowserFetcher:
                     break
                 tab.wait_for_timeout(WAIT_STEP_MS)
         except Error as error:
-            raise PriceWatcherError(ErrorCode.TIMEOUT, {"reason": "browser_failed"}) from error
-        finally:
             tab.close()
-        return result
+            raise PriceWatcherError(ErrorCode.TIMEOUT, {"reason": "browser_failed"}) from error
+        return result, tab
 
     def _close_browser(self) -> None:
         if self._context is not None:
@@ -176,7 +254,9 @@ def _record(tab: Page, response: Response, result: BrowserPage) -> None:
     if request.resource_type in ("xhr", "fetch") and "json" in content_type and len(result.json) < CAPTURED_MAX_COUNT:
         try:
             body = response.text()
+            headers = request.all_headers()
         except Error:
             return  # ответ уже недоступен (страница ушла дальше) — адаптер обойдётся остальными
         if len(body) <= CAPTURED_MAX_BYTES:
-            result.json.append((response.url, body))
+            safe = {name: value for name, value in headers.items() if name.lower() not in SECRET_HEADERS and not name.startswith(":")}
+            result.json.append(CapturedJson(response.url, body, safe))

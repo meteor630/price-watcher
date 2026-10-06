@@ -104,3 +104,9 @@ name = "worker и bot не импортируют persistence"
 type = "forbidden"
 source_modules = ["pricewatch.worker", "pricewatch.bot"]
 forbidden_modules = ["pricewatch.persistence"]
+
+[[tool.importlinter.contracts]]
+id = "store-adapters-independent"
+name = "адаптеры магазинов не импортируют друг друга"
+type = "independence"
+modules = ["pricewatch.parsers.stores.*"]

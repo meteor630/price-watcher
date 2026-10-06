@@ -18,6 +18,7 @@ PERSISTENCE_OUTWARD = "persistence не импортирует api, web, parsers
 PERSISTENCE_ONLY_BOOTSTRAP = "persistence импортирует только bootstrap"
 BOOTSTRAP_ENTRY = "bootstrap никто не импортирует: обход сценариев через него невозможен"
 WORKER_BOT = "worker и bot не импортируют persistence"
+STORES = "адаптеры магазинов не импортируют друг друга"
 
 
 def run_lint(root: Path) -> subprocess.CompletedProcess[str]:
@@ -88,6 +89,26 @@ def test_indirect_path_to_persistence_is_broken(project_copy: Path) -> None:
     result = run_lint(project_copy)
 
     assert {WORKER_BOT, PERSISTENCE_ONLY_BOOTSTRAP} <= broken(result)
+
+
+def test_store_adapter_importing_another_breaks_contract(project_copy: Path) -> None:
+    stores = project_copy / "src" / "pricewatch" / "parsers" / "stores"
+    (stores / "other_shop.py").write_text("from pricewatch.parsers.stores import wildberries\n", encoding="utf-8")
+
+    result = run_lint(project_copy)
+
+    assert STORES in broken(result)
+
+
+def test_new_store_adapter_using_shared_parts_keeps_contracts(project_copy: Path) -> None:
+    stores = project_copy / "src" / "pricewatch" / "parsers" / "stores"
+    (stores / "other_shop.py").write_text(
+        "from pricewatch.parsers import browser, contract, generic\nfrom pricewatch.domain import errors\n", encoding="utf-8"
+    )
+
+    result = run_lint(project_copy)
+
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_package_with_domain_prefix_is_not_domain(project_copy: Path) -> None:
