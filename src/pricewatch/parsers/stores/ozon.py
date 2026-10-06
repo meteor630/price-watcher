@@ -5,8 +5,11 @@
 «6 466 ₽ — С банками» (картой Ozon Банка и банков-партнёров) и «7 185 ₽ — С другими банками».
 Первая — цена по карте, вторая — обычная. Если подпись одна или её нет, сумма — обычная цена.
 Город Ozon выбирает сам и кладёт в настройки страницы: `"location":{"current":{…"city":…}}`.
-Название — из h1 или og:title, фото — og:image. Наличие: есть цена и кнопка «В корзину» — в наличии;
-нет виджета цены и есть «Товар закончился» — нет в наличии.
+Название — из h1 или og:title, фото — og:image. Наличие: есть цена и кнопка «В корзину» — в наличии.
+Закончившийся товар Ozon перенаправляет на страницу поиска с виджетом `webOutOfStock` (06.10.2026):
+там миниатюра, последняя цена серым и название товара. Название и фото берутся из виджета,
+а не из страницы поиска (её заголовок — поисковый запрос, фото — логотип Ozon); цена — пустая.
+Ссылка из поиска или каталога с `product_id` ведёт на карточку этого товара.
 """
 
 import html as html_entities
@@ -21,6 +24,9 @@ from pricewatch.parsers.urls import NormalizedUrl, normalize_url
 
 KEY = "ozon"
 PRODUCT_PATH = re.compile(r"^/product/[a-z0-9-]*?(\d{4,15})/?")
+PRODUCT_ID_PARAM = re.compile(r"[?&]product_id=(\d{4,15})(?:&|$)")
+OUT_OF_STOCK_WIDGET = 'data-widget="webOutOfStock"'
+IMG_SRC = re.compile(r'<img[^>]+src="(https://[^"]+)"')
 REGION_CITIES = {"spb": "Санкт-Петербург"}
 PRICE_WIDGET = 'data-widget="webPrice"'
 CART_WIDGET = 'data-widget="webAddToCart"'
@@ -50,15 +56,20 @@ class OzonParser:
         page_city = selected_city(page.html)
         if page_city != city:
             raise PriceWatcherError(ErrorCode.REGION_MISMATCH, {"city": page_city})
-        return product_from_page(page.html, region_code)
+        on_card = "/product/" in page.final_url.split("?", 1)[0]
+        return product_from_page(page.html, region_code, on_card=on_card)
 
 
 def canonical_url(url: NormalizedUrl) -> NormalizedUrl:
-    """Адрес карточки без параметров: /product/<название>-<артикул>/."""
-    match = PRODUCT_PATH.match(url.url.split(url.host, 1)[1])
-    if match is None:
-        raise PriceWatcherError(ErrorCode.INVALID_URL)
-    return normalize_url(f"https://www.ozon.ru{match.group(0).rstrip('/')}/")
+    """Адрес карточки без параметров: /product/<название>-<артикул>/ или /product/<артикул>/ из product_id."""
+    path = url.url.split(url.host, 1)[1]
+    match = PRODUCT_PATH.match(path)
+    if match is not None:
+        return normalize_url(f"https://www.ozon.ru{match.group(0).rstrip('/')}/")
+    by_id = PRODUCT_ID_PARAM.search(path)
+    if by_id is not None:
+        return normalize_url(f"https://www.ozon.ru/product/{by_id.group(1)}/")
+    raise PriceWatcherError(ErrorCode.INVALID_URL)
 
 
 def selected_city(html: str) -> str:
@@ -86,13 +97,17 @@ def price_pairs(html: str) -> list[tuple[int, str]]:
     return pairs
 
 
-def product_from_page(html: str, region_code: str) -> ParsedProduct:
-    meta = {name: html_entities.unescape(value) for name, value in META.findall(html)}
-    title = _title(html, meta)
+def product_from_page(html: str, region_code: str, *, on_card: bool = True) -> ParsedProduct:
+    """`on_card=False` — Ozon перенаправил на поиск: заголовок и фото страницы чужие, берутся из виджета."""
+    meta = {name: html_entities.unescape(value) for name, value in META.findall(html)} if on_card else {}
+    title = _title(html, meta) if on_card else None
     image = meta.get("og:image") if meta.get("og:image", "").startswith("https://") and len(meta["og:image"]) <= IMAGE_URL_MAX else None
     pairs = price_pairs(html)
     if not pairs:
-        if any(text in html.lower() for text in OUT_OF_STOCK_TEXTS):
+        if OUT_OF_STOCK_WIDGET in html:
+            widget_title, widget_image = _out_of_stock_widget(html)
+            title, image = title or widget_title, image or widget_image
+        if OUT_OF_STOCK_WIDGET in html or any(text in html.lower() for text in OUT_OF_STOCK_TEXTS):
             return ParsedProduct(title, None, None, Availability.OUT_OF_STOCK, image, region_code, site_name="Ozon")
         raise PriceWatcherError(ErrorCode.LAYOUT_CHANGED, {"reason": "no_price_widget"})
     regular = next((price for price, label in pairs if OTHER_BANKS in label.lower()), None)
@@ -106,9 +121,22 @@ def product_from_page(html: str, region_code: str) -> ParsedProduct:
     return ParsedProduct(title, regular, card, availability, image, region_code, site_name="Ozon")
 
 
+def _out_of_stock_widget(html: str) -> tuple[str | None, str | None]:
+    """Название и миниатюра закончившегося товара из виджета `webOutOfStock`."""
+    start = html.find(OUT_OF_STOCK_WIDGET)
+    end = html.find("data-widget=", start + len(OUT_OF_STOCK_WIDGET))
+    chunk = html[start: end if end > 0 else None]
+    texts = [" ".join(html_entities.unescape(piece).split()) for piece in TAG.split(chunk)]
+    names = [text for text in texts if text and not AMOUNT.match(text) and text.lower() not in OUT_OF_STOCK_TEXTS]
+    image = IMG_SRC.search(chunk)
+    url = image.group(1) if image and len(image.group(1)) <= IMAGE_URL_MAX else None
+    return (max(names, key=len)[:TITLE_MAX] if names else None), url
+
+
 def _loaded(page: BrowserPage) -> bool:
     lowered = page.html.lower()
-    return PRICE_WIDGET in page.html or ('"location":{"current"' in page.html and any(t in lowered for t in OUT_OF_STOCK_TEXTS))
+    sold_out = OUT_OF_STOCK_WIDGET in page.html or any(text in lowered for text in OUT_OF_STOCK_TEXTS)
+    return PRICE_WIDGET in page.html or ('"location":{"current"' in page.html and sold_out)
 
 
 def _title(html: str, meta: dict[str, str]) -> str | None:

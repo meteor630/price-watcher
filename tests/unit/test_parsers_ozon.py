@@ -136,3 +136,34 @@ def test_address_without_product_is_invalid(raw: str) -> None:
         canonical_url(normalize_url(raw))
 
     assert caught.value.code is ErrorCode.INVALID_URL
+
+
+# --- товар закончился: Ozon перенаправляет на поиск (настоящая страница от 06.10.2026) ---
+
+OUT_OF_STOCK = (Path(__file__).resolve().parents[1] / "fixtures" / "stores" / "ozon" / "out_of_stock_redirect.html").read_text(encoding="utf-8")
+SEARCH_URL = "https://www.ozon.ru/search/?text=%D0%98%D0%BD%D1%81%D1%82%D1%80%D1%83%D0%BC%D0%B5%D0%BD%D1%82&product_id=3208684872"
+
+
+class RedirectingBrowser(FakeBrowser):
+    def fetch(self, url: NormalizedUrl, store_key: str, ready, timeout_s: float = 25.0, probe_js=None) -> BrowserPage:  # type: ignore[no-untyped-def]
+        self.calls.append((url.url, store_key))
+        page = BrowserPage(url, SEARCH_URL, self.status, self.html)
+        ready(page)
+        return page
+
+
+def test_sold_out_product_redirected_to_search() -> None:
+    product = parse(RedirectingBrowser(OUT_OF_STOCK), url="https://www.ozon.ru/product/3208684872/")
+
+    assert (product.availability, product.price_minor) == (Availability.OUT_OF_STOCK, None)
+    # Название и фото — из виджета закончившегося товара, а не страницы поиска (запрос и логотип Ozon).
+    assert product.title == "Пластилин для чистки гаджетов, очиститель для телефона, наушников, динамиков и труднодоступных мест."
+    assert product.image_url == "https://ir.ozone.ru/s3/multimedia-1-t/wc100/10563306365.jpg"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [SEARCH_URL, "https://www.ozon.ru/category/zaryadnye-ustroystva-15791/?product_id=3208684872", "https://www.ozon.ru/search/?product_id=3208684872&text=x"],
+)
+def test_link_from_search_with_product_id_leads_to_card(raw: str) -> None:
+    assert canonical_url(normalize_url(raw)).url == "https://www.ozon.ru/product/3208684872/"
