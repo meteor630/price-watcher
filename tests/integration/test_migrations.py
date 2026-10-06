@@ -18,9 +18,12 @@ from pricewatch.persistence.models import Base
 from pricewatch.persistence.schema import alembic_config
 
 ROOT = Path(__file__).resolve().parents[2]
-TABLES = {
+AUTH_TABLES = {
     "users", "categories", "groups", "items",
     "invites", "web_sessions", "devices", "refresh_tokens", "access_tokens", "pairing_codes", "auth_failures",
+}
+TABLES = AUTH_TABLES | {
+    "stores", "tracked_links", "item_links", "parse_runs", "check_tasks", "workers", "price_observations", "settings",
 }
 
 
@@ -28,6 +31,14 @@ def tables(url: str) -> set[str]:
     engine = create_engine(url)
     try:
         return set(inspect(engine).get_table_names()) - {"alembic_version"}
+    finally:
+        engine.dispose()
+
+
+def columns(url: str, table: str) -> set[str]:
+    engine = create_engine(url)
+    try:
+        return {column["name"] for column in inspect(engine).get_columns(table)}
     finally:
         engine.dispose()
 
@@ -46,6 +57,11 @@ def test_upgrade_downgrade_upgrade(empty_database_url: str) -> None:
 
     command.upgrade(config, "head")
     assert tables(empty_database_url) == TABLES
+    assert revision(empty_database_url) == "0003"
+
+    command.downgrade(config, "0002")
+    assert tables(empty_database_url) == AUTH_TABLES
+    assert {"state", "purchased_at"}.isdisjoint(columns(empty_database_url, "items"))
     assert revision(empty_database_url) == "0002"
 
     command.downgrade(config, "0001")

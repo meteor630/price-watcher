@@ -181,9 +181,9 @@ Telegram привязывается к пользователю одноразо
 
 Общий каталог:
 
-- `stores(id, canonical_host, display_name, color, has_card_price, parser_key, enabled, min_delay_ms, created_at)`
-- `tracked_links(id, store_id, normalized_url, region_code, baseline_title, image_path, parser_confirmed_at, created_at)` — уникально `(normalized_url, region_code)`.
-- `price_observations(id, tracked_link_id, task_id, checked_at, status, price_minor, card_price_minor, availability, title, region_code, confirmation)` — уникально `task_id`. История только дополняется.
+- `stores(id, canonical_host, display_name, color, has_card_price, parser_key, enabled, auto_created, fetch_method, min_delay_ms, paused_until, pause_level, pause_reason, created_at)` — `auto_created` — магазин создан сам из ссылки пользователя; `fetch_method` — способ, сработавший в прошлый раз (`http`, `browser`); пауза магазина после 403/429 или капчи — `paused_until` и ступень `pause_level`. Пауза между запросами по умолчанию: 2 с без браузера, 5–9 с в браузере, 60 с для Авито (решение 06.10.2026).
+- `tracked_links(id, store_id, normalized_url, region_code, baseline_title, image_path, created_at)` — уникально `(normalized_url, region_code)`. Подтверждения администратором нет (решение 06.10.2026).
+- `price_observations(id, tracked_link_id, task_id, checked_at, status, price_minor, card_price_minor, availability, title, region_code, confirmation, source)` — уникально `task_id`. `status` — `ok` или код ошибки сбора цен; `source` — откуда цена. История только дополняется.
 - `price_decisions(id, observation_id, kind, decision, decided_by, decided_at)`
 
 Очередь и служебное:

@@ -92,9 +92,9 @@
 - Путь: `src/pricewatch/persistence/`
 - Отвечает: модели БД, репозитории, миграции
 - Зависит от: `pricewatch.application`, `pricewatch.config`, `pricewatch.domain`, `pricewatch.observability`
-- Тесты: `uv run pytest tests/integration/test_database_connection.py tests/integration/test_migrations.py tests/integration/test_schema_constraints.py tests/integration/test_shopping_repositories.py tests/integration/test_concurrency.py tests/integration/test_schema_check.py tests/integration/test_user_repository.py tests/integration/test_database_failures.py`
+- Тесты: `uv run pytest tests/integration/test_database_connection.py tests/integration/test_migrations.py tests/integration/test_schema_constraints.py tests/integration/test_shopping_repositories.py tests/integration/test_concurrency.py tests/integration/test_schema_check.py tests/integration/test_user_repository.py tests/integration/test_database_failures.py tests/integration/test_queue_schema.py`
 - Файлы: `src/pricewatch/persistence/database.py` — подключение: малый пул, hide_parameters, соединение в UTC, DB_ERROR при недоступной базе.
-- Файлы: `src/pricewatch/persistence/models.py` — таблицы списка покупок (составные ключи владельца) и входа (в *_hash только HMAC в hex — проверка в базе); имена ограничений по правилу.
+- Файлы: `src/pricewatch/persistence/models.py` — таблицы списка покупок (составные ключи владельца), входа (в *_hash только HMAC в hex — проверка в базе) и сбора цен с очередью: магазины, ссылки, привязки, наблюдения, запуски, задания, worker, настройки; гарантии раздела 8 — частичными уникальными индексами; имена ограничений по правилу.
 - Файлы: `src/pricewatch/persistence/migrations/`, `src/pricewatch/persistence/migrations/versions/` — миграции Alembic; env.py берёт адрес базы из настроек (config) и пишет журнал в JSON (observability).
 - Файлы: `src/pricewatch/persistence/schema.py` — настройка Alembic из кода, без alembic.ini; ревизия кода и базы, SchemaMismatch с подсказкой.
 - Файлы: `src/pricewatch/persistence/shopping_repositories.py` — репозитории категорий, групп, товаров; изменения состава списка блокируют родителя подъёмом его версии.
@@ -260,7 +260,7 @@
 - Файлы: `openapi/v1.yaml` — контракт /api/v1 для приложения, утверждён. Меняется только с согласия владельца; совместимо — новыми необязательными полями.
 - Тесты: `uv run pytest tests/contracts/test_openapi_document.py tests/contracts/test_routes_match_contract.py`
 
-Схема базы: миграция 0001 — users, categories, groups, items; 0002 — invites, web_sessions, devices, refresh_tokens, access_tokens, pairing_codes, auth_failures. Остальные таблицы раздела 5 добавляются миграциями своих этапов. Маршруты `/web`, `/worker/v1`, `/internal/v1` в контракт приложения не входят.
+Схема базы: миграция 0001 — users, categories, groups, items; 0002 — invites, web_sessions, devices, refresh_tokens, access_tokens, pairing_codes, auth_failures; 0003 — stores, tracked_links, item_links, parse_runs, check_tasks, workers, price_observations, settings и items.state, items.purchased_at. Остальные таблицы раздела 5 добавляются миграциями своих этапов. Маршруты `/web`, `/worker/v1`, `/internal/v1` в контракт приложения не входят.
 
 ## Сторонние материалы и готовые решения
 
@@ -279,6 +279,8 @@
 | Браузер за защитой от ботов | patchright + установленный Chrome с окном, профиль на магазин, сброс профиля при метке робота, перехват JSON страницы | способ — из рабочего парсера владельца (prise-bot), переписан; github.com/Kaliiiiiiiiii-Vinyzu/patchright-python, Apache-2.0 | Playwright и Chrome без patchright (06.10.2026 не проходят Wildberries, Ozon, DNS), undetected-chromedriver (Selenium, ломается с новыми Chrome) |
 | SSRF в браузере | свой проверяющий CONNECT-прокси (EgressProxy) | — | перехват `route` Playwright (не видит шаги перенаправлений, выключает кэш) |
 | Wildberries | JSON `/__internal/u-card/cards/v4/detail`, который запрашивает сама страница в браузере | способ — из парсера владельца; адрес card.wb.ru закрыт защитой wbaas (06.10.2026) | открытый card.wb.ru (403 без токена), github.com/Duff89/wildberries_parser (устаревший адрес, без лицензии) |
+| Очередь заданий | своя в PostgreSQL: check_tasks, FOR UPDATE SKIP LOCKED, аренда 2 мин, частичные уникальные индексы; worker — только через HTTP /worker/v1 | подход к периодическим задачам (уникальный ключ слота) — procrastinate (github.com/procrastinate-org/procrastinate, MIT) | procrastinate, pgqueuer (worker подключается к базе — ломает изоляцию worker), pgmq (расширение PostgreSQL) |
+| Расписание | свой цикл: несколько времён в сутки по Москве, slot_key уникален в базе | — | APScheduler (лишняя сложность хранилища задач) |
 | CSRF | свой токен, привязанный к серверной сессии, и проверка Origin | — | starlette-csrf (не развивается с 2023), fastapi-csrf-protect (вторая cookie и секрет) |
 
 Шрифты, лицензия SIL OFL 1.1, источник — npm-пакеты @fontsource-variable:
