@@ -27,6 +27,7 @@ class Purpose(StrEnum):
     PAIRING_CODE = "pairing_code"
     ACCESS = "access"
     REFRESH = "refresh"
+    WORKER = "worker"
 
 
 def new_token() -> str:

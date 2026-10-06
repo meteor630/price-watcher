@@ -1,4 +1,4 @@
-"""Команды сервера: python -m pricewatch.bootstrap [serve | create-admin].
+"""Команды сервера: python -m pricewatch.bootstrap [serve | create-admin | create-worker | rotate-worker-token].
 
 Пароль никогда не передаётся аргументом (он попал бы в историю оболочки и список
 процессов): только скрытый ввод дважды или одна строка из stdin (--password-stdin).
@@ -6,6 +6,7 @@
 """
 
 import argparse
+from datetime import UTC, datetime
 import getpass
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -15,6 +16,7 @@ from typing import TextIO
 from sqlalchemy import Engine
 
 from pricewatch.application.accounts import create_admin
+from pricewatch.application.worker_protocol import create_worker, rotate_worker_token
 from pricewatch.application.passwords import PasswordHasher
 from pricewatch.bootstrap.server import EXIT_CONFIG, EXIT_DATABASE, check_database, serve
 from pricewatch.config.settings import ConfigError, load_settings
@@ -45,10 +47,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     admin.add_argument("--login", required=True)
     admin.add_argument("--name", help="отображаемое имя; по умолчанию — логин")
     admin.add_argument("--password-stdin", action="store_true", help="прочитать пароль одной строкой из stdin")
+    worker = commands.add_parser("create-worker", help="зарегистрировать worker и выпустить его токен")
+    worker.add_argument("--name", required=True)
+    rotate = commands.add_parser("rotate-worker-token", help="выпустить новый токен worker; старый действует до первого входа с новым")
+    rotate.add_argument("--name", required=True)
     args = parser.parse_args(argv)
 
     if args.command in (None, "serve"):
         return serve()
+    if args.command == "create-worker":
+        return worker_token_command(args.name, rotate=False)
+    if args.command == "rotate-worker-token":
+        return worker_token_command(args.name, rotate=True)
     return create_admin_command(args.login, args.name or args.login, args.password_stdin)
 
 
@@ -102,6 +112,36 @@ def _create_admin(
         print(_explain(error), file=out)
         return EXIT_INVALID
     print(f"Администратор «{user.login}» создан (id {user.id}).", file=out)
+    return 0
+
+
+def worker_token_command(name: str, *, rotate: bool, env_file: Path = Path(".env"), out: TextIO | None = None) -> int:
+    """Токен worker печатается один раз: его нужно сразу записать в настройки worker, в базе — только HMAC."""
+    out = out or sys.stdout
+    try:
+        settings = load_settings(env_file)
+    except ConfigError as error:
+        print(error, file=out)
+        return EXIT_CONFIG
+    configure_logging("WARNING")
+    engine = create_db_engine(settings.database_url.get_secret_value())
+    try:
+        if not check_database(engine):
+            return EXIT_DATABASE
+        key = settings.secret_key.get_secret_value().encode()
+        work = SqlUnitOfWork(engine)
+        try:
+            if rotate:
+                token = rotate_worker_token(work, key, name)
+            else:
+                token = create_worker(work, key, name, datetime.now(UTC))
+        except PriceWatcherError as error:
+            print(f"Токен не выпущен: {error.safe_message}", file=out)
+            return EXIT_INVALID
+    finally:
+        engine.dispose()
+    print(f"Токен worker «{name}» (показывается один раз, сохраните в PRICEWATCH_WORKER_TOKEN worker):", file=out)
+    print(token, file=out)
     return 0
 
 

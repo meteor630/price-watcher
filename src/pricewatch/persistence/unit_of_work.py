@@ -20,6 +20,7 @@ from pricewatch.persistence.collection_repositories import (
     SqlQueueRepository,
     SqlStoreRepository,
     SqlTrackedLinkRepository,
+    SqlWorkerRepository,
 )
 from pricewatch.persistence.app_auth_repositories import (
     SqlDeviceRepository,
@@ -71,6 +72,7 @@ class SqlUnitOfWork:
         self.item_links = SqlItemLinkRepository(self._connection)
         self.observations = SqlObservationRepository(self._connection)
         self.queue = SqlQueueRepository(self._connection)
+        self.workers = SqlWorkerRepository(self._connection)
         return self
 
     def commit(self) -> None:

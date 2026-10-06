@@ -238,12 +238,17 @@ class StoreRepository(Protocol):
     def get_or_create(self, target: LinkTarget, now: datetime) -> StoreRecord:
         """Магазин по имени сайта; нет — создаётся. Одновременное создание даёт одну строку."""
         ...
+    def learn(self, store_id: int, fetch_method: str | None, site_name: str | None) -> None:
+        """Запомнить сработавший способ; у созданного автоматически магазина — название с сайта вместо имени сайта."""
+        ...
 
 
 class TrackedLinkRepository(Protocol):
     def get_or_create(self, store_id: int, normalized_url: str, region_code: str, now: datetime) -> int:
         """Номер ссылки каталога; одновременное добавление одной страницы даёт одну строку."""
         ...
+    def baseline_title(self, tracked_link_id: int) -> str | None: ...
+    def set_baseline_title(self, tracked_link_id: int, title: str) -> None: ...
 
 
 class ItemLinkRepository(Protocol):
@@ -258,13 +263,98 @@ class ItemLinkRepository(Protocol):
         ...
 
 
+@dataclass(frozen=True, slots=True)
+class NewObservation:
+    tracked_link_id: int
+    task_id: int
+    checked_at: datetime
+    status: str
+    price_minor: int | None
+    card_price_minor: int | None
+    availability: str
+    title: str | None
+    region_code: str
+    confirmation: str
+    source: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class PendingObservation:
+    id: int
+    title: str | None
+    effective_price_minor: int | None
+
+
 class ObservationRepository(Protocol):
     def has_confirmed_success_since(self, tracked_link_id: int, since: datetime) -> bool: ...
+    def exists_for_task(self, task_id: int) -> bool: ...
+    def add(self, observation: NewObservation) -> None: ...
+    def last_confirmed_price(self, tracked_link_id: int) -> int | None:
+        """Действующая цена (по карте, если есть) последней подтверждённой успешной проверки в наличии."""
+        ...
+    def pending(self, tracked_link_id: int) -> list[PendingObservation]:
+        """Наблюдения ссылки, ждущие решения."""
+        ...
+    def reject(self, observation_ids: Sequence[int]) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerAuth:
+    worker_id: int
+    disabled: bool
+    # Worker пришёл с новым токеном ротации — старый пора погасить.
+    used_next_token: bool
+
+
+class WorkerRepository(Protocol):
+    def create(self, name: str, token_hash: str, now: datetime) -> int:
+        """Новый worker; занятое имя — NAME_TAKEN."""
+        ...
+    def find_by_token(self, token_hash: str) -> WorkerAuth | None: ...
+    def promote_next_token(self, worker_id: int) -> None: ...
+    def set_next_token(self, name: str, token_hash: str) -> None:
+        """Новый токен ротации; нет такого worker — NOT_FOUND."""
+        ...
+    def touch(self, worker_id: int, now: datetime) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ClaimedTask:
+    task_id: int
+    tracked_link_id: int
+    url: str
+    region_code: str
+    store_host: str
+    parser_key: str
+    fetch_method: str | None
+    min_delay_ms: int
+    lease_until: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class LeasedTask:
+    task_id: int
+    run_id: int
+    tracked_link_id: int
+    store_id: int
+    region_code: str
 
 
 class QueueRepository(Protocol):
     def enqueue_on_add(self, tracked_link_id: int, now: datetime) -> int:
         """Срочное задание на одну ссылку (запуск вида on_add); уже есть активное — его номер."""
+        ...
+    def claim(self, worker_id: int, now: datetime, lease_until: datetime) -> ClaimedTask | None:
+        """Задание в аренду: самое срочное из магазинов, которые включены, не на паузе и не заняты другим заданием."""
+        ...
+    def extend(self, worker_id: int, task_id: int, now: datetime, lease_until: datetime) -> bool:
+        """Продлить аренду своего действующего задания; иначе False."""
+        ...
+    def leased(self, worker_id: int, task_id: int, now: datetime) -> LeasedTask | None:
+        """Задание этого worker, аренда которого ещё не истекла (блокируется до конца транзакции)."""
+        ...
+    def finish(self, task: LeasedTask, failed: bool, error_code: str | None, duration_ms: int | None, now: datetime) -> None:
+        """Закрыть задание и учесть его в запуске; все задания учтены — запуск завершён."""
         ...
 
 
@@ -286,6 +376,7 @@ class UnitOfWork(Protocol):
     item_links: ItemLinkRepository
     observations: ObservationRepository
     queue: QueueRepository
+    workers: WorkerRepository
 
     def __enter__(self) -> Self: ...
     def __exit__(

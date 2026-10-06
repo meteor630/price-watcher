@@ -7,10 +7,22 @@
 
 from datetime import datetime
 
-from sqlalchemy import Connection, Table, func, select, text, update
+from collections.abc import Sequence
+
+from sqlalchemy import Connection, Table, exists, func, select, text, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import insert
 
-from pricewatch.application.ports import ItemLinkRecord, LinkTarget, StoreRecord
+from pricewatch.application.ports import (
+    ClaimedTask,
+    ItemLinkRecord,
+    LeasedTask,
+    LinkTarget,
+    NewObservation,
+    PendingObservation,
+    StoreRecord,
+    WorkerAuth,
+)
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.persistence.models import (
     CheckTaskRow,
@@ -20,6 +32,7 @@ from pricewatch.persistence.models import (
     PriceObservationRow,
     StoreRow,
     TrackedLinkRow,
+    WorkerRow,
 )
 
 stores: Table = StoreRow.__table__
@@ -29,6 +42,8 @@ items: Table = ItemRow.__table__
 parse_runs: Table = ParseRunRow.__table__
 check_tasks: Table = CheckTaskRow.__table__
 price_observations: Table = PriceObservationRow.__table__
+workers: Table = WorkerRow.__table__
+SITE_NAME_MAX = 100
 PALETTE_SIZE = 8
 ACTIVE_TASK = check_tasks.c.status.in_(("queued", "leased"))
 # Условие частичного индекса для ON CONFLICT — буквально, как в индексе: с параметрами ($1, $2)
@@ -66,6 +81,17 @@ class SqlStoreRepository:
             raise RuntimeError("магазин не найден сразу после вставки")
         return created
 
+    def learn(self, store_id: int, fetch_method: str | None, site_name: str | None) -> None:
+        if fetch_method is not None:
+            self.connection.execute(update(stores).where(stores.c.id == store_id).values(fetch_method=fetch_method))
+        if site_name:
+            # Название с сайта заменяет только временное имя сайта у созданного автоматически магазина.
+            self.connection.execute(
+                update(stores)
+                .where(stores.c.id == store_id, stores.c.auto_created.is_(True), stores.c.display_name == stores.c.canonical_host)
+                .values(display_name=site_name[:SITE_NAME_MAX])
+            )
+
     def _find(self, host: str) -> StoreRecord | None:
         row = self.connection.execute(
             select(stores.c.id, stores.c.canonical_host, stores.c.display_name, stores.c.parser_key, stores.c.enabled).where(
@@ -90,6 +116,15 @@ class SqlTrackedLinkRepository:
                 tracked_links.c.normalized_url == normalized_url, tracked_links.c.region_code == region_code
             )
         ).scalar_one()
+
+
+    def baseline_title(self, tracked_link_id: int) -> str | None:
+        return self.connection.execute(
+            select(tracked_links.c.baseline_title).where(tracked_links.c.id == tracked_link_id)
+        ).scalar_one()
+
+    def set_baseline_title(self, tracked_link_id: int, title: str) -> None:
+        self.connection.execute(update(tracked_links).where(tracked_links.c.id == tracked_link_id).values(baseline_title=title))
 
 
 class SqlItemLinkRepository:
@@ -152,6 +187,65 @@ class SqlObservationRepository:
         return found is not None
 
 
+    def exists_for_task(self, task_id: int) -> bool:
+        return self.connection.execute(
+            select(price_observations.c.id).where(price_observations.c.task_id == task_id)
+        ).first() is not None
+
+    def add(self, observation: NewObservation) -> None:
+        self.connection.execute(
+            price_observations.insert().values(
+                tracked_link_id=observation.tracked_link_id,
+                task_id=observation.task_id,
+                checked_at=observation.checked_at,
+                status=observation.status,
+                price_minor=observation.price_minor,
+                card_price_minor=observation.card_price_minor,
+                availability=observation.availability,
+                title=observation.title,
+                region_code=observation.region_code,
+                confirmation=observation.confirmation,
+                source=observation.source,
+            )
+        )
+
+    def last_confirmed_price(self, tracked_link_id: int) -> int | None:
+        row = self.connection.execute(
+            select(price_observations.c.price_minor, price_observations.c.card_price_minor)
+            .where(
+                price_observations.c.tracked_link_id == tracked_link_id,
+                price_observations.c.status == "ok",
+                price_observations.c.confirmation == "confirmed",
+                price_observations.c.availability != "out_of_stock",
+            )
+            .order_by(price_observations.c.checked_at.desc(), price_observations.c.id.desc())
+            .limit(1)
+        ).one_or_none()
+        if row is None:
+            return None
+        return row.card_price_minor if row.card_price_minor is not None else row.price_minor
+
+    def pending(self, tracked_link_id: int) -> list[PendingObservation]:
+        rows = self.connection.execute(
+            select(price_observations).where(
+                price_observations.c.tracked_link_id == tracked_link_id, price_observations.c.confirmation == "pending"
+            )
+        )
+        return [
+            PendingObservation(
+                row.id,
+                row.title,
+                None if row.availability == "out_of_stock" else (row.card_price_minor if row.card_price_minor is not None else row.price_minor),
+            )
+            for row in rows
+        ]
+
+    def reject(self, observation_ids: Sequence[int]) -> None:
+        self.connection.execute(
+            update(price_observations).where(price_observations.c.id.in_(list(observation_ids))).values(confirmation="rejected")
+        )
+
+
 class SqlQueueRepository:
     def __init__(self, connection: Connection) -> None:
         self.connection = connection
@@ -178,10 +272,120 @@ class SqlQueueRepository:
             raise RuntimeError("активное задание не найдено после конфликта вставки")
         return concurrent
 
+    def claim(self, worker_id: int, now: datetime, lease_until: datetime) -> ClaimedTask | None:
+        busy = check_tasks.alias("busy")
+        busy_link = tracked_links.alias("busy_link")
+        # Магазин занят, если у него есть задание в действующей аренде.
+        store_busy = exists(
+            select(busy.c.id)
+            .select_from(busy.join(busy_link, busy_link.c.id == busy.c.tracked_link_id))
+            .where(busy.c.status == "leased", busy.c.lease_until > now, busy_link.c.store_id == stores.c.id)
+        )
+        row = self.connection.execute(
+            select(check_tasks.c.id, check_tasks.c.run_id, tracked_links.c.id.label("link_id"), tracked_links.c.normalized_url,
+                   tracked_links.c.region_code, stores.c.canonical_host, stores.c.parser_key, stores.c.fetch_method, stores.c.min_delay_ms)
+            .select_from(check_tasks.join(tracked_links, tracked_links.c.id == check_tasks.c.tracked_link_id).join(stores, stores.c.id == tracked_links.c.store_id))
+            .where(
+                check_tasks.c.status == "queued",
+                stores.c.enabled.is_(True),
+                (stores.c.paused_until.is_(None)) | (stores.c.paused_until <= now),
+                ~store_busy,
+            )
+            .order_by(check_tasks.c.priority.desc(), check_tasks.c.id)
+            .limit(1)
+            # Блокируется и магазин: второй worker в это время пропустит его задания, а не возьмёт второе.
+            .with_for_update(skip_locked=True, of=[check_tasks, stores])
+        ).one_or_none()
+        if row is None:
+            return None
+        self.connection.execute(
+            update(check_tasks)
+            .where(check_tasks.c.id == row.id)
+            .values(status="leased", worker_id=worker_id, lease_until=lease_until, heartbeat_at=now, attempt=check_tasks.c.attempt + 1)
+        )
+        self.connection.execute(
+            update(parse_runs).where(parse_runs.c.id == row.run_id, parse_runs.c.status == "queued").values(status="running", started_at=now)
+        )
+        return ClaimedTask(row.id, row.link_id, row.normalized_url, row.region_code, row.canonical_host, row.parser_key,
+                           row.fetch_method, row.min_delay_ms, lease_until)
+
+    def extend(self, worker_id: int, task_id: int, now: datetime, lease_until: datetime) -> bool:
+        updated = self.connection.execute(
+            update(check_tasks)
+            .where(check_tasks.c.id == task_id, check_tasks.c.worker_id == worker_id, check_tasks.c.status == "leased", check_tasks.c.lease_until > now)
+            .values(lease_until=lease_until, heartbeat_at=now)
+        )
+        return updated.rowcount == 1
+
+    def leased(self, worker_id: int, task_id: int, now: datetime) -> LeasedTask | None:
+        row = self.connection.execute(
+            select(check_tasks.c.id, check_tasks.c.run_id, tracked_links.c.id.label("link_id"), tracked_links.c.store_id, tracked_links.c.region_code)
+            .select_from(check_tasks.join(tracked_links, tracked_links.c.id == check_tasks.c.tracked_link_id))
+            .where(check_tasks.c.id == task_id, check_tasks.c.worker_id == worker_id, check_tasks.c.status == "leased", check_tasks.c.lease_until >= now)
+            .with_for_update(of=check_tasks)
+        ).one_or_none()
+        return None if row is None else LeasedTask(row.id, row.run_id, row.link_id, row.store_id, row.region_code)
+
+    def finish(self, task: LeasedTask, failed: bool, error_code: str | None, duration_ms: int | None, now: datetime) -> None:
+        self.connection.execute(
+            update(check_tasks)
+            .where(check_tasks.c.id == task.task_id)
+            .values(status="failed" if failed else "done", lease_until=None, error_code=error_code, duration_ms=duration_ms, finished_at=now)
+        )
+        counter = parse_runs.c.failed if failed else parse_runs.c.done
+        self.connection.execute(update(parse_runs).where(parse_runs.c.id == task.run_id).values({counter: counter + 1}))
+        # Все задания учтены — запуск завершён.
+        self.connection.execute(
+            update(parse_runs)
+            .where(parse_runs.c.id == task.run_id, parse_runs.c.done + parse_runs.c.failed == parse_runs.c.total)
+            .values(status="finished", finished_at=now)
+        )
+
     def _active_task(self, tracked_link_id: int) -> int | None:
         return self.connection.execute(
             select(check_tasks.c.id).where(check_tasks.c.tracked_link_id == tracked_link_id, ACTIVE_TASK)
         ).scalar_one_or_none()
+
+
+class SqlWorkerRepository:
+    def __init__(self, connection: Connection) -> None:
+        self.connection = connection
+
+    def create(self, name: str, token_hash: str, now: datetime) -> int:
+        try:
+            with self.connection.begin_nested():
+                return self.connection.execute(
+                    workers.insert().values(name=name, token_hash=token_hash, created_at=now).returning(workers.c.id)
+                ).scalar_one()
+        except IntegrityError as error:
+            if "uq_workers_name" in str(error.orig):
+                raise PriceWatcherError(ErrorCode.NAME_TAKEN) from error
+            raise
+
+    def find_by_token(self, token_hash: str) -> WorkerAuth | None:
+        row = self.connection.execute(
+            select(workers.c.id, workers.c.disabled_at, workers.c.next_token_hash).where(
+                (workers.c.token_hash == token_hash) | (workers.c.next_token_hash == token_hash)
+            )
+        ).one_or_none()
+        if row is None:
+            return None
+        return WorkerAuth(row.id, row.disabled_at is not None, row.next_token_hash == token_hash)
+
+    def promote_next_token(self, worker_id: int) -> None:
+        self.connection.execute(
+            update(workers)
+            .where(workers.c.id == worker_id, workers.c.next_token_hash.is_not(None))
+            .values(token_hash=workers.c.next_token_hash, next_token_hash=None)
+        )
+
+    def set_next_token(self, name: str, token_hash: str) -> None:
+        updated = self.connection.execute(update(workers).where(workers.c.name == name).values(next_token_hash=token_hash))
+        if updated.rowcount != 1:
+            raise PriceWatcherError(ErrorCode.NOT_FOUND)
+
+    def touch(self, worker_id: int, now: datetime) -> None:
+        self.connection.execute(update(workers).where(workers.c.id == worker_id).values(last_seen_at=now))
 
 
 def _to_item_link(row: object) -> ItemLinkRecord:
