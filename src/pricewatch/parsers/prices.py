@@ -21,8 +21,8 @@ RUBLE_CODES = frozenset({"RUB", "RUR"})
 RUBLE_TOKEN = re.compile(r"₽|\bруб\b\.?|\bр\.(?!\w)|\bRU[BR]\b", re.IGNORECASE)
 RUBLE_CURRENCIES = frozenset({"₽", "руб", "р", "rub", "rur"})
 CANDIDATES_MAX = 5
-# Разряды: обычный, неразрывный и узкий неразрывный пробелы.
-DIGIT_GROUPS = re.compile(r"[ \u00a0\u202f]")
+# Разряды: обычный, неразрывный, тонкий и узкий неразрывный пробелы.
+DIGIT_GROUPS = re.compile(r"[ \u00a0\u2009\u202f]")
 STRICT_NUMBER = re.compile(r"^\d+(\.\d+)?$")
 
 

@@ -130,7 +130,7 @@
 - Путь: `src/pricewatch/parsers/`
 - Отвечает: registry, общий парсер, адаптеры магазинов, нормализаторы
 - Зависит от: `pricewatch.domain`
-- Тесты: `uv run pytest tests/unit/test_package_layout.py tests/unit/test_parsers_urls.py tests/unit/test_parsers_registry.py tests/unit/test_parsers_fetch.py tests/unit/test_parsers_prices.py tests/unit/test_parsers_generic.py tests/unit/test_parsers_egress.py tests/integration/test_browser_egress.py tests/unit/test_parsers_wildberries.py tests/unit/test_parsers_regard.py tests/unit/test_parsers_visual.py tests/integration/test_visual_in_chrome.py tests/unit/test_parsers_universal.py tests/unit/test_parsers_dns.py`
+- Тесты: `uv run pytest tests/unit/test_package_layout.py tests/unit/test_parsers_urls.py tests/unit/test_parsers_registry.py tests/unit/test_parsers_fetch.py tests/unit/test_parsers_prices.py tests/unit/test_parsers_generic.py tests/unit/test_parsers_egress.py tests/integration/test_browser_egress.py tests/unit/test_parsers_wildberries.py tests/unit/test_parsers_regard.py tests/unit/test_parsers_visual.py tests/integration/test_visual_in_chrome.py tests/unit/test_parsers_universal.py tests/unit/test_parsers_dns.py tests/unit/test_parsers_ozon.py`
 - Файлы: `src/pricewatch/parsers/urls.py` — только https по имени (IP в любой записи, логин, порт — INVALID_URL), punycode, без фрагмента и меток рекламы, параметры по порядку; имя магазина без www. и m.
 - Файлы: `src/pricewatch/parsers/contract.py` — ParsedProduct (цены в копейках, только RUB, регион, источник цены, название сайта, заметки) и интерфейс адаптера StoreParser.
 - Файлы: `src/pricewatch/parsers/fetch.py` — SafeFetcher на httpx2: cookies магазина только на его сайт и поддомены; одно разрешение имени на шаг, все адреса публичные (NAT64, IPv4 в IPv6, многоадресные учтены), соединение на проверенный адрес с SNI по имени, перенаправления вручную до 5, предел 5 МБ после распаковки и 20 с на всё, прокси окружения игнорируются.
@@ -143,6 +143,8 @@
 - Файлы: `src/pricewatch/parsers/universal.py` — общий парсер для любого сайта: быстрый запрос → браузер (ответ браузера окончательный), способ запоминается для сайта; данные сайта → цена «глазами», расхождение больше 3 % — в заметки.
 - Файлы: `src/pricewatch/parsers/stores/dns.py` — DNS через браузер: город из настроек страницы (cityGuid, Санкт-Петербург — 566ca284-…), цена из JSON /product/microdata/<id>/ той же логикой, что JSON-LD.
 - Файлы: `tests/fixtures/stores/dns` — JSON microdata и сокращённая страница с настройками города от 06.10.2026.
+- Файлы: `src/pricewatch/parsers/stores/ozon.py` — Ozon через браузер: цены парами из виджета webPrice («С банками» — по карте, «С другими банками» — обычная), город из location.current, наличие по кнопке корзины.
+- Файлы: `tests/fixtures/stores/ozon` — карточка от 06.10.2026, сокращённая до og-метаданных, h1, виджета цены и города.
 - Файлы: `src/pricewatch/parsers/stores/regard.py` — Регард без браузера: cookie city_id (Санкт-Петербург — 137), город подтверждается town.cookieTownId из __NEXT_DATA__, цена — общим парсером.
 - Файлы: `tests/fixtures/stores/regard` — настоящая страница товара от 06.10.2026, сокращённая: JSON-LD целиком (с похожими товарами) и состояние города.
 - Файлы: `tests/fixtures/stores/wildberries` — образцы ответов WB от 06.10.2026: карточка товара, геоданные Санкт-Петербурга (без IP и подписи).
