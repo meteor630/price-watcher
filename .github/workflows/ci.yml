@@ -102,6 +102,10 @@ jobs:
         run: uv run pytest
 
       - name: Границы модулей
+        # import-linter — сторонняя программа и печатает русские имена контрактов в кодировке
+        # системы; в канал CI на Windows это cp1252, и вывод падает. Свой код от этого не зависит.
+        env:
+          PYTHONIOENCODING: utf-8
         run: uv run lint-imports
 
       - name: Карта проекта
