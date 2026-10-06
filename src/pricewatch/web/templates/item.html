@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% from "_macros.html" import price_flags, quantity_stepper, total_toggle %}
+{% block title %}{{ detail.name }}{% endblock %}
+{% block content %}
+<nav class="crumbs" aria-label="Путь">
+  <a href="/web/">Главная</a><span aria-hidden="true"> › </span><a href="/web/categories/{{ detail.category_id }}">{{ detail.category_name }}</a>
+  {% if detail.group_id %}<span aria-hidden="true"> › </span><a href="/web/groups/{{ detail.group_id }}">{{ detail.group_name }}</a>{% endif %}
+  <span aria-hidden="true"> › </span><span class="crumbs__here" aria-current="page">{{ detail.name }}</span>
+</nav>
+
+<section class="item-hero" aria-labelledby="item-title" id="hero-figures">
+  <div class="item-hero__photo">
+    {% if detail.photo_url %}<img src="{{ detail.photo_url }}" alt="" loading="lazy" decoding="async">{% else %}<span class="item-hero__nophoto">Фото появится после проверки</span>{% endif %}
+  </div>
+  <div class="item-hero__body">
+    <p class="eyebrow">{{ detail.category_name }}{% if detail.group_name %} · {{ detail.group_name }}{% endif %}</p>
+    <h1 id="item-title" class="hero__name">{{ detail.name }}</h1>
+    {% if detail.full_name %}<p class="item-hero__full">{{ detail.full_name }}</p>{% endif %}
+
+    <div class="item-hero__price">
+      {% if detail.unit_price_text %}
+      <span class="item-hero__figure num">{{ detail.unit_price_text }}</span>
+      {% if detail.regular_price_text %}<span class="row__regular">без карты {{ detail.regular_price_text }}</span>{% endif %}
+      {% else %}
+      <span class="item-hero__figure item-hero__figure--none">Цены нет</span>
+      {% endif %}
+    </div>
+    <p class="row__meta">
+      {% if detail.best_store %}<span class="store-dot store-dot--{{ detail.best_store.color_token }}" aria-hidden="true"></span>{{ detail.best_store.name }}{% endif %}
+      {{ price_flags(detail) }}
+    </p>
+
+    {% if detail.price_status.value == "stale" %}
+    <p class="alert alert--warn">Цена не актуальна — магазин не отвечает больше 7 суток. Обновите или замените ссылку.
+      {% if detail.in_total %}Последняя цена учитывается в итоге.{% endif %}</p>
+    {% elif detail.price_status.value == "no_links" %}
+    <p class="alert alert--warn">Нет ссылок на магазины — добавьте ссылку, чтобы следить за ценой. История и графики сохранены.</p>
+    {% endif %}
+    {% if detail.failure_reason %}<p class="item-hero__failure">Последняя проверка: {{ detail.failure_reason }}</p>{% endif %}
+
+    {% if detail.state.value == "active" %}
+    <div class="item-hero__controls">
+      <label class="check-label" for="total-{{ detail.item_id }}">
+        {{ total_toggle(detail.item_id, detail.version, detail.in_total, detail.name, "item", period_day) }}
+        <span>В итоге</span>
+      </label>
+      {{ quantity_stepper(detail.item_id, detail.version, detail.quantity, detail.name, "item", period_day) }}
+      {% if detail.line_price_text and detail.quantity > 1 %}<span class="item-hero__line num">{{ detail.quantity }} шт · {{ detail.line_price_text }}</span>{% endif %}
+      {% if detail.offers %}
+      <details class="menu">
+        <summary class="btn btn--ghost btn--small">Открыть в магазине</summary>
+        <ul class="menu__list">
+          {% for offer in detail.offers %}
+          <li><a class="menu__item" href="{{ offer.url }}" target="_blank" rel="noopener noreferrer"><span class="store-dot store-dot--{{ offer.store.color_token }}" aria-hidden="true"></span>{{ offer.store.name }}{% if offer.price_text %}<span class="num menu__price">{{ offer.card_price_text or offer.price_text }}</span>{% endif %}</a></li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+    </div>
+    {% else %}
+    <p class="flag">{{ "куплен" if detail.state.value == "purchased" else "в архиве" }}</p>
+    {% endif %}
+  </div>
+</section>
+
+<section class="section panel-box" aria-labelledby="chart-title">
+  <h2 id="chart-title" class="section__title">Цена за штуку</h2>
+  <div id="item-chart">{% include "fragments/item_chart.html" %}</div>
+</section>
+
+<div id="page-rest" class="item-columns">
+  <section class="panel-box" aria-labelledby="offers-title">
+    <h2 id="offers-title" class="section__title">Цены по магазинам</h2>
+    {% if detail.offers %}
+    <ul class="offer-list">
+      {% for offer in detail.offers %}
+      <li class="offer-list__row{% if offer.is_best %} offer-list__row--best{% endif %}">
+        <span class="offer-list__store"><span class="store-dot store-dot--{{ offer.store.color_token }}" aria-hidden="true"></span>{{ offer.store.name }}{% if offer.is_best %} <span class="flag flag--best">лучшая</span>{% endif %}</span>
+        <span class="offer-list__price num">
+          {% if offer.card_price_text %}{{ offer.card_price_text }} <span class="row__regular">без карты {{ offer.price_text }}</span>
+          {% elif offer.price_text %}{{ offer.price_text }}{% else %}—{% endif %}
+        </span>
+        <span class="offer-list__state">
+          {% if status_labels.get(offer.price_status.value) %}{{ status_labels[offer.price_status.value] }}{% elif offer.availability == "out_of_stock" %}нет в наличии{% else %}в наличии{% endif %}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Ссылок на магазины нет.</p>{% endif %}
+  </section>
+
+  <section class="panel-box" aria-labelledby="history-title">
+    <h2 id="history-title" class="section__title">История</h2>
+    {% if detail.history %}
+    <ol class="history">
+      {% for event in detail.history %}
+      <li class="history__row history__row--{{ event.kind.value }}">
+        <time class="history__time" datetime="{{ event.at.isoformat() }}">{{ moscow_moment(event.at) }}</time>
+        <span class="history__store"><span class="store-dot store-dot--{{ event.store.color_token }}" aria-hidden="true"></span>{{ event.store.name }}</span>
+        <span class="history__text num">{{ event.text }}</span>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}<p class="muted">Изменений пока не было.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

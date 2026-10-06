@@ -194,6 +194,16 @@ class SqlItemLinkRepository:
     def close(self, item_link_id: int, now: datetime) -> None:
         self.connection.execute(update(item_links).where(item_links.c.id == item_link_id).values(valid_to=now))
 
+    def clear_include_stale(self, tracked_link_id: int) -> None:
+        self.connection.execute(
+            update(items)
+            .where(
+                items.c.include_stale.is_(True),
+                items.c.id.in_(select(item_links.c.item_id).where(item_links.c.tracked_link_id == tracked_link_id, item_links.c.valid_to.is_(None))),
+            )
+            .values(include_stale=False)
+        )
+
     def added_since(self, user_id: int, since: datetime) -> list[datetime]:
         return list(
             self.connection.execute(

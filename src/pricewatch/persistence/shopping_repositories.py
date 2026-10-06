@@ -427,6 +427,8 @@ class SqlItemRepository:
             values["quantity"] = check_quantity(changes.quantity)
         if changes.in_total is not UNCHANGED:
             values["in_total"] = bool(changes.in_total)
+        if changes.include_stale is not UNCHANGED:
+            values["include_stale"] = bool(changes.include_stale)
         if changes.group_id is not UNCHANGED and changes.group_id != current.group_id:
             if changes.group_id is not None:
                 self._check_group(user_id, current.category_id, changes.group_id)

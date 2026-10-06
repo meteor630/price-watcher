@@ -10,11 +10,11 @@ from datetime import datetime
 
 from sqlalchemy import Connection, Table, func, select
 
-from pricewatch.application.ports import LinkBinding, PricedItem, StoreInfo
+from pricewatch.application.ports import LinkBinding, LinkInfo, PricedItem, StoreInfo
 from pricewatch.domain.errors import ErrorCode
 from pricewatch.domain.pricing import Availability, Confirmation, Observation
 from pricewatch.domain.shopping import ItemState
-from pricewatch.persistence.models import CategoryRow, GroupRow, ItemLinkRow, ItemRow, PriceObservationRow, StoreRow
+from pricewatch.persistence.models import CategoryRow, GroupRow, ItemLinkRow, ItemRow, PriceObservationRow, StoreRow, TrackedLinkRow
 
 items: Table = ItemRow.__table__
 categories: Table = CategoryRow.__table__
@@ -22,6 +22,7 @@ groups: Table = GroupRow.__table__
 item_links: Table = ItemLinkRow.__table__
 stores: Table = StoreRow.__table__
 observations: Table = PriceObservationRow.__table__
+tracked_links: Table = TrackedLinkRow.__table__
 
 
 class SqlPriceDataRepository:
@@ -64,6 +65,14 @@ class SqlPriceDataRepository:
             select(stores.c.id, stores.c.display_name, stores.c.color, stores.c.enabled).where(stores.c.id.in_(list(store_ids)))
         )
         return {row.id: StoreInfo(row.id, row.display_name, row.color, row.enabled) for row in rows}
+
+    def links(self, tracked_link_ids: Sequence[int]) -> dict[int, LinkInfo]:
+        if not tracked_link_ids:
+            return {}
+        rows = self.connection.execute(
+            select(tracked_links.c.id, tracked_links.c.normalized_url, tracked_links.c.image_path).where(tracked_links.c.id.in_(list(tracked_link_ids)))
+        )
+        return {row.id: LinkInfo(row.normalized_url, row.image_path) for row in rows}
 
     def observations(self, tracked_link_ids: Sequence[int], since: datetime) -> dict[int, list[Observation]]:
         if not tracked_link_ids:

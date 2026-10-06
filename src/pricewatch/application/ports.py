@@ -51,6 +51,7 @@ class ItemChanges:
     full_name: str | None | Unchanged = UNCHANGED
     quantity: int | Unchanged = UNCHANGED
     in_total: bool | Unchanged = UNCHANGED
+    include_stale: bool | Unchanged = UNCHANGED
     group_id: int | None | Unchanged = UNCHANGED
 
 
@@ -210,6 +211,30 @@ class PurgedCounts:
     items: int = 0
 
 
+# --- Повтор изменяющих запросов приложения (этап 7) ---
+
+
+@dataclass(frozen=True, slots=True)
+class StoredRequest:
+    request_hash: str
+    # Ответа ещё нет: запрос с этим ключом выполняется.
+    status: int | None
+    body: object | None
+
+
+class IdempotencyRepository(Protocol):
+    def drop_stale(self, user_id: int, key: str, expired_before: datetime, abandoned_before: datetime) -> None:
+        """Удалить ключ, если срок ответа истёк или выполнение оборвалось без ответа."""
+        ...
+    def claim(self, user_id: int, key: str, request_hash: str, now: datetime) -> bool:
+        """Занять ключ до выполнения; False — ключ уже есть (одновременная вставка ждёт первую)."""
+        ...
+    def get(self, user_id: int, key: str) -> StoredRequest | None: ...
+    def complete(self, user_id: int, key: str, status: int, body: object) -> None: ...
+    def release(self, user_id: int, key: str) -> None: ...
+    def purge(self, created_before: datetime) -> int: ...
+
+
 # --- Чтение цен для страниц (этап 7) ---
 
 
@@ -246,6 +271,12 @@ class StoreInfo:
     enabled: bool
 
 
+@dataclass(frozen=True, slots=True)
+class LinkInfo:
+    url: str
+    image_path: str | None
+
+
 class PriceDataRepository(Protocol):
     def items(self, user_id: int) -> list[PricedItem]:
         """Неудалённые товары в неудалённых категориях и группах, в порядке категорий и позиций."""
@@ -254,6 +285,9 @@ class PriceDataRepository(Protocol):
         """Все привязки ссылок к этим товарам, в том числе закрытые: история цены не обрывается."""
         ...
     def stores(self, store_ids: Sequence[int]) -> dict[int, StoreInfo]: ...
+    def links(self, tracked_link_ids: Sequence[int]) -> dict[int, LinkInfo]:
+        """Адрес страницы в магазине и путь сохранённого фото ссылки."""
+        ...
     def observations(self, tracked_link_ids: Sequence[int], since: datetime) -> dict[int, list[Observation]]:
         """Наблюдения ссылок, нужные для расчёта на любой момент начиная с `since`: всё с `since`
         и раньше — начиная с последнего успешного подтверждённого до `since` (или последнего любого,
@@ -353,6 +387,9 @@ class ItemLinkRepository(Protocol):
     def active_for_store(self, item_id: int, store_id: int) -> ItemLinkRecord | None: ...
     def bind(self, user_id: int, item_id: int, tracked_link_id: int, store_id: int, now: datetime) -> ItemLinkRecord: ...
     def close(self, item_link_id: int, now: datetime) -> None: ...
+    def clear_include_stale(self, tracked_link_id: int) -> None:
+        """Цена ссылки снова актуальна: у товаров с этой действующей ссылкой снимается «устаревшая цена в итоге»."""
+        ...
     def added_since(self, user_id: int, since: datetime) -> list[datetime]:
         """Время привязок пользователя позже `since`, по возрастанию — для лимита новых ссылок."""
         ...
@@ -552,6 +589,7 @@ class UnitOfWork(Protocol):
     queue: QueueRepository
     workers: WorkerRepository
     price_data: PriceDataRepository
+    idempotency: IdempotencyRepository
     settings: SettingRepository
     notifications: NotificationRepository
 

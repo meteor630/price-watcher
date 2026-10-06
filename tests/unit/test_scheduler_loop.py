@@ -24,6 +24,7 @@ class FakeJobs:
         self.deleted_at: list[datetime] = []
         self.purged = PurgedCounts()
         self.purged_at: list[datetime] = []
+        self.keys_purged_at: list[datetime] = []
         self.fail: Exception | None = None
 
     def schedule_times(self) -> tuple[time, ...]:
@@ -46,6 +47,10 @@ class FakeJobs:
     def purge_deleted(self, now: datetime) -> PurgedCounts:
         self.purged_at.append(now)
         return self.purged
+
+    def purge_idempotency_keys(self, now: datetime) -> int:
+        self.keys_purged_at.append(now)
+        return 0
 
 
 class Clock:
@@ -169,3 +174,11 @@ def test_purge_runs_every_tick_and_is_logged(caplog: pytest.LogCaptureFixture) -
     assert jobs.purged_at == [msk(8)]
     record = next(r for r in caplog.records if r.getMessage() == "Удалённое стёрто окончательно")
     assert (record.categories, record.groups, record.items) == (1, 0, 4)  # type: ignore[attr-defined]
+
+
+def test_old_idempotency_keys_are_purged_every_tick() -> None:
+    jobs = FakeJobs()
+
+    Scheduler(jobs, clock=Clock(msk(8))).tick()
+
+    assert jobs.keys_purged_at == [msk(8)]

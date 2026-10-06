@@ -12,6 +12,7 @@
   в порог. Первое название ссылки становится эталонным.
 - Фото: в задании отмечено, что у ссылки его ещё нет; worker присылает перекодированный файл по своему
   действующему заданию, сервер проверяет его ещё раз и записывает путь, если фото у ссылки всё ещё нет.
+- Подтверждённая цена снимает у товаров этой ссылки режим «устаревшая цена в итоге».
 - Блокировка (403/429) или капча ставят магазин на паузу по ступеням (domain.store_pause). Пока ступени
   не исчерпаны, задание ждёт в очереди, в историю ничего не пишется. Исчерпаны — магазин отдыхает до
   следующего планового запуска, задание и все ждущие задания магазина закрываются этой ошибкой,
@@ -146,6 +147,9 @@ def submit_result(
         if checked.status == "ok":
             confirmation = _review(uow, task.tracked_link_id, checked, thresholds)
             uow.stores.learn(task.store_id, checked.fetch_method, checked.site_name)
+            if confirmation is Confirmation.CONFIRMED:
+                # Цена снова актуальна: особый режим «устаревшая цена в итоге» снимается (раздел 6).
+                uow.item_links.clear_include_stale(task.tracked_link_id)
         uow.observations.add(
             NewObservation(
                 task.tracked_link_id, task.task_id, now, checked.status, checked.price_minor, checked.card_price_minor,

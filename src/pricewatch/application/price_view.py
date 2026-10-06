@@ -62,11 +62,20 @@ class PricedList:
     stores: dict[int, StoreInfo]
 
 
-def load(uow: UnitOfWork, user_id: int, period: Period, now: datetime, since: datetime) -> PricedList:
-    """Товары «в списке» пользователя; `since` — самый ранний момент, на который нужна цена (графики)."""
+def load(
+    uow: UnitOfWork, user_id: int, period: Period, now: datetime, since: datetime, *, item_ids: frozenset[int] | None = None
+) -> PricedList:
+    """Товары пользователя; `since` — самый ранний момент, на который нужна цена (графики, история).
+
+    Без `item_ids` — товары «в списке»; с ними — только эти товары в любом состоянии (карточка товара).
+    """
     before_moment = period_start(period, now) - BEFORE
-    items = [item for item in uow.price_data.items(user_id) if item.state is ItemState.ACTIVE]
-    bindings = uow.price_data.bindings(user_id)
+    if item_ids is None:
+        items = [item for item in uow.price_data.items(user_id) if item.state is ItemState.ACTIVE]
+    else:
+        items = [item for item in uow.price_data.items(user_id) if item.item_id in item_ids]
+    wanted = {item.item_id for item in items}
+    bindings = [binding for binding in uow.price_data.bindings(user_id) if binding.item_id in wanted]
     stores = uow.price_data.stores(sorted({binding.store_id for binding in bindings}))
     history = uow.price_data.observations(sorted({binding.tracked_link_id for binding in bindings}), min(since, before_moment))
     by_item: dict[int, list[Binding]] = {}

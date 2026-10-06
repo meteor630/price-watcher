@@ -578,3 +578,28 @@ class NotificationRow(Base):
         CheckConstraint("read_at IS NULL OR channel = 'in_app'", name="read_only_in_app"),
         UniqueConstraint("user_id", "channel", "dedup_key"),
     )
+
+
+class IdempotencyKeyRow(Base):
+    """Ключ повтора изменяющего запроса приложения: тот же ключ и тело — тот же ответ, без второго изменения.
+
+    Строка вставляется до выполнения запроса (ответа ещё нет) и держит ключ, пока запрос идёт.
+    """
+
+    __tablename__ = "idempotency_keys"
+
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    request_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    response_status: Mapped[int | None] = mapped_column(Integer)
+    response_body: Mapped[Any | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        ForeignKeyConstraint(["user_id"], ["users.id"]),
+        CheckConstraint("char_length(key) BETWEEN 8 AND 64", name="key_length"),
+        CheckConstraint(f"request_hash ~ {HASH_PATTERN}", name="request_hash_format"),
+        CheckConstraint("response_status IS NULL OR response_status BETWEEN 200 AND 299", name="response_status"),
+        CheckConstraint("(response_status IS NULL) = (response_body IS NULL)", name="response_together"),
+        Index("ix_idempotency_keys_created_at", "created_at"),
+    )

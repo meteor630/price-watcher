@@ -20,15 +20,15 @@ def engine_for(url: str) -> Engine:
 
 
 def test_head_is_latest_migration() -> None:
-    assert head_revision() == "0005"
+    assert head_revision() == "0006"
 
 
 def test_one_revision_behind_is_reported(empty_database_url: str) -> None:
-    command.upgrade(alembic_config(empty_database_url), "0004")
+    command.upgrade(alembic_config(empty_database_url), "0005")
     engine = engine_for(empty_database_url)
     try:
-        assert current_revision(engine) == "0004"
-        with pytest.raises(SchemaMismatch, match="в ревизии 0004, код ожидает 0005"):
+        assert current_revision(engine) == "0005"
+        with pytest.raises(SchemaMismatch, match="в ревизии 0005, код ожидает 0006"):
             check_schema(engine)
     finally:
         engine.dispose()
