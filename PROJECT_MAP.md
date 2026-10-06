@@ -50,6 +50,7 @@
 - Файлы: `.python-version` — Python 3.13.
 - Файлы: `.gitignore`
 - Файлы: `.env.example` — все настройки с пояснениями, без секретов; копируется в .env. PRICEWATCH_SECRET_KEY — ключ HMAC для кодов, токенов, сессий; его смена разлогинивает всех.
+- Файлы: `worker.env.example` — настройки worker без токена; копируется в worker.env (в Git не попадает, как и профили браузера .browser-profiles).
 - Файлы: `.github/workflows/ci.yml` — CI на каждый push: тесты, import-linter, проверка карты на Linux и на Windows (PostgreSQL 18 сборки EDB), gitleaks по всей истории. Действия закреплены по хешу, gitleaks и PostgreSQL для Windows — с проверкой контрольной суммы.
 - Файлы: `.gitleaksignore` — ложные срабатывания gitleaks по точному отпечатку; только ненастоящие значения из тестов и только с согласия владельца.
 
@@ -161,9 +162,13 @@
 
 ### pricewatch.worker
 - Путь: `src/pricewatch/worker/`
-- Отвечает: клиент очереди, запуск парсеров, загрузка картинок
-- Зависит от: —
-- Тесты: `uv run pytest tests/unit/test_package_layout.py`
+- Отвечает: клиент очереди, запуск парсеров, загрузка картинок; с сервером только по HTTP /worker/v1, к базе не подключается
+- Зависит от: `pricewatch.config`, `pricewatch.domain`, `pricewatch.observability`, `pricewatch.parsers`
+- Тесты: `uv run pytest tests/unit/test_worker_runner.py tests/integration/test_worker_end_to_end.py tests/integration/test_worker_start.py tests/unit/test_package_layout.py`
+- Файлы: `src/pricewatch/worker/client.py` — клиент протокола: claim, heartbeat, result (сетевой сбой результата повторяется до 5 раз); 401 — токен не принят, 404 — аренда потеряна; прокси окружения не используются.
+- Файлы: `src/pricewatch/worker/parsing.py` — адаптер магазина по ключу из задания, иначе общий парсер со способом, который сервер помнит у магазина; один браузер на процесс.
+- Файлы: `src/pricewatch/worker/runner.py` — цикл взять → пауза магазина (у браузерных +0–4 с случайно) → проверить → отправить; аренда продлевается каждые 30 с; неожиданная ошибка — в журнал и INTERNAL_ERROR; остановка после текущей проверки.
+- Файлы: `src/pricewatch/worker/__main__.py` — запуск python -m pricewatch.worker: настройки PRICEWATCH_WORKER_* и worker.env, журнал JSON, SIGINT/SIGTERM; выход 2 — конфигурация, 4 — токен не принят.
 
 ### pricewatch.scheduler
 - Путь: `src/pricewatch/scheduler/`
@@ -182,7 +187,7 @@
 - Отвечает: логи, идентификаторы запросов и ошибок
 - Зависит от: —
 - Тесты: `uv run pytest tests/unit/test_observability_logging.py tests/unit/test_package_layout.py`
-- Файлы: `src/pricewatch/observability/json_log.py` — JsonFormatter и configure_logging: одна JSON-строка на событие в stdout; use_utf8_streams — ввод и вывод процесса в UTF-8 (вызывают точки входа: bootstrap, миграции).
+- Файлы: `src/pricewatch/observability/json_log.py` — JsonFormatter и configure_logging: одна JSON-строка на событие в stdout; use_utf8_streams — ввод и вывод процесса в UTF-8 (вызывают точки входа: bootstrap, миграции, worker).
 - Файлы: `src/pricewatch/observability/redaction.py` — вырезание секретов из полей и текста, в том числе из traceback.
 - Файлы: `src/pricewatch/observability/ids.py` — request_id в контексте выполнения, генератор error_id.
 
@@ -199,7 +204,7 @@
 - Отвечает: настройки процесса из окружения и .env; ошибка без значений; секреты регистрируются для журнала; не импортируется domain и application
 - Зависит от: `pricewatch.observability`
 - Тесты: `uv run pytest tests/unit/test_config_settings.py tests/unit/test_package_layout.py`
-- Файлы: `src/pricewatch/config/settings.py` — Settings, load_settings, ConfigError.
+- Файлы: `src/pricewatch/config/settings.py` — Settings, load_settings, ConfigError; WorkerSettings и load_worker_settings (PRICEWATCH_WORKER_*, worker.env; сервер и worker не видят переменных друг друга).
 
 ## Границы модулей
 
@@ -233,7 +238,7 @@
 - Файлы: `tests/security/` — набор безопасности; обязателен при изменении входа, ролей, URL, worker (`AGENTS.md`, раздел 7).
 - Команда: `uv run pytest tests/security` — только набор безопасности.
 - Файлы: `tests/security/test_access_rules.py` — все маршруты /api/v1, кроме PUBLIC_API, требуют bearer; все действия из ADMIN_ONLY запрещены не-администраторам. Новое действие администратора добавляется в ADMIN_ONLY.
-- Файлы: `tests/security/test_no_secrets_in_git.py` — нет .env, ключей и токенов в файлах, которые попадут в коммит; .env игнорируется, .env.example без секретов.
+- Файлы: `tests/security/test_no_secrets_in_git.py` — нет .env, worker.env, профилей браузера, ключей и токенов в файлах, которые попадут в коммит; они игнорируются, образцы .env.example и worker.env.example без секретов.
 - Файлы: `tests/contracts/` — проверки контракта API.
 - Файлы: `tests/unit/conftest.py` — фикстура project_copy: копия проекта для тестов, которые ломают код.
 - Файлы: `tests/conftest.py` — фикстура database_url: временная база PostgreSQL на прогон, удаляется в конце.

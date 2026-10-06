@@ -16,6 +16,9 @@ htmlcov/
 .env
 .env.*
 !.env.example
+worker.env
+# Профили браузера worker: cookies магазинов
+.browser-profiles/
 
 # Xcode
 ios/**/xcuserdata/

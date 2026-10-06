@@ -250,3 +250,77 @@ def test_secret_key_of_32_bytes_accepted_and_hidden(base_env: pytest.MonkeyPatch
     assert settings.secret_key.get_secret_value() == key
     assert key not in repr(settings)
     assert key not in redact_text(f"ключ {key} в тексте")
+
+
+# --- настройки worker ---
+
+from pricewatch.config.settings import WorkerSettings, load_worker_settings  # noqa: E402
+
+WORKER_TOKEN = "t" * 43
+
+
+def worker_env(monkeypatch: pytest.MonkeyPatch, **values: str) -> None:
+    for name in [name for name in __import__("os").environ if name.startswith("PRICEWATCH_")]:
+        monkeypatch.delenv(name)
+    for name, value in values.items():
+        monkeypatch.setenv(f"PRICEWATCH_WORKER_{name}", value)
+
+
+def test_worker_settings_normal(monkeypatch: pytest.MonkeyPatch) -> None:
+    worker_env(monkeypatch, API_URL="http://api:8000/", TOKEN=WORKER_TOKEN)
+
+    settings = load_worker_settings(None)
+
+    assert (settings.api_url, settings.token.get_secret_value(), settings.poll_seconds) == ("http://api:8000", WORKER_TOKEN, 10)
+
+
+@pytest.mark.parametrize(
+    ("values", "variable"),
+    [
+        ({"TOKEN": WORKER_TOKEN}, "PRICEWATCH_WORKER_API_URL"),
+        ({"API_URL": "http://api:8000"}, "PRICEWATCH_WORKER_TOKEN"),
+        ({"API_URL": "http://api:8000", "TOKEN": "short"}, "PRICEWATCH_WORKER_TOKEN"),
+        ({"API_URL": "ftp://api", "TOKEN": WORKER_TOKEN}, "PRICEWATCH_WORKER_API_URL"),
+        ({"API_URL": "http://api:8000/worker", "TOKEN": WORKER_TOKEN}, "PRICEWATCH_WORKER_API_URL"),
+        ({"API_URL": "http://api:8000", "TOKEN": WORKER_TOKEN, "POLL_SECONDS": "0"}, "PRICEWATCH_WORKER_POLL_SECONDS"),
+    ],
+)
+def test_worker_settings_errors_name_variable_without_value(monkeypatch: pytest.MonkeyPatch, values: dict, variable: str) -> None:
+    worker_env(monkeypatch, **values)
+
+    with pytest.raises(ConfigError) as caught:
+        load_worker_settings(None)
+
+    assert variable in str(caught.value)
+    assert WORKER_TOKEN not in str(caught.value)
+
+
+def test_worker_rejects_unknown_worker_variable(monkeypatch: pytest.MonkeyPatch) -> None:
+    worker_env(monkeypatch, API_URL="http://api:8000", TOKEN=WORKER_TOKEN, TOKN="typo")
+
+    with pytest.raises(ConfigError, match="PRICEWATCH_WORKER_TOKN"):
+        load_worker_settings(None)
+
+
+def test_server_and_worker_ignore_each_others_variables(monkeypatch: pytest.MonkeyPatch) -> None:
+    worker_env(monkeypatch, API_URL="http://api:8000", TOKEN=WORKER_TOKEN)
+    monkeypatch.setenv("PRICEWATCH_ENV", "test")
+
+    assert load_worker_settings(None).api_url == "http://api:8000"
+    with pytest.raises(ConfigError) as caught:
+        load_settings(None)  # сервер жалуется на свои пропущенные настройки, а не на переменные worker
+    assert "Неизвестные" not in str(caught.value)
+
+
+def test_worker_env_example_is_complete_and_loads(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    example = (ROOT / "worker.env.example").read_text(encoding="utf-8")
+    variables = {line.split("=", 1)[0] for line in example.splitlines() if line and not line.startswith("#")}
+    env_file = tmp_path / "worker.env"
+    env_file.write_text(example, encoding="utf-8")
+    # Токена в примере нет намеренно: секреты только в worker.env.
+    worker_env(monkeypatch, TOKEN=WORKER_TOKEN)
+
+    settings = load_worker_settings(env_file)
+
+    assert variables == {f"PRICEWATCH_WORKER_{name.upper()}" for name in WorkerSettings.model_fields}
+    assert settings.api_url == "http://localhost:8000"

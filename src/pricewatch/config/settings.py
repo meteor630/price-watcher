@@ -17,6 +17,9 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from pricewatch.observability.redaction import register_secret
 
 ENV_PREFIX = "PRICEWATCH_"
+# Свои переменные worker: сервер их пропускает, worker — переменные сервера (оба могут жить в одном окружении).
+WORKER_PREFIX = "PRICEWATCH_WORKER_"
+WORKER_TOKEN_MIN_CHARS = 40
 LOCAL_ENVIRONMENTS = {"development", "test"}
 SECRET_KEY_MIN_BYTES = 32
 
@@ -89,7 +92,9 @@ class Settings(BaseSettings):
 
 def load_settings(env_file: Path | None = Path(".env")) -> Settings:
     """Прочитать настройки или остановиться с понятной ошибкой."""
-    unknown = sorted(name for name in os.environ if name.startswith(ENV_PREFIX) and not _is_field(name))
+    unknown = sorted(
+        name for name in os.environ if name.startswith(ENV_PREFIX) and not name.startswith(WORKER_PREFIX) and not _is_field(name)
+    )
     if unknown:
         raise ConfigError("Неизвестные переменные окружения: " + ", ".join(unknown))
     try:
@@ -97,6 +102,53 @@ def load_settings(env_file: Path | None = Path(".env")) -> Settings:
     except ValidationError as error:
         raise ConfigError(_describe(error)) from None
     _register_secrets(settings)
+    return settings
+
+
+class WorkerSettings(BaseSettings):
+    """Настройки процесса worker: адрес сервера, токен worker, папка профилей браузера."""
+
+    model_config = SettingsConfigDict(env_prefix=WORKER_PREFIX, env_file_encoding="utf-8", extra="forbid", frozen=True)
+
+    api_url: str
+    token: SecretStr
+    profiles_dir: Path = Path(".browser-profiles")
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    # Пауза между вопросами «есть ли задание», когда очередь пуста.
+    poll_seconds: int = Field(default=10, ge=1, le=600)
+
+    @field_validator("api_url")
+    @classmethod
+    def _api_origin(cls, value: str) -> str:
+        parts = urlsplit(value.strip())
+        if parts.scheme not in {"http", "https"} or not parts.hostname:
+            raise ValueError("нужен адрес сервера вида http://api:8000 или https://домен")
+        if parts.username or parts.password or parts.query or parts.fragment or parts.path not in {"", "/"}:
+            raise ValueError("только схема, хост и порт, без пути, параметров и логина")
+        port = f":{parts.port}" if parts.port else ""
+        return f"{parts.scheme}://{parts.hostname}{port}"
+
+    @field_validator("token")
+    @classmethod
+    def _token_length(cls, value: SecretStr) -> SecretStr:
+        if len(value.get_secret_value()) < WORKER_TOKEN_MIN_CHARS:
+            raise ValueError("нужен токен из команды create-worker")
+        return value
+
+
+def load_worker_settings(env_file: Path | None = Path("worker.env")) -> WorkerSettings:
+    """Настройки worker или понятная ошибка; переменные сервера (PRICEWATCH_…) worker не смотрит."""
+    unknown = sorted(
+        name for name in os.environ
+        if name.startswith(WORKER_PREFIX) and name.removeprefix(WORKER_PREFIX).lower() not in WorkerSettings.model_fields
+    )
+    if unknown:
+        raise ConfigError("Неизвестные переменные окружения: " + ", ".join(unknown))
+    try:
+        settings = WorkerSettings(_env_file=env_file)  # type: ignore[call-arg]
+    except ValidationError as error:
+        raise ConfigError(_describe(error, WORKER_PREFIX)) from None
+    register_secret(settings.token.get_secret_value())
     return settings
 
 
@@ -116,12 +168,12 @@ def _is_field(variable: str) -> bool:
     return variable.removeprefix(ENV_PREFIX).lower() in Settings.model_fields
 
 
-def _describe(error: ValidationError) -> str:
+def _describe(error: ValidationError, prefix: str = ENV_PREFIX) -> str:
     lines = []
     for issue in error.errors(include_input=False, include_url=False, include_context=False):
         location = [str(part) for part in issue["loc"]]
         field = location[0] if location else ""
-        variable = f"{ENV_PREFIX}{field.upper()}" if field else "конфигурация"
+        variable = f"{prefix}{field.upper()}" if field else "конфигурация"
         message = "переменная не задана" if issue["type"] == "missing" else _plain(issue)
         lines.append(f"- {variable}: {message}")
     return "Конфигурация неверна:\n" + "\n".join(lines)
