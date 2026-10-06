@@ -17,6 +17,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from pricewatch.api.client_ip import Network, client_ip
 from pricewatch.api.errors import error_response
+from pricewatch.api.web_errors import is_web_path, web_error_response
 from pricewatch.domain.errors import ErrorCode
 from pricewatch.observability.ids import new_error_id, request_context
 
@@ -85,7 +86,11 @@ class EdgeMiddleware:
                 )
                 if response_started:
                     raise
-                response = error_response(ErrorCode.INTERNAL_ERROR, 500, error_id=error_id)
+                if is_web_path(scope["path"]):
+                    htmx = any(name == b"hx-request" and value == b"true" for name, value in scope["headers"])
+                    response = web_error_response(ErrorCode.INTERNAL_ERROR, 500, htmx=htmx, error_id=error_id)
+                else:
+                    response = error_response(ErrorCode.INTERNAL_ERROR, 500, error_id=error_id)
                 await response(scope, receive, send_with_headers)
             finally:
                 logger.info(

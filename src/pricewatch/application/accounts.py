@@ -40,6 +40,15 @@ def create_invite(uow: UnitOfWork, key: bytes, actor_id: int, role: Role, now: d
     return IssuedInvite(invite=invite, code=code)
 
 
+def invite_is_valid(uow: UnitOfWork, key: bytes, code: str, now: datetime) -> bool:
+    """Можно ли зарегистрироваться по коду: страница регистрации показывает форму или объяснение.
+    Приглашение не расходуется — транзакция без фиксации."""
+    if not code:
+        return False
+    with uow:
+        return uow.invites.claim(keyed_hash(key, Purpose.INVITE, code), now) is not None
+
+
 def register(
     uow: UnitOfWork,
     hasher: PasswordHasher,

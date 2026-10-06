@@ -1,4 +1,4 @@
-"""Ответы об ошибках по схеме ErrorResponse из openapi/v1.yaml и HTTP-статусы кодов."""
+"""Ответы об ошибках по схеме ErrorResponse из openapi/v1.yaml и HTTP-статусы кодов; на страницах сайта — HTML (web_errors)."""
 
 import logging
 from collections.abc import Mapping
@@ -8,8 +8,10 @@ from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
+from starlette.responses import Response
 
 from pricewatch.domain.errors import SAFE_MESSAGES, ErrorCode, PriceWatcherError
+from pricewatch.api.web_errors import is_web_path, web_error_response
 from pricewatch.observability.ids import new_error_id
 
 logger = logging.getLogger(__name__)
@@ -85,7 +87,11 @@ def error_response(
 _BEARER_CHALLENGE = {"WWW-Authenticate": "Bearer"}
 
 
-async def handle_project_error(request: Request, error: PriceWatcherError) -> JSONResponse:
+def _htmx(request: Request) -> bool:
+    return request.headers.get("HX-Request") == "true"
+
+
+async def handle_project_error(request: Request, error: PriceWatcherError) -> Response:
     status = HTTP_STATUS[error.code]
     headers = _BEARER_CHALLENGE if status == 401 and request.url.path.startswith("/api/") else None
     error_id = None
@@ -97,10 +103,14 @@ async def handle_project_error(request: Request, error: PriceWatcherError) -> JS
             exc_info=error,
             extra={"error_id": error_id, "error_code": error.code.value, "path": request.url.path},
         )
+    if is_web_path(request.url.path):
+        return web_error_response(error.code, status, htmx=_htmx(request), error_id=error_id, details=error.details)
     return error_response(error.code, status, error_id=error_id, details=error.details, headers=headers)
 
 
-async def handle_validation_error(_: Request, error: RequestValidationError) -> JSONResponse:
+async def handle_validation_error(request: Request, error: RequestValidationError) -> Response:
+    if is_web_path(request.url.path):
+        return web_error_response(ErrorCode.VALIDATION_ERROR, 422, htmx=_htmx(request))
     # Только путь к полю и тип проблемы: введённые значения в ответ не возвращаются.
     fields = {
         ".".join(str(part) for part in issue["loc"]): issue["type"] for issue in error.errors()
@@ -108,9 +118,11 @@ async def handle_validation_error(_: Request, error: RequestValidationError) -> 
     return error_response(ErrorCode.VALIDATION_ERROR, 422, details={"fields": fields})
 
 
-async def handle_http_exception(_: Request, error: HTTPException) -> JSONResponse:
+async def handle_http_exception(request: Request, error: HTTPException) -> Response:
     if error.status_code >= 500:
         code = ErrorCode.INTERNAL_ERROR
     else:
         code = _HTTP_EXCEPTION_CODES.get(error.status_code, ErrorCode.VALIDATION_ERROR)
+    if is_web_path(request.url.path):
+        return web_error_response(code, error.status_code, htmx=_htmx(request))
     return error_response(code, error.status_code, headers=error.headers)

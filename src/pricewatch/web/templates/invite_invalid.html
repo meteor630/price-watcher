@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Приглашение недействительно{% endblock %}
+{% block content %}
+<section class="auth" aria-labelledby="auth-title">
+  <h1 id="auth-title" class="auth__title">Приглашение не работает</h1>
+  <p class="auth__lead">{{ message }}</p>
+  <a class="btn btn--ghost btn--wide" href="/web/login">Ко входу</a>
+</section>
+{% endblock %}

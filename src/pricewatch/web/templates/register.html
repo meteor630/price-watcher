@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Регистрация{% endblock %}
+{% block content %}
+<section class="auth" aria-labelledby="auth-title">
+  <h1 id="auth-title" class="auth__title">Регистрация</h1>
+  <p class="auth__lead">Вас пригласили в Price Watcher. Придумайте логин и пароль.</p>
+  <form class="form" method="post" action="/web/register" novalidate>
+    <input type="hidden" name="invite" value="{{ invite }}">
+    <div class="field{% if errors.get("login") %} field--error{% endif %}">
+      <label class="field__label" for="login">Логин</label>
+      <input class="input" id="login" name="login" type="text" value="{{ login_value }}" autocomplete="username"
+             autocapitalize="none" spellcheck="false" required maxlength="64" aria-describedby="login-hint{% if errors.get("login") %} login-error{% endif %}">
+      <p class="field__hint" id="login-hint">3–64 символа: латиница, цифры, точка, дефис, подчёркивание.</p>
+      {% if errors.get("login") %}<p class="field__error" id="login-error">{{ errors.get("login") }}</p>{% endif %}
+    </div>
+    <div class="field{% if errors.get("password") %} field--error{% endif %}">
+      <label class="field__label" for="password">Пароль</label>
+      <input class="input" id="password" name="password" type="password" autocomplete="new-password" required
+             minlength="{{ password_min }}" maxlength="{{ password_max }}" aria-describedby="password-hint{% if errors.get("password") %} password-error{% endif %}">
+      <p class="field__hint" id="password-hint">От {{ password_min }} до {{ password_max }} символов, не совпадает с логином. Состав — любой.</p>
+      {% if errors.get("password") %}<p class="field__error" id="password-error">{{ errors.get("password") }}</p>{% endif %}
+    </div>
+    <div class="field{% if errors.get("password_repeat") %} field--error{% endif %}">
+      <label class="field__label" for="password_repeat">Повтор пароля</label>
+      <input class="input" id="password_repeat" name="password_repeat" type="password" autocomplete="new-password" required
+             maxlength="{{ password_max }}"{% if errors.get("password_repeat") %} aria-describedby="repeat-error"{% endif %}>
+      {% if errors.get("password_repeat") %}<p class="field__error" id="repeat-error">{{ errors.get("password_repeat") }}</p>{% endif %}
+    </div>
+    <button class="btn btn--primary btn--wide" type="submit">Зарегистрироваться</button>
+  </form>
+</section>
+{% endblock %}

@@ -56,7 +56,7 @@
 - Файлы: `.github/workflows/ci.yml` — CI на каждый push: тесты, import-linter, проверка карты на Linux и на Windows (PostgreSQL 18 сборки EDB), gitleaks по всей истории. Действия закреплены по хешу, gitleaks и PostgreSQL для Windows — с проверкой контрольной суммы.
 - Файлы: `.gitleaksignore` — ложные срабатывания gitleaks по точному отпечатку; только ненастоящие значения из тестов и только с согласия владельца.
 
-Зависимости рабочего кода: pydantic-settings (MIT), fastapi (MIT), uvicorn (BSD-3), sqlalchemy (MIT), psycopg (LGPL-3.0, как неизменённая библиотека), alembic (MIT), argon2-cffi (MIT), tzdata (Apache-2.0), httpx2 (BSD-3), price-parser (BSD-3), patchright (Apache-2.0; нужен установленный Google Chrome, на Linux — Xvfb), pillow (MIT-CMU). Для разработки: pytest, import-linter, grimp, openapi-spec-validator.
+Зависимости рабочего кода: pydantic-settings (MIT), fastapi (MIT), uvicorn (BSD-3), sqlalchemy (MIT), psycopg (LGPL-3.0, как неизменённая библиотека), alembic (MIT), argon2-cffi (MIT), tzdata (Apache-2.0), httpx2 (BSD-3), price-parser (BSD-3), patchright (Apache-2.0; нужен установленный Google Chrome, на Linux — Xvfb), pillow (MIT-CMU), jinja2 (BSD-3). В статике сайта: htmx 2.0.10 (0BSD). Для разработки: pytest, import-linter, grimp, openapi-spec-validator.
 
 ## Пакеты
 
@@ -117,14 +117,17 @@
 ### pricewatch.api
 - Путь: `src/pricewatch/api/`
 - Отвечает: маршруты `/api/v1`, `/web`, `/worker/v1`, `/internal/v1`; аутентификация
-- Зависит от: `pricewatch.application`, `pricewatch.config`, `pricewatch.domain`, `pricewatch.media`, `pricewatch.observability`
-- Тесты: `uv run pytest tests/unit/test_api_app.py tests/security/test_client_ip.py tests/security/test_web_session_http.py tests/security/test_app_auth_http.py tests/security/test_access_rules.py tests/integration/test_server_start.py tests/security/test_worker_http.py`
+- Зависит от: `pricewatch.application`, `pricewatch.config`, `pricewatch.domain`, `pricewatch.media`, `pricewatch.observability`, `pricewatch.web`
+- Тесты: `uv run pytest tests/unit/test_api_app.py tests/security/test_client_ip.py tests/security/test_web_session_http.py tests/security/test_app_auth_http.py tests/security/test_access_rules.py tests/integration/test_server_start.py tests/security/test_worker_http.py tests/security/test_web_pages.py`
 - Файлы: `src/pricewatch/api/worker_v1.py` — /worker/v1/claim (с признаком need_image), /heartbeat, /result, /image (тело image/webp до 2 МБ, читается частями): только токен worker, строгие схемы (лишние поля и неверные типы — 422); вне контракта приложения.
 - Файлы: `src/pricewatch/api/app.py` — create_app: обработчики ошибок, CORS только своему домену, без автодокументации.
 - Файлы: `src/pricewatch/api/edge.py` — внешний слой: request_id, защитные заголовки, 500 без утечек, журнал запросов без строки запроса.
-- Файлы: `src/pricewatch/api/errors.py` — HTTP-статус каждого кода ошибки, тело по схеме ErrorResponse.
+- Файлы: `src/pricewatch/api/errors.py` — HTTP-статус каждого кода ошибки, тело по схеме ErrorResponse; на путях сайта (/ и /web) — HTML через web_errors.
 - Файлы: `src/pricewatch/api/context.py` — ApiContext (единицы работы, ключ, хешер, часы, каталог фото) от bootstrap; IP посетителя из request.state.
 - Файлы: `src/pricewatch/api/web_auth.py` — cookie pw_session (HttpOnly, Secure, SameSite=Lax), зависимость web_user: только cookie; для изменяющих — Origin и X-CSRF-Token.
+- Файлы: `src/pricewatch/api/web_pages.py` — / → /web/; вход и регистрация обычной формой (Origin = адрес сайта, без JS), недействительное приглашение — объяснение без формы, код приглашения в строке запроса; выход — htmx с CSRF.
+- Файлы: `src/pricewatch/api/web_errors.py` — ошибки сайта: нет сессии — на вход (htmx — HX-Redirect), иначе страница или фрагмент #flash с data-error-code; Retry-After при превышении попыток.
+- Файлы: `src/pricewatch/api/web_forms.py` — разбор application/x-www-form-urlencoded: до 16 КБ и 50 полей, повтор поля и чужой тип — VALIDATION_ERROR; без python-multipart.
 - Файлы: `src/pricewatch/api/app_auth.py` — зависимость app_user: только Authorization: Bearer, cookie не читается.
 - Файлы: `src/pricewatch/api/v1_auth.py` — /api/v1/auth/pair, /refresh, /logout, /me по OpenAPI; ответы с токенами — Cache-Control: no-store; время — UTC.
 - Файлы: `src/pricewatch/api/client_ip.py` — IP посетителя: X-Forwarded-For справа налево и только от доверенных прокси.
@@ -133,7 +136,12 @@
 - Путь: `src/pricewatch/web/`
 - Отвечает: шаблоны, HTML-фрагменты, CSS, JS
 - Зависит от: —
-- Тесты: `uv run pytest tests/unit/test_design_tokens.py tests/unit/test_fonts.py tests/unit/test_package_layout.py`
+- Тесты: `uv run pytest tests/unit/test_design_tokens.py tests/unit/test_fonts.py tests/unit/test_web_templates.py tests/security/test_web_pages.py tests/unit/test_package_layout.py`
+- Файлы: `src/pricewatch/web/templates.py` — Jinja2: автоэкранирование, неизвестная переменная — ошибка, адрес статики с меткой содержимого.
+- Файлы: `src/pricewatch/web/templates/` — base (шапка, htmx без eval и встроенных стилей, CSRF в hx-headers), вход, регистрация, недействительное приглашение, ошибка, фрагмент #flash; без встроенных скриптов и style= (CSP).
+- Файлы: `src/pricewatch/web/static/css/base.css` — каркас: фон, шапка, кнопки, поля, сообщения, карточка входа; только токены.
+- Файлы: `src/pricewatch/web/static/vendor/htmx-2.0.10.min.js`, `src/pricewatch/web/static/vendor/htmx.LICENSE.txt` — htmx 2.0.10 из npm (целостность sha512 сверена), 0BSD.
+- Файлы: `src/pricewatch/web/static/favicon.svg` — значок сайта: плитка «₽».
 - Файлы: `src/pricewatch/web/static/css/tokens.css` — токены дизайна; компоненты берут цвета, размеры и длительности только отсюда.
 - Файлы: `src/pricewatch/web/static/css/fonts.css`, `src/pricewatch/web/static/fonts/` — шрифты со своего домена: кириллица, латиница, расширенная латиница (знак ₽).
 
@@ -308,6 +316,11 @@
 | Wildberries | JSON `/__internal/u-card/cards/v4/detail`, который запрашивает сама страница в браузере | способ — из парсера владельца; адрес card.wb.ru закрыт защитой wbaas (06.10.2026) | открытый card.wb.ru (403 без токена), github.com/Duff89/wildberries_parser (устаревший адрес, без лицензии) |
 | Очередь заданий | своя в PostgreSQL: check_tasks, FOR UPDATE SKIP LOCKED, аренда 2 мин, частичные уникальные индексы; worker — только через HTTP /worker/v1 | подход к периодическим задачам (уникальный ключ слота) — procrastinate (github.com/procrastinate-org/procrastinate, MIT) | procrastinate, pgqueuer (worker подключается к базе — ломает изоляцию worker), pgmq (расширение PostgreSQL) |
 | Расписание | свой цикл: несколько времён в сутки по Москве, slot_key уникален в базе | — | APScheduler (лишняя сложность хранилища задач) |
+| Шаблоны сайта | Jinja2 с автоэкранированием и строгими переменными (решение 06.10.2026) | github.com/pallets/jinja, BSD-3 | — |
+| Обновление части страницы | htmx 2.0.10, файл в своей статике, без eval и встроенных стилей | github.com/bigskysoftware/htmx, 0BSD | свой JS на fetch (больше своего кода), htmx 4.0 (только вышел) |
+| Перетаскивание | SortableJS + кнопки «выше/ниже» для клавиатуры (срез 7.4) | github.com/SortableJS/Sortable, MIT | встроенное перетаскивание браузера (не работает пальцем) |
+| Графики | свой SVG с сервера по образцу design_reference, подсказка небольшим JS | — | uPlot, Chart.js (данные и деньги пришлось бы форматировать в JS) |
+| Разбор форм | свой для application/x-www-form-urlencoded на urllib.parse | — | python-multipart (лишняя зависимость: файлов через формы нет) |
 | CSRF | свой токен, привязанный к серверной сессии, и проверка Origin | — | starlette-csrf (не развивается с 2023), fastapi-csrf-protect (вторая cookie и секрет) |
 
 Шрифты, лицензия SIL OFL 1.1, источник — npm-пакеты @fontsource-variable:

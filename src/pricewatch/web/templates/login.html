@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Вход{% endblock %}
+{% block content %}
+<section class="auth" aria-labelledby="auth-title">
+  <h1 id="auth-title" class="auth__title">Вход</h1>
+  {% if notice %}<p class="alert alert--ok" role="status">{{ notice }}</p>{% endif %}
+  {% if error %}<p class="alert alert--error" role="alert" id="login-error">{{ error }}</p>{% endif %}
+  <form class="form" method="post" action="/web/login" novalidate>
+    <div class="field">
+      <label class="field__label" for="login">Логин</label>
+      <input class="input" id="login" name="login" type="text" value="{{ login_value }}" autocomplete="username"
+             autocapitalize="none" spellcheck="false" required maxlength="64"{% if error %} aria-describedby="login-error"{% endif %}>
+    </div>
+    <div class="field">
+      <label class="field__label" for="password">Пароль</label>
+      <input class="input" id="password" name="password" type="password" autocomplete="current-password" required maxlength="128">
+    </div>
+    <button class="btn btn--primary btn--wide" type="submit">Войти</button>
+  </form>
+</section>
+{% endblock %}

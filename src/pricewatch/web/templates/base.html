@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark light">
+  {# htmx без eval и встроенных стилей: так требует политика безопасности страниц (CSP) #}
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false, "selfRequestsOnly": true, "responseHandling": [{"code": "204", "swap": false}, {"code": "[23]..", "swap": true}, {"code": "[45]..", "swap": true, "error": true}]}'>
+  <title>{% block title %}{% endblock %} · Price Watcher</title>
+  <link rel="icon" href="{{ static('favicon.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ static('css/fonts.css') }}">
+  <link rel="stylesheet" href="{{ static('css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ static('css/base.css') }}">
+  <script src="{{ static('vendor/htmx-2.0.10.min.js') }}" defer></script>
+</head>
+<body{% if session_user is defined and session_user %} hx-headers='{"X-CSRF-Token": "{{ session_user.csrf_token }}"}'{% endif %}>
+  <a class="skip-link" href="#main">К содержимому</a>
+  <header class="top">
+    <div class="wrap top__row">
+      <a class="brand" href="/web/" data-brand>
+        <span class="brand__tag" aria-hidden="true">₽</span>
+        <span class="brand__name">Price Watcher</span>
+      </a>
+      {% if session_user is defined and session_user %}
+      <div class="top__meta">
+        <span class="top__user" data-user-name>{{ session_user.user.display_name }}</span>
+        <button class="btn btn--ghost btn--small" type="button" hx-post="/web/logout" data-logout>Выйти</button>
+      </div>
+      {% endif %}
+    </div>
+  </header>
+  <main id="main" class="wrap main">
+    {% block content %}{% endblock %}
+  </main>
+  <div id="flash" class="flash" role="status" aria-live="polite"></div>
+</body>
+</html>

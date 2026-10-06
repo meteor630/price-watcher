@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Ошибка {{ status }}{% endblock %}
+{% block content %}
+<section class="auth" aria-labelledby="error-title" data-error-code="{{ code }}">
+  <p class="eyebrow">Ошибка {{ status }}</p>
+  <h1 id="error-title" class="auth__title">{{ message }}</h1>
+  {% if error_id %}<p class="auth__lead">Номер ошибки: <code data-error-id>{{ error_id }}</code></p>{% endif %}
+  <a class="btn btn--ghost btn--wide" href="/web/">На главную</a>
+</section>
+{% endblock %}

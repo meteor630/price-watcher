@@ -5,6 +5,7 @@
 
 import itertools
 import logging
+import re
 import tempfile
 import uuid
 from collections.abc import Iterator
@@ -12,10 +13,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-import yaml
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.testclient import TestClient
-from jsonschema import Draft202012Validator
 from sqlalchemy import Engine, text
 
 from pricewatch.api.app import create_app
@@ -32,8 +31,6 @@ ORIGIN = "https://prices.example.ru"
 KEY = "http-session-test-key-" + "k" * 16
 PASSWORD = "правильный пароль 42"
 NOW = datetime(2026, 10, 5, 12, 0, tzinfo=UTC)
-OPENAPI = yaml.safe_load((Path(__file__).resolve().parents[2] / "openapi" / "v1.yaml").read_text(encoding="utf-8"))
-ERROR_SCHEMA = Draft202012Validator(OPENAPI["components"]["schemas"]["ErrorResponse"])
 HASHER = PasswordHasher(time_cost=1, memory_cost=8 * 1024)
 
 
@@ -115,8 +112,16 @@ def sign_in(client: TestClient, name: str, password: str = PASSWORD, forwarded: 
 
 
 def error_code(response) -> str:  # type: ignore[no-untyped-def]
-    ERROR_SCHEMA.validate(response.json())
-    return response.json()["error"]["code"]
+    """Код ошибки на странице сайта: /web отвечает HTML, код — в data-error-code."""
+    assert response.headers["content-type"].startswith("text/html")
+    found = re.search(r'data-error-code="([A-Z_]+)"', response.text)
+    assert found is not None, response.text
+    return found.group(1)
+
+
+def assert_sent_to_login(response) -> None:  # type: ignore[no-untyped-def]
+    assert response.status_code == 303
+    assert response.headers["location"] == "/web/login"
 
 
 def test_session_cookie_flags(client: TestClient, account: str) -> None:
@@ -132,10 +137,11 @@ def test_session_cookie_flags(client: TestClient, account: str) -> None:
 
 
 def test_requests_without_session_are_refused(client: TestClient) -> None:
-    response = client.get("/web/t/me")
+    assert_sent_to_login(client.get("/web/t/me", follow_redirects=False))
 
+    response = client.get("/web/t/me", headers={"HX-Request": "true"})  # запрос htmx: переход делает сам htmx
     assert response.status_code == 401
-    assert error_code(response) == "AUTH_REQUIRED"
+    assert response.headers["HX-Redirect"] == "/web/login"
 
 
 def test_session_cookie_authenticates(client: TestClient, account: str) -> None:
@@ -149,10 +155,9 @@ def test_bearer_is_ignored_on_web(client: TestClient, account: str) -> None:
     token = client.cookies[SESSION_COOKIE]
     client.cookies.clear()
 
-    response = client.get("/web/t/me", headers={"Authorization": f"Bearer {token}"})
+    response = client.get("/web/t/me", headers={"Authorization": f"Bearer {token}"}, follow_redirects=False)
 
-    assert response.status_code == 401
-    assert error_code(response) == "AUTH_REQUIRED"
+    assert_sent_to_login(response)
 
 
 def test_mutating_request_with_csrf_and_origin(client: TestClient, account: str) -> None:
@@ -209,7 +214,6 @@ def test_rate_limit_answer_and_retry_after(client: TestClient, account: str) -> 
 
     assert response.status_code == 429
     assert error_code(response) == "RATE_LIMITED"
-    assert response.json()["error"]["retry_after_seconds"] == 900
     assert response.headers["Retry-After"] == "900"
 
 
