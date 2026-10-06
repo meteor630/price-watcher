@@ -46,6 +46,7 @@
       </label>
       {{ quantity_stepper(detail.item_id, detail.version, detail.quantity, detail.name, "item", period_day) }}
       {% if detail.line_price_text and detail.quantity > 1 %}<span class="item-hero__line num">{{ detail.quantity }} шт · {{ detail.line_price_text }}</span>{% endif %}
+      <a class="btn btn--ghost btn--small" href="/web/settings/items?edit={{ detail.item_id }}">Изменить</a>
       {% if detail.offers %}
       <details class="menu">
         <summary class="btn btn--ghost btn--small">Открыть в магазине</summary>

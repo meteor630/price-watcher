@@ -429,7 +429,20 @@ class SqlItemRepository:
             values["in_total"] = bool(changes.in_total)
         if changes.include_stale is not UNCHANGED:
             values["include_stale"] = bool(changes.include_stale)
-        if changes.group_id is not UNCHANGED and changes.group_id != current.group_id:
+        if changes.category_id is not UNCHANGED and changes.category_id != current.category_id:
+            target_group = None if changes.group_id is UNCHANGED else changes.group_id
+            SqlCategoryRepository(self.connection).get(user_id, changes.category_id)
+            if target_group is not None:
+                self._check_group(user_id, changes.category_id, target_group)
+            # Старый и новый родитель — в одном порядке: встречные переносы не ждут друг друга по кругу.
+            parents = sorted({(current.category_id, current.group_id), (changes.category_id, target_group)},
+                             key=lambda pair: (0, pair[1]) if pair[1] is not None else (1, pair[0]))
+            for category_id, group_id in parents:
+                self.parents.bump_item_parent(user_id, category_id, group_id)
+            values["category_id"] = changes.category_id
+            values["group_id"] = target_group
+            values["position"] = self._next_position(changes.category_id, target_group)
+        elif changes.group_id is not UNCHANGED and changes.group_id != current.group_id:
             if changes.group_id is not None:
                 self._check_group(user_id, current.category_id, changes.group_id)
             self._bump_both_parents(user_id, current, changes.group_id)

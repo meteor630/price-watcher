@@ -18,6 +18,15 @@ STATUS_LABELS = {
     "no_links": "нет ссылок на магазины",
 }
 CHART_RANGE_NAMES = {"week": "Неделя", "month": "Месяц", "year": "Год"}
+# Состояние ссылки в окне товара (SITE_DESIGN_SPEC.md, раздел 8).
+LINK_STATUS_LABELS = {
+    "unchecked": "не проверена",
+    "checking": "проверяется…",
+    "found": "цена найдена",
+    "waiting": "ожидает плановой проверки",
+    "not_found": "не удалось найти цену",
+    "store_disabled": "Этот сайт отключён администратором",
+}
 
 
 def period_index(period: Period) -> int:

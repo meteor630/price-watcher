@@ -1,0 +1,27 @@
+{% set checking = links | selectattr("status.value", "equalto", "checking") | list %}
+<div id="item-links" class="links"{% if checking %} hx-get="/web/items/{{ item_id }}/links" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
+  {% for result in results %}{% if result.error %}<p class="alert alert--error links__error"><span class="links__url">{{ result.url }}</span> — {{ result.error }}</p>{% endif %}{% endfor %}
+  {% if links %}
+  <ul class="links__list">
+    {% for link in links %}
+    <li class="links__row links__row--{{ link.status.value }}">
+      <span class="links__store"><span class="store-dot store-dot--{{ link.color_token }}" aria-hidden="true"></span>{{ link.store_name }}</span>
+      <span class="links__state">{{ link_status_labels[link.status.value] }}{% if link.price_text %} · <span class="num">{{ link.price_text }}</span>{% endif %}{% if link.source_label %} · {{ link.source_label }}{% endif %}</span>
+      <a class="links__url" href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.url }}</a>
+      <button class="btn btn--danger btn--small links__remove" type="button" aria-label="Снять ссылку {{ link.store_name }}"
+              hx-post="/web/items/{{ item_id }}/links/{{ link.item_link_id }}/remove" hx-target="#item-links" hx-swap="outerHTML">Снять</button>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">Ссылок нет — добавьте ссылку, чтобы следить за ценой.</p>
+  {% endif %}
+  <div class="links__add">
+    <label class="visually-hidden" for="new-link-{{ item_id }}">Новая ссылка</label>
+    <input class="input" id="new-link-{{ item_id }}" name="url" type="url" inputmode="url" placeholder="https://…" autocomplete="off">
+    <button class="btn btn--ghost" type="button" hx-post="/web/items/{{ item_id }}/links" hx-include="#new-link-{{ item_id }}" hx-target="#item-links" hx-swap="outerHTML">Добавить ссылку</button>
+  </div>
+  {% if toast is defined and toast %}
+  <div id="flash" class="flash" role="status" aria-live="polite" hx-swap-oob="true"><div class="toast" data-toast><span>{{ toast }}</span><button class="toast__undo" type="button" hx-post="/web/undo" hx-vals='{"token": "{{ undo_token }}"}'>Отменить</button><span class="toast__bar" aria-hidden="true"></span></div></div>
+  {% endif %}
+</div>

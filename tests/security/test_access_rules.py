@@ -19,6 +19,7 @@ from sqlalchemy import Engine, text
 
 from pricewatch.api.app import create_app
 from pricewatch.api.context import ApiContext
+from pricewatch.parsers.catalog import LinkCatalog
 from pricewatch.application.accounts import create_invite
 from pricewatch.application.passwords import PasswordHasher
 from pricewatch.config.settings import Settings
@@ -48,7 +49,7 @@ def make_client(engine: Engine) -> TestClient:
     settings = Settings(
         env="test", public_origin="https://prices.example.ru", database_url="postgresql://u@h/d", secret_key="k" * 40, _env_file=None
     )  # type: ignore[call-arg]
-    context = ApiContext(lambda: SqlUnitOfWork(engine), KEY, PasswordHasher(time_cost=1, memory_cost=8192), lambda: NOW, MediaStore(Path(tempfile.mkdtemp())))
+    context = ApiContext(lambda: SqlUnitOfWork(engine), KEY, PasswordHasher(time_cost=1, memory_cost=8192), lambda: NOW, MediaStore(Path(tempfile.mkdtemp())), LinkCatalog())
     return TestClient(create_app(settings, context), base_url="https://testserver")
 
 

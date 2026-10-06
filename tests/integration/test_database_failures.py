@@ -18,6 +18,7 @@ from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from pricewatch.api.app import create_app
 from pricewatch.api.context import ApiContext, get_context
+from pricewatch.parsers.catalog import LinkCatalog
 from pricewatch.application.passwords import PasswordHasher
 from pricewatch.config.settings import Settings
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
@@ -108,7 +109,7 @@ def test_db_failure_over_http_is_503_with_logged_cause(unreachable: Engine, capl
     settings = Settings(
         env="test", public_origin="https://prices.example.ru", database_url=UNREACHABLE, secret_key="k" * 40, _env_file=None
     )  # type: ignore[call-arg]
-    context = ApiContext(lambda: SqlUnitOfWork(unreachable), b"k" * 40, PasswordHasher(time_cost=1, memory_cost=8192), lambda: datetime.now(UTC), MediaStore(Path(tempfile.mkdtemp())))
+    context = ApiContext(lambda: SqlUnitOfWork(unreachable), b"k" * 40, PasswordHasher(time_cost=1, memory_cost=8192), lambda: datetime.now(UTC), MediaStore(Path(tempfile.mkdtemp())), LinkCatalog())
     app = create_app(settings, context)
 
     @app.get("/t/db")

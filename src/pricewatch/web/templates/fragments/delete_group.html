@@ -1,5 +1,5 @@
-<dialog class="dialog" data-modal aria-labelledby="delete-title">
-  <form class="dialog__body" hx-post="/web/groups/{{ group.group_id }}/delete" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">
+<dialog class="dialog" data-modal data-open aria-labelledby="delete-title">
+  <form class="dialog__body" data-close-on-success hx-post="/web/groups/{{ group.group_id }}/delete" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">
     <h2 id="delete-title" class="dialog__title">Удалить группу «{{ group.name }}»?</h2>
     <p class="dialog__text">В группе {{ count_word(group.item_count, "товар", "товара", "товаров") }}.</p>
     <input type="hidden" name="version" value="{{ group.version }}">

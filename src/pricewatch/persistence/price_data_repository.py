@@ -8,13 +8,13 @@
 from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import Connection, Table, func, select
+from sqlalchemy import Connection, Table, func, select, true
 
-from pricewatch.application.ports import LinkBinding, LinkInfo, PricedItem, StoreInfo
+from pricewatch.application.ports import LinkBinding, LinkInfo, LinkState, PricedItem, StoreInfo
 from pricewatch.domain.errors import ErrorCode
 from pricewatch.domain.pricing import Availability, Confirmation, Observation
 from pricewatch.domain.shopping import ItemState
-from pricewatch.persistence.models import CategoryRow, GroupRow, ItemLinkRow, ItemRow, PriceObservationRow, StoreRow, TrackedLinkRow
+from pricewatch.persistence.models import CategoryRow, CheckTaskRow, GroupRow, ItemLinkRow, ItemRow, PriceObservationRow, StoreRow, TrackedLinkRow
 
 items: Table = ItemRow.__table__
 categories: Table = CategoryRow.__table__
@@ -23,6 +23,7 @@ item_links: Table = ItemLinkRow.__table__
 stores: Table = StoreRow.__table__
 observations: Table = PriceObservationRow.__table__
 tracked_links: Table = TrackedLinkRow.__table__
+check_tasks: Table = CheckTaskRow.__table__
 
 
 class SqlPriceDataRepository:
@@ -109,6 +110,32 @@ class SqlPriceDataRepository:
                 )
             )
         return found
+
+    def link_states(self, user_id: int, item_id: int) -> list[LinkState]:
+        last = (
+            select(observations)
+            .where(observations.c.tracked_link_id == item_links.c.tracked_link_id)
+            .order_by(observations.c.checked_at.desc(), observations.c.id.desc())
+            .limit(1)
+            .lateral("last")
+        )
+        checking = (
+            select(check_tasks.c.id)
+            .where(check_tasks.c.tracked_link_id == item_links.c.tracked_link_id, check_tasks.c.status.in_(("queued", "leased")))
+            .exists()
+        )
+        rows = self.connection.execute(
+            select(item_links.c.id, tracked_links.c.normalized_url, stores.c.display_name, stores.c.color, stores.c.enabled, checking.label("checking"),
+                   last.c.status, last.c.price_minor, last.c.card_price_minor, last.c.availability, last.c.source, last.c.checked_at)
+            .select_from(
+                item_links.join(tracked_links, tracked_links.c.id == item_links.c.tracked_link_id)
+                .join(stores, stores.c.id == item_links.c.store_id)
+                .outerjoin(last, true())
+            )
+            .where(item_links.c.user_id == user_id, item_links.c.item_id == item_id, item_links.c.valid_to.is_(None))
+            .order_by(item_links.c.valid_from, item_links.c.id)
+        )
+        return [LinkState(*row) for row in rows]
 
     def pending_reviews(self) -> int:
         return self.connection.execute(select(func.count()).where(observations.c.confirmation == "pending")).scalar_one()

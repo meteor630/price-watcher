@@ -36,7 +36,8 @@ def order_version(engine: Engine, login: str) -> int:
 
 def test_page_needs_session_and_root_redirects(client: TestClient) -> None:
     assert client.get(PAGE, follow_redirects=False).headers["location"] == "/web/login"
-    assert client.get("/web/settings", follow_redirects=False).headers["location"] == PAGE
+    # Первая вкладка настроек — «Товары» (SITE_DESIGN_SPEC.md, «Навигация по вкладкам»).
+    assert client.get("/web/settings", follow_redirects=False).headers["location"] == "/web/settings/items"
 
 
 def test_page_is_escaped_without_inline_code(client: TestClient, engine: Engine) -> None:

@@ -9,6 +9,8 @@ from enum import StrEnum
 
 # Мягко удалённое стирается окончательно через 30 дней (DEVELOPMENT_ARCHITECTURE.md, раздел 5).
 PURGE_AFTER = timedelta(days=30)
+# Регион один — Санкт-Петербург (раздел 6): цены новых ссылок проверяются для него.
+REGION_CODE = "spb"
 
 
 class ItemState(StrEnum):

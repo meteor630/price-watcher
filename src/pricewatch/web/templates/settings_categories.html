@@ -1,13 +1,12 @@
 {% extends "base.html" %}
+{% from "_macros.html" import settings_tabs %}
 {% block title %}Настройки — категории{% endblock %}
 {% block content %}
 <nav class="crumbs" aria-label="Путь"><a href="/web/">Главная</a><span aria-hidden="true"> › </span><span class="crumbs__here" aria-current="page">Настройки</span></nav>
 <h1 class="page-title">Настройки</h1>
 <p class="summary">Порядок категорий здесь тот же, что на главной: перетащите строку за ручку или нажмите стрелки. Удалённое можно вернуть кнопкой «Отменить».</p>
 
-<nav class="tabs" aria-label="Разделы настроек">
-  <a class="tabs__tab" href="/web/settings/categories" aria-current="page">Категории</a>
-</nav>
+{{ settings_tabs("categories") }}
 
 <div id="page-rest">
   <form class="add-form" hx-post="/web/settings/categories" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">

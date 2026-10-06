@@ -120,3 +120,33 @@ def test_reorder_needs_key_and_own_categories(client: TestClient, engine: Engine
 
     assert client.put("/api/v1/categories/order", json={"ids": ids, "version": version}, headers=headers).status_code == 422
     assert reorder(client, headers, {"ids": ids[:-1] + foreign, "version": version}).status_code == 422
+
+
+def group_with_items(engine: Engine) -> tuple[int, int, list[int], int]:
+    user = run_sql(engine, "INSERT INTO users (login, password_hash, role, display_name) VALUES ('g' || md5(random()::text), 'h', 'user', 'G') RETURNING id")
+    category = run_sql(engine, "INSERT INTO categories (user_id, name, name_normalized, position) VALUES (:u, 'К', 'к', 0) RETURNING id", u=user)
+    group = run_sql(engine, "INSERT INTO groups (user_id, category_id, name, name_normalized, position) VALUES (:u, :c, 'Г', 'г', 0) RETURNING id", u=user, c=category)
+    ids = [run_sql(engine, "INSERT INTO items (user_id, category_id, group_id, name, position) VALUES (:u, :c, :g, :n, :p) RETURNING id", u=user, c=category, g=group, n=f"т{i}", p=i) for i in range(3)]
+    return user, group, ids, run_sql(engine, "SELECT version FROM groups WHERE id = :g", g=group)
+
+
+def test_group_items_order(client: TestClient, engine: Engine) -> None:
+    user, group, ids, version = group_with_items(engine)
+    headers = bearer(client, engine, user)
+
+    response = client.put(f"/api/v1/groups/{group}/items/order", json={"ids": ids[::-1], "version": version}, headers=headers | {"Idempotency-Key": uuid.uuid4().hex})
+    stale = client.put(f"/api/v1/groups/{group}/items/order", json={"ids": ids, "version": version}, headers=headers | {"Idempotency-Key": uuid.uuid4().hex})
+
+    assert response.status_code == 200 and response.json() == {"ids": ids[::-1], "version": version + 1}
+    schema("OrderState").validate(response.json())
+    assert stale.status_code == 409
+
+
+def test_someone_elses_group_order_is_not_found(client: TestClient, engine: Engine) -> None:
+    _, group, ids, version = group_with_items(engine)
+    stranger, _, _, _ = group_with_items(engine)
+
+    response = client.put(f"/api/v1/groups/{group}/items/order", json={"ids": ids, "version": version},
+                          headers=bearer(client, engine, stranger) | {"Idempotency-Key": uuid.uuid4().hex})
+
+    assert response.status_code == 404

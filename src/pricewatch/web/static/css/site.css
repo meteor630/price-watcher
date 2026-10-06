@@ -1985,3 +1985,137 @@ a.cat {
     flex-direction: column;
   }
 }
+
+/* ---------- настройки товаров и окно товара ---------- */
+
+.chips--filter {
+  margin-block: var(--space-5) var(--space-3);
+}
+
+.item-list {
+  margin-top: var(--space-4);
+}
+
+.dialog--wide {
+  width: min(640px, calc(100% - 2 * var(--gutter)));
+  max-height: calc(100dvh - 2 * var(--space-4));
+}
+
+.dialog__section {
+  margin-bottom: var(--space-2);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-muted);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+}
+
+.input--area {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.form__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 110px;
+  gap: var(--space-3);
+}
+
+.links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.links__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+}
+
+.links__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px var(--space-3);
+  align-items: center;
+  padding: var(--space-3);
+  border-top: 1px solid var(--color-line);
+}
+
+.links__row:first-child {
+  border-top: 0;
+}
+
+.links__store {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: var(--weight-semibold);
+}
+
+.links__state {
+  grid-column: 1;
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.links__row--found .links__state {
+  color: var(--color-down);
+}
+
+.links__row--not_found .links__state,
+.links__row--store_disabled .links__state {
+  color: var(--color-up);
+}
+
+.links__url {
+  grid-column: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.links__remove {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+}
+
+.links__error .links__url {
+  display: inline;
+}
+
+.links__add {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.panel-head-link {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+}
+
+@media (max-width: 760px) {
+  .form__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .links__add {
+    flex-direction: column;
+  }
+
+  .dialog--wide {
+    width: 100%;
+    max-width: none;
+    max-height: 100dvh;
+    margin: auto 0 0;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  }
+}

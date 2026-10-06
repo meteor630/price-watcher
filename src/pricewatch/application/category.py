@@ -16,6 +16,7 @@ from pricewatch.application.price_view import ItemRowView, PricedRow, StoreView,
 from pricewatch.domain.accounts import User
 from pricewatch.domain.charts import ChartPoint, ChartRange, chart_days, sum_chart
 from pricewatch.domain.days import Period, day_start, moscow_date, period_start
+from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.money import Change, format_rub
 from pricewatch.domain.pricing import PriceStatus
 from pricewatch.domain.totals import in_total_shown, period_minimum, total, total_change
@@ -184,3 +185,56 @@ def categories_overview(uow: UnitOfWork, user: User, now: datetime) -> Categorie
             )
         )
     return CategoriesOverview(order_version, overview)
+
+
+@dataclass(frozen=True, slots=True)
+class ItemEntry:
+    row: ItemRowView
+    category_id: int
+    category_name: str
+    group_name: str | None
+    stores: list[StoreView]
+    # Соседи по порядку (та же категория и группа) и версия их родителя — для кнопок «выше/ниже».
+    siblings: list[int]
+    parent_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class CategoryChip:
+    category_id: int
+    name: str
+    item_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class ItemsOverview:
+    chips: list[CategoryChip]
+    total_count: int
+    selected: int | None
+    entries: list[ItemEntry]
+
+
+def items_overview(uow: UnitOfWork, user: User, category_id: int | None, now: datetime) -> ItemsOverview:
+    """Настройки «Товары»: товары «в списке» в порядке категорий, групп и позиций; фильтр по категории."""
+    with uow:
+        categories = uow.categories.list_active(user.id)
+        if category_id is not None and all(category.id != category_id for category in categories):
+            raise PriceWatcherError(ErrorCode.NOT_FOUND)
+        groups = {group.id: group for category in categories for group in uow.groups.list_in_category(user.id, category.id)}
+        priced = load(uow, user.id, Period.DAY, now, now)
+    names = {category.id: category for category in categories}
+    chips = [CategoryChip(category.id, category.name, sum(1 for row in priced.rows if row.item.category_id == category.id)) for category in categories]
+    entries = []
+    for row in priced.rows:
+        if category_id is not None and row.item.category_id != category_id:
+            continue
+        siblings = [other.item.item_id for other in priced.rows if other.item.category_id == row.item.category_id and other.item.group_id == row.item.group_id]
+        group = groups.get(row.item.group_id) if row.item.group_id is not None else None
+        stores = {link.store_id: StoreView(link.store_id, priced.stores[link.store_id].name, priced.stores[link.store_id].color_token) for link in row.now.links}
+        entries.append(
+            ItemEntry(
+                item_row(row, priced.stores), row.item.category_id, names[row.item.category_id].name, group.name if group else None,
+                list(stores.values()), siblings, group.version if group else names[row.item.category_id].version,
+            )
+        )
+    return ItemsOverview(chips, len(priced.rows), category_id, entries)

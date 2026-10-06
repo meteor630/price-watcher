@@ -19,6 +19,7 @@ from sqlalchemy import Engine, text
 
 from pricewatch.api.app import create_app
 from pricewatch.api.context import ApiContext, client_ip, get_context
+from pricewatch.parsers.catalog import LinkCatalog
 from pricewatch.api.web_auth import CSRF_HEADER, SESSION_COOKIE, set_session_cookie, web_user
 from pricewatch.application.passwords import PasswordHasher
 from pricewatch.application.web_auth import SessionUser, login
@@ -56,6 +57,7 @@ def make_app(engine: Engine) -> FastAPI:
         hasher=HASHER,
         clock=lambda: NOW,
         images=MediaStore(Path(tempfile.mkdtemp())),  # фото здесь не загружаются
+        links=LinkCatalog(),
     )
     app = create_app(settings, context)
 

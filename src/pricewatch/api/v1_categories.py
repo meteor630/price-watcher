@@ -1,4 +1,4 @@
-"""Категории для приложения: GET /api/v1/categories/{id}, /chart и PUT /categories/order по openapi/v1.yaml.
+"""Категории для приложения: GET /api/v1/categories/{id}, /chart, PUT /categories/order и /groups/{id}/items/order по openapi/v1.yaml.
 
 Ответ категории несёт ETag; тот же ETag в If-None-Match даёт 304. Чужая и удалённая категория — 404.
 """
@@ -17,7 +17,7 @@ from pricewatch.api.idempotency import idempotent
 from pricewatch.api.v1_json import change_json, item_row_json, point_json
 from pricewatch.application.app_auth import DeviceUser
 from pricewatch.application.category import CategoryDetail, category_chart, category_detail
-from pricewatch.application.shopping import reorder_categories
+from pricewatch.application.shopping import reorder_categories, reorder_group_items
 from pricewatch.domain.charts import ChartRange
 from pricewatch.domain.days import Period
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
@@ -54,6 +54,20 @@ def categories_order_route(request: Request, body: ReorderRequest, user: DeviceU
 
     def run() -> dict[str, Any]:
         version = reorder_categories(context.unit_of_work(), user.user, body.ids, body.version)
+        return {"ids": body.ids, "version": version}
+
+    return idempotent(request, user.user.id, body.model_dump(), run)
+
+
+@router.put("/groups/{group_id}/items/order")
+def group_items_order_route(request: Request, group_id: CategoryId, body: ReorderRequest, user: DeviceUser = Depends(app_user)) -> JSONResponse:
+    """Полный упорядоченный список товаров группы и версия группы; ответ — новый порядок и версия."""
+    if len(set(body.ids)) != len(body.ids):
+        raise PriceWatcherError(ErrorCode.VALIDATION_ERROR, {"fields": {"ids": "not_unique"}})
+    context = get_context(request)
+
+    def run() -> dict[str, Any]:
+        version = reorder_group_items(context.unit_of_work(), user.user, group_id, body.ids, body.version)
         return {"ids": body.ids, "version": version}
 
     return idempotent(request, user.user.id, body.model_dump(), run)

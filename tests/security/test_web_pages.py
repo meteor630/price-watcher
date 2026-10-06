@@ -18,6 +18,7 @@ from sqlalchemy import Engine, text
 
 from pricewatch.api.app import create_app
 from pricewatch.api.context import ApiContext
+from pricewatch.parsers.catalog import LinkCatalog
 from pricewatch.api.web_auth import CSRF_HEADER, SESSION_COOKIE
 from pricewatch.application.accounts import create_invite
 from pricewatch.application.passwords import PasswordHasher
@@ -46,7 +47,7 @@ def engine(migrated_database_url: str) -> Iterator[Engine]:
 @pytest.fixture
 def client(engine: Engine) -> TestClient:
     settings = Settings(env="test", public_origin=ORIGIN, database_url="postgresql://u@h/d", secret_key=KEY, _env_file=None)  # type: ignore[call-arg]
-    context = ApiContext(lambda: SqlUnitOfWork(engine), KEY.encode(), HASHER, lambda: NOW, MediaStore(Path(tempfile.mkdtemp())))
+    context = ApiContext(lambda: SqlUnitOfWork(engine), KEY.encode(), HASHER, lambda: NOW, MediaStore(Path(tempfile.mkdtemp())), LinkCatalog())
     return TestClient(create_app(settings, context), base_url="https://testserver")
 
 

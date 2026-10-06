@@ -207,24 +207,33 @@
     dialog.remove();
   }
 
-  htmx.onLoad((root) => {
-    initSortables(root);
-    armToasts(root);
-  });
-
-  document.addEventListener("htmx:afterSwap", (event) => {
-    const target = event.detail.target;
-    const dialog = target.querySelector && target.querySelector("dialog[data-modal]");
-    if (dialog) {
+  function openDialogs(root) {
+    const dialogs = root.matches && root.matches("dialog[data-open]") ? [root] : root.querySelectorAll("dialog[data-open]");
+    for (const dialog of dialogs) {
+      if (dialog.open || !dialog.isConnected) {
+        continue;
+      }
       // Esc закрывает окно средствами браузера; после этого оно больше не нужно.
       dialog.addEventListener("close", () => dialog.remove(), { once: true });
       dialog.showModal();
+      focusFirst(dialog);
     }
-    focusFirst(target);
+  }
+
+  htmx.onLoad((root) => {
+    initSortables(root);
+    armToasts(root);
+    openDialogs(root);
+  });
+
+  document.addEventListener("htmx:afterSwap", (event) => {
+    focusFirst(event.detail.target);
   });
 
   document.addEventListener("htmx:afterRequest", (event) => {
-    const dialog = event.detail.elt.closest && event.detail.elt.closest("dialog[data-modal]");
+    // Закрывается только форма, которая это просит: окно нового товара после сохранения остаётся открытым.
+    const form = event.detail.elt.closest && event.detail.elt.closest("[data-close-on-success]");
+    const dialog = form && form.closest("dialog[data-modal]");
     if (dialog && event.detail.successful) {
       closeDialog(dialog);
     }

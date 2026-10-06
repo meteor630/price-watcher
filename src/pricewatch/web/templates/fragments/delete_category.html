@@ -1,5 +1,5 @@
-<dialog class="dialog" data-modal aria-labelledby="delete-title">
-  <form class="dialog__body" hx-post="/web/categories/{{ category.category_id }}/delete" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">
+<dialog class="dialog" data-modal data-open aria-labelledby="delete-title">
+  <form class="dialog__body" data-close-on-success hx-post="/web/categories/{{ category.category_id }}/delete" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">
     <h2 id="delete-title" class="dialog__title">Удалить «{{ category.name }}»?</h2>
     <p class="dialog__text">В категории {{ count_word(category.item_count, "товар", "товара", "товаров") }}. Что сделать с ними?</p>
     <input type="hidden" name="version" value="{{ category.version }}">

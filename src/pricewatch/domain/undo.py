@@ -18,6 +18,8 @@ MAC_LENGTH = 32
 class UndoKind(StrEnum):
     CATEGORY = "category"
     GROUP = "group"
+    ITEM = "item"
+    LINK = "link"
 
 
 def issue_undo(key: bytes, user_id: int, kind: UndoKind, entity_id: int, now: datetime) -> str:

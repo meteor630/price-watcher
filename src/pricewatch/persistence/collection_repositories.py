@@ -194,6 +194,26 @@ class SqlItemLinkRepository:
     def close(self, item_link_id: int, now: datetime) -> None:
         self.connection.execute(update(item_links).where(item_links.c.id == item_link_id).values(valid_to=now))
 
+    def active_binding(self, user_id: int, item_id: int, item_link_id: int) -> ItemLinkRecord | None:
+        row = self.connection.execute(
+            select(item_links).where(
+                item_links.c.id == item_link_id, item_links.c.item_id == item_id, item_links.c.user_id == user_id, item_links.c.valid_to.is_(None)
+            )
+        ).one_or_none()
+        return None if row is None else _to_item_link(row)
+
+    def reopen(self, user_id: int, item_link_id: int) -> bool:
+        try:
+            with self.connection.begin_nested():
+                reopened = self.connection.execute(
+                    update(item_links)
+                    .where(item_links.c.id == item_link_id, item_links.c.user_id == user_id, item_links.c.valid_to.is_not(None))
+                    .values(valid_to=None)
+                )
+        except IntegrityError:
+            return False  # действующая ссылка того же магазина уже есть: отмена не может её вытеснить
+        return reopened.rowcount == 1
+
     def clear_include_stale(self, tracked_link_id: int) -> None:
         self.connection.execute(
             update(items)

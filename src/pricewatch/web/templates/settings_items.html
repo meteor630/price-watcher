@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "_macros.html" import settings_tabs, total_toggle %}
+{% block title %}Настройки — товары{% endblock %}
+{% block content %}
+<nav class="crumbs" aria-label="Путь"><a href="/web/">Главная</a><span aria-hidden="true"> › </span><span class="crumbs__here" aria-current="page">Настройки</span></nav>
+<h1 class="page-title">Настройки</h1>
+<p class="summary">Стрелки меняют порядок товаров внутри их группы. Удалённое можно вернуть кнопкой «Отменить».</p>
+{{ settings_tabs("items") }}
+
+<div id="page-rest">
+  <nav class="chips chips--filter" aria-label="Фильтр по категории">
+    <a class="chip" href="/web/settings/items" {% if overview.selected is none %}aria-current="true"{% endif %}>Все <span class="num">{{ overview.total_count }}</span></a>
+    {% for chip in overview.chips %}
+    <a class="chip" href="/web/settings/items?category={{ chip.category_id }}" {% if overview.selected == chip.category_id %}aria-current="true"{% endif %}>{{ chip.name }} <span class="num">{{ chip.item_count }}</span></a>
+    {% endfor %}
+  </nav>
+  {% if overview.chips %}
+  <button class="btn btn--primary" type="button" hx-get="/web/settings/items/new{% if overview.selected %}?category={{ overview.selected }}{% endif %}" hx-target="#dialog" hx-swap="innerHTML">＋ Добавить товар</button>
+  {% endif %}
+
+  {% if not overview.chips %}
+  <div class="empty"><h2 class="empty__title">Сначала нужна категория</h2><p class="empty__text">Товары живут внутри категорий. <a href="/web/settings/categories">Добавьте категорию</a>.</p></div>
+  {% elif not overview.entries %}
+  <div class="empty"><h2 class="empty__title">Товаров пока нет</h2><p class="empty__text">Нажмите «Добавить товар» и вставьте ссылки на магазины — цены появятся после проверки.</p></div>
+  {% else %}
+  <ul class="edit-list item-list">
+    {% for entry in overview.entries %}
+    {% set index = entry.siblings.index(entry.row.item_id) %}
+    {% set common = '"category_id": "' ~ entry.category_id ~ '", "group_id": "' ~ (entry.row.group_id or '') ~ '", "version": "' ~ entry.parent_version ~ '", "filter": "' ~ (overview.selected or '') ~ '"' %}
+    <li class="edit-row" data-id="{{ entry.row.item_id }}">
+      <div class="edit-row__main">
+        {{ total_toggle(entry.row.item_id, entry.row.version, entry.row.in_total, entry.row.name, "settings", period_day, overview.selected) }}
+        <div class="edit-row__text">
+          <a class="edit-row__name" href="/web/items/{{ entry.row.item_id }}">{{ entry.row.name }}</a>
+          <span class="edit-row__meta">
+            {{ entry.category_name }}{% if entry.group_name %} · {{ entry.group_name }}{% endif %}
+            · {{ entry.row.quantity }} шт {{ "в итоге" if entry.row.in_total else "наблюдаю" }}
+            {% for store in entry.stores %}· <span class="store-dot store-dot--{{ store.color_token }}" aria-hidden="true"></span> {{ store.name }} {% endfor %}
+            {% if not entry.stores %}· <span class="flag">нет ссылок</span>{% endif %}
+          </span>
+        </div>
+        <div class="edit-row__actions">
+          <button class="icon-btn" type="button" aria-label="Выше: {{ entry.row.name }}" {% if index == 0 %}disabled{% endif %}
+                  hx-post="/web/items/order" hx-vals='{"ids": "{{ swapped_order(entry.siblings, index, index - 1) if index > 0 else '' }}", {{ common }}}'
+                  hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">↑</button>
+          <button class="icon-btn" type="button" aria-label="Ниже: {{ entry.row.name }}" {% if index == entry.siblings | length - 1 %}disabled{% endif %}
+                  hx-post="/web/items/order" hx-vals='{"ids": "{{ swapped_order(entry.siblings, index, index + 1) if index < entry.siblings | length - 1 else '' }}", {{ common }}}'
+                  hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">↓</button>
+          <button class="btn btn--ghost btn--small" type="button" hx-get="/web/items/{{ entry.row.item_id }}/edit" hx-target="#dialog" hx-swap="innerHTML">Изменить</button>
+          <button class="btn btn--danger btn--small" type="button" hx-post="/web/items/{{ entry.row.item_id }}/delete"
+                  hx-vals='{"version": "{{ entry.row.version }}", "filter": "{{ overview.selected or '' }}"}'
+                  hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">Удалить</button>
+        </div>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+<div id="dialog">{% if form %}{% include "fragments/item_form.html" %}{% endif %}</div>
+{% endblock %}

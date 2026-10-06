@@ -71,11 +71,11 @@
 {# Изменение товара: htmx шлёт новое значение и версию; из ответа берутся сводка, остальная страница и сообщение. #}
 {% macro _swap() %}hx-select="#hero-figures" hx-target="#hero-figures" hx-swap="outerHTML" hx-select-oob="#page-rest,#flash" hx-disabled-elt="this"{% endmacro %}
 
-{% macro total_toggle(item_id, version, in_total, name, view, period) %}
+{% macro total_toggle(item_id, version, in_total, name, view, period, filter=none) %}
 <input class="check" type="checkbox" id="total-{{ item_id }}" {% if in_total %}checked{% endif %}
        aria-label="Учитывать «{{ name }}» в итоге"
        hx-post="/web/items/{{ item_id }}/settings" hx-trigger="change"
-       hx-vals='{"version": "{{ version }}", "in_total": "{{ "false" if in_total else "true" }}", "view": "{{ view }}", "period": "{{ period.value }}"}'
+       hx-vals='{"version": "{{ version }}", "in_total": "{{ "false" if in_total else "true" }}", "view": "{{ view }}", "period": "{{ period.value }}"{% if filter %}, "filter": "{{ filter }}"{% endif %}}'
        {{ _swap() }}>
 {% endmacro %}
 
@@ -89,4 +89,11 @@
           hx-post="/web/items/{{ item_id }}/settings"
           hx-vals='{"version": "{{ version }}", "quantity": "{{ quantity + 1 }}", "view": "{{ view }}", "period": "{{ period.value }}"}' {{ _swap() }}>+</button>
 </span>
+{% endmacro %}
+
+{% macro settings_tabs(current) %}
+<nav class="tabs" aria-label="Разделы настроек">
+  <a class="tabs__tab" href="/web/settings/items" {% if current == "items" %}aria-current="page"{% endif %}>Товары</a>
+  <a class="tabs__tab" href="/web/settings/categories" {% if current == "categories" %}aria-current="page"{% endif %}>Категории</a>
+</nav>
 {% endmacro %}

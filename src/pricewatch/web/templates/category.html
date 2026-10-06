@@ -23,11 +23,12 @@
   </p>
 
   <section class="section" aria-labelledby="rows-title">
-    <div class="section__head"><h2 id="rows-title" class="section__title">Позиции</h2></div>
+    <div class="section__head"><h2 id="rows-title" class="section__title">Позиции</h2><a class="panel-head-link" href="/web/settings/items?category={{ detail.category_id }}">Изменить состав ›</a></div>
     {% if detail.in_total_count + detail.watching_count == 0 %}
     <div class="empty">
       <h3 class="empty__title">В категории пока нет товаров</h3>
       <p class="empty__text">Когда вы добавите товары и ссылки на магазины, здесь появятся их цены и итог.</p>
+      <a class="btn btn--primary" href="/web/settings/items?category={{ detail.category_id }}&amp;new=1">＋ Добавить товар</a>
     </div>
     {% else %}
     <div class="rows">

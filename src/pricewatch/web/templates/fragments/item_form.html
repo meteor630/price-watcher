@@ -1,0 +1,53 @@
+{% set item = form.item %}
+<dialog class="dialog dialog--wide" data-modal data-open aria-labelledby="item-dialog-title">
+  <div class="dialog__body">
+    <h2 id="item-dialog-title" class="dialog__title">{{ "Изменить товар" if item else "Новый товар" }}</h2>
+    {% if item %}
+    <section aria-label="Ссылки на магазины">
+      <h3 class="dialog__section">Ссылки на магазины</h3>
+      {% set item_id = item.id %}{% set links = form.links %}
+      {% include "fragments/item_links.html" %}
+    </section>
+    {% endif %}
+    <form class="form" {% if item %}data-close-on-success hx-post="/web/items/{{ item.id }}/edit"{% else %}hx-post="/web/settings/items"{% endif %}
+          hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#dialog,#flash">
+      {% if item %}<input type="hidden" name="version" value="{{ item.version }}">{% endif %}
+      {% if not item %}
+      <div class="field">
+        <label class="field__label" for="item-links">Ссылки на магазины</label>
+        <textarea class="input input--area" id="item-links" name="links" rows="3" placeholder="По одной ссылке в строке" data-autofocus></textarea>
+        <p class="field__hint">Цена появится после проверки. Ошибка одной ссылки не мешает остальным.</p>
+      </div>
+      {% endif %}
+      <div class="field">
+        <label class="field__label" for="item-name">Короткое имя</label>
+        <input class="input" id="item-name" name="name" type="text" maxlength="200" required value="{{ item.name if item else '' }}" {% if item %}data-autofocus{% endif %}>
+      </div>
+      <div class="field">
+        <label class="field__label" for="item-full-name">Полное имя <span class="muted">(необязательно)</span></label>
+        <input class="input" id="item-full-name" name="full_name" type="text" maxlength="500" value="{{ item.full_name or '' if item else '' }}">
+      </div>
+      <div class="form__row">
+        <div class="field">
+          <label class="field__label" for="item-category">Категория</label>
+          <select class="input" id="item-category" name="category_id" hx-get="/web/settings/group-options" hx-trigger="change" hx-target="#group-select" hx-swap="outerHTML" hx-include="this">
+            {% for category in form.categories %}<option value="{{ category.id }}" {% if category.id == form.category_id %}selected{% endif %}>{{ category.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label class="field__label" for="group-select">Группа</label>
+          {% set groups = form.groups %}{% set selected = item.group_id if item else none %}
+          {% include "fragments/group_select.html" %}
+        </div>
+        <div class="field field--narrow">
+          <label class="field__label" for="item-quantity">Количество</label>
+          <input class="input" id="item-quantity" name="quantity" type="number" min="1" max="999" required value="{{ item.quantity if item else 1 }}">
+        </div>
+      </div>
+      <div class="dialog__actions">
+        <button class="btn btn--ghost" type="button" data-dialog-close>{{ "Закрыть" if item else "Отмена" }}</button>
+        <button class="btn btn--primary" type="submit">{{ "Сохранить" if item else "Добавить" }}</button>
+      </div>
+    </form>
+  </div>
+</dialog>

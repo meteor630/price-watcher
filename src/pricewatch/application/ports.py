@@ -53,6 +53,8 @@ class ItemChanges:
     in_total: bool | Unchanged = UNCHANGED
     include_stale: bool | Unchanged = UNCHANGED
     group_id: int | None | Unchanged = UNCHANGED
+    # Другая категория: группа берётся из этих же изменений (по умолчанию — без группы).
+    category_id: int | Unchanged = UNCHANGED
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,6 +285,22 @@ class LinkInfo:
     image_path: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class LinkState:
+    item_link_id: int
+    url: str
+    store_name: str
+    color_token: str
+    store_enabled: bool
+    checking: bool
+    last_status: str | None
+    last_price_minor: int | None
+    last_card_price_minor: int | None
+    last_availability: str | None
+    last_source: str | None
+    last_checked_at: datetime | None
+
+
 class PriceDataRepository(Protocol):
     def items(self, user_id: int) -> list[PricedItem]:
         """Неудалённые товары в неудалённых категориях и группах, в порядке категорий и позиций."""
@@ -298,6 +316,9 @@ class PriceDataRepository(Protocol):
         """Наблюдения ссылок, нужные для расчёта на любой момент начиная с `since`: всё с `since`
         и раньше — начиная с последнего успешного подтверждённого до `since` (или последнего любого,
         если успешных не было). Более старая история на такие расчёты не влияет."""
+        ...
+    def link_states(self, user_id: int, item_id: int) -> list["LinkState"]:
+        """Действующие ссылки товара: магазин, включён ли он, идёт ли проверка, последняя проверка."""
         ...
     def pending_reviews(self) -> int:
         """Число изменений, ждущих решения администратора."""
@@ -393,6 +414,12 @@ class ItemLinkRepository(Protocol):
     def active_for_store(self, item_id: int, store_id: int) -> ItemLinkRecord | None: ...
     def bind(self, user_id: int, item_id: int, tracked_link_id: int, store_id: int, now: datetime) -> ItemLinkRecord: ...
     def close(self, item_link_id: int, now: datetime) -> None: ...
+    def active_binding(self, user_id: int, item_id: int, item_link_id: int) -> ItemLinkRecord | None:
+        """Действующая привязка этого товара владельца; иначе None."""
+        ...
+    def reopen(self, user_id: int, item_link_id: int) -> bool:
+        """Вернуть закрытую привязку; False — у товара уже есть другая действующая ссылка этого магазина."""
+        ...
     def clear_include_stale(self, tracked_link_id: int) -> None:
         """Цена ссылки снова актуальна: у товаров с этой действующей ссылкой снимается «устаревшая цена в итоге»."""
         ...

@@ -37,7 +37,7 @@ IDS_MAX = 500
 
 @router.get("/web/settings")
 def settings_root() -> RedirectResponse:
-    return RedirectResponse(SETTINGS_PATH, status_code=302)
+    return RedirectResponse("/web/settings/items", status_code=302)
 
 
 @router.get(SETTINGS_PATH)

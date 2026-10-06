@@ -1,0 +1,4 @@
+<select class="input" id="group-select" name="group_id">
+  <option value="">Без группы</option>
+  {% for group in groups %}<option value="{{ group.id }}" {% if selected == group.id %}selected{% endif %}>{{ group.name }}</option>{% endfor %}
+</select>

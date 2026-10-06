@@ -18,6 +18,7 @@ from pricewatch.api.web_home import router as web_home_router
 from pricewatch.api.web_items import router as web_items_router
 from pricewatch.api.web_pages import router as web_pages_router
 from pricewatch.api.web_settings import router as web_settings_router
+from pricewatch.api.web_settings_items import router as web_settings_items_router
 from pricewatch.api.worker_v1 import router as worker_v1_router
 from pricewatch.config.settings import Settings
 from pricewatch.domain.errors import PriceWatcherError
@@ -42,6 +43,7 @@ def create_app(settings: Settings, context: ApiContext | None = None) -> FastAPI
     app.include_router(web_categories_router)
     app.include_router(web_items_router)
     app.include_router(web_settings_router)
+    app.include_router(web_settings_items_router)
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     # Фото товаров со своего домена; имена файлов — хеш содержимого (MediaStore).
     app.mount("/media", StaticFiles(directory=settings.media_dir, check_dir=False), name="media")

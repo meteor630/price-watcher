@@ -15,6 +15,7 @@ from starlette.responses import HTMLResponse
 from pricewatch.api.context import get_context
 from pricewatch.api.web_auth import web_user
 from pricewatch.api.web_forms import read_form
+from pricewatch.api.web_settings_items import settings_items_page
 from pricewatch.application.category import category_chart, category_detail
 from pricewatch.application.dashboard import run_status
 from pricewatch.application.item import item_chart, item_detail, update_item_settings
@@ -28,7 +29,7 @@ from pricewatch.web.templates import render
 router = APIRouter()
 
 EntityId = Annotated[int, Path(ge=1, le=2**62)]
-VIEWS = frozenset({"item", "category"})
+VIEWS = frozenset({"item", "category", "settings"})
 
 
 @router.get("/web/items/{item_id}")
@@ -68,6 +69,9 @@ async def item_settings(request: Request, item_id: EntityId, session: SessionUse
     if view == "category":
         detail = await run_in_threadpool(item_detail, context.unit_of_work(), session.user, item_id, context.clock())
         html = await run_in_threadpool(_category_page, request, session, detail.category_id, period, flash)
+    elif view == "settings":
+        raw_filter = form.get("filter", "")
+        html = await run_in_threadpool(settings_items_page, request, session, int(raw_filter) if raw_filter.isdigit() else None, flash)
     else:
         html = await run_in_threadpool(_item_page, request, session, item_id, flash)
     return HTMLResponse(html)
