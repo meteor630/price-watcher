@@ -65,3 +65,11 @@ def empty_database_url() -> Iterator[str]:
     """Отдельная пустая база на один тест — для проверок самих миграций."""
     with temporary_database() as url:
         yield url
+
+
+@pytest.fixture(scope="module")
+def module_database_url() -> Iterator[str]:
+    """Своя база со схемой на модуль — для тестов, которым мешают строки других модулей (например, идущий запуск один на всех)."""
+    with temporary_database() as url:
+        command.upgrade(alembic_config(url), "head")
+        yield url

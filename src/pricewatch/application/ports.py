@@ -340,6 +340,24 @@ class LeasedTask:
     region_code: str
 
 
+@dataclass(frozen=True, slots=True)
+class RunProgress:
+    run_id: int
+    kind: str
+    status: str
+    total: int
+    done: int
+    failed: int
+
+
+@dataclass(frozen=True, slots=True)
+class ExpiredTask:
+    task: LeasedTask
+    attempt: int
+    # Запуск остановлен администратором: задание не возвращается в очередь.
+    run_stopping: bool
+
+
 class QueueRepository(Protocol):
     def enqueue_on_add(self, tracked_link_id: int, now: datetime) -> int:
         """Срочное задание на одну ссылку (запуск вида on_add); уже есть активное — его номер."""
@@ -354,7 +372,34 @@ class QueueRepository(Protocol):
         """Задание этого worker, аренда которого ещё не истекла (блокируется до конца транзакции)."""
         ...
     def finish(self, task: LeasedTask, failed: bool, error_code: str | None, duration_ms: int | None, now: datetime) -> None:
-        """Закрыть задание и учесть его в запуске; все задания учтены — запуск завершён."""
+        """Закрыть задание и учесть его в запуске; активных заданий у запуска не осталось — запуск завершён."""
+        ...
+    def start_run(self, kind: str, slot_key: str | None, requested_by: int | None, now: datetime) -> int | None:
+        """Новый плановый или ручной запуск; None — уже идёт другой или слот занят (одновременная вставка учтена)."""
+        ...
+    def slot_taken(self, slot_key: str) -> bool: ...
+    def active_run(self) -> RunProgress | None:
+        """Идущий плановый или ручной запуск."""
+        ...
+    def enqueue_run(self, run_id: int, purchased_since: datetime, now: datetime) -> RunProgress:
+        """Задания запуска: ссылки действующих привязок активных товаров и купленных позже `purchased_since`,
+        у живых пользователей и включённых магазинов; ссылка с активным заданием пропускается. Пусто — запуск завершён."""
+        ...
+    def stop_run(self, run_id: int, now: datetime) -> RunProgress | None:
+        """Ждущие задания отменяются, выданные дорабатывают; None — такого идущего запуска нет."""
+        ...
+    def expired(self, now: datetime) -> list[ExpiredTask]:
+        """Выданные задания с истёкшей арендой (блокируются до конца транзакции)."""
+        ...
+    def requeue(self, task_id: int) -> None: ...
+    def cancel(self, task: LeasedTask, now: datetime) -> None:
+        """Отменить задание остановленного запуска; активных не осталось — запуск завершён."""
+        ...
+
+
+class SettingRepository(Protocol):
+    def get(self, key: str) -> object | None:
+        """Значение настройки (JSON) или None, если её не задавали."""
         ...
 
 
@@ -377,6 +422,7 @@ class UnitOfWork(Protocol):
     observations: ObservationRepository
     queue: QueueRepository
     workers: WorkerRepository
+    settings: SettingRepository
 
     def __enter__(self) -> Self: ...
     def __exit__(

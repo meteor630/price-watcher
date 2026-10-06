@@ -1,4 +1,4 @@
-"""Команды сервера: python -m pricewatch.bootstrap [serve | create-admin | create-worker | rotate-worker-token].
+"""Команды сервера: python -m pricewatch.bootstrap [serve | scheduler | create-admin | create-worker | rotate-worker-token].
 
 Пароль никогда не передаётся аргументом (он попал бы в историю оболочки и список
 процессов): только скрытый ввод дважды или одна строка из stdin (--password-stdin).
@@ -18,6 +18,7 @@ from sqlalchemy import Engine
 from pricewatch.application.accounts import create_admin
 from pricewatch.application.worker_protocol import create_worker, rotate_worker_token
 from pricewatch.application.passwords import PasswordHasher
+from pricewatch.bootstrap.scheduling import run_scheduler
 from pricewatch.bootstrap.server import EXIT_CONFIG, EXIT_DATABASE, check_database, serve
 from pricewatch.config.settings import ConfigError, load_settings
 from pricewatch.domain.accounts import PASSWORD_MAX, PASSWORD_MIN
@@ -43,6 +44,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m pricewatch.bootstrap")
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("serve", help="запустить сервер (по умолчанию)")
+    commands.add_parser("scheduler", help="запустить планировщик плановых проверок")
     admin = commands.add_parser("create-admin", help="создать администратора")
     admin.add_argument("--login", required=True)
     admin.add_argument("--name", help="отображаемое имя; по умолчанию — логин")
@@ -55,6 +57,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command in (None, "serve"):
         return serve()
+    if args.command == "scheduler":
+        return run_scheduler()
     if args.command == "create-worker":
         return worker_token_command(args.name, rotate=False)
     if args.command == "rotate-worker-token":

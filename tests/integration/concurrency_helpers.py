@@ -58,6 +58,25 @@ def wait_for(condition: Callable[[], bool], what: str) -> None:
         time.sleep(0.02)
 
 
+class HeldWork:
+    """Уже открытая транзакция помощника overlapped: сценарий не открывает и не фиксирует её сам."""
+
+    def __init__(self, work: SqlUnitOfWork) -> None:
+        self._work = work
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._work, name)
+
+    def __enter__(self) -> "HeldWork":
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        return None
+
+    def commit(self) -> None:
+        return None
+
+
 def overlapped(
     engine: Engine, first: Callable[[SqlUnitOfWork], object], second: Callable[[SqlUnitOfWork], object]
 ) -> tuple[Outcome, Outcome]:

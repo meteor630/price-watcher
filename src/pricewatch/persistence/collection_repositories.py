@@ -9,17 +9,19 @@ from datetime import datetime
 
 from collections.abc import Sequence
 
-from sqlalchemy import Connection, Table, exists, func, select, text, update
+from sqlalchemy import BigInteger, Connection, DateTime, Select, Table, exists, func, literal, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import insert
 
 from pricewatch.application.ports import (
     ClaimedTask,
+    ExpiredTask,
     ItemLinkRecord,
     LeasedTask,
     LinkTarget,
     NewObservation,
     PendingObservation,
+    RunProgress,
     StoreRecord,
     WorkerAuth,
 )
@@ -30,8 +32,10 @@ from pricewatch.persistence.models import (
     ItemRow,
     ParseRunRow,
     PriceObservationRow,
+    SettingRow,
     StoreRow,
     TrackedLinkRow,
+    UserRow,
     WorkerRow,
 )
 
@@ -43,6 +47,8 @@ parse_runs: Table = ParseRunRow.__table__
 check_tasks: Table = CheckTaskRow.__table__
 price_observations: Table = PriceObservationRow.__table__
 workers: Table = WorkerRow.__table__
+users: Table = UserRow.__table__
+settings: Table = SettingRow.__table__
 SITE_NAME_MAX = 100
 PALETTE_SIZE = 8
 ACTIVE_TASK = check_tasks.c.status.in_(("queued", "leased"))
@@ -50,6 +56,7 @@ ACTIVE_TASK = check_tasks.c.status.in_(("queued", "leased"))
 # PostgreSQL не сопоставит его с индексом, а psycopg переходит на параметры после пяти одинаковых запросов.
 ACTIVE_TASK_INDEX_WHERE = text("status IN ('queued', 'leased')")
 ON_ADD_PRIORITY = 100
+ACTIVE_RUN_STATUSES = ("queued", "running", "stopping")
 
 
 class SqlStoreRepository:
@@ -334,12 +341,108 @@ class SqlQueueRepository:
         )
         counter = parse_runs.c.failed if failed else parse_runs.c.done
         self.connection.execute(update(parse_runs).where(parse_runs.c.id == task.run_id).values({counter: counter + 1}))
-        # Все задания учтены — запуск завершён.
+        self._close_if_drained(task.run_id, now)
+
+    def start_run(self, kind: str, slot_key: str | None, requested_by: int | None, now: datetime) -> int | None:
+        # Конфликт по любому из уникальных индексов (идущий запуск, занятый слот) — запуск не создаётся.
+        return self.connection.execute(
+            insert(parse_runs)
+            .values(kind=kind, slot_key=slot_key, requested_by=requested_by, status="queued", created_at=now)
+            .on_conflict_do_nothing()
+            .returning(parse_runs.c.id)
+        ).scalar_one_or_none()
+
+    def slot_taken(self, slot_key: str) -> bool:
+        return self.connection.execute(select(exists().where(parse_runs.c.slot_key == slot_key))).scalar_one()
+
+    def active_run(self) -> RunProgress | None:
+        row = self.connection.execute(
+            _progress().where(parse_runs.c.kind.in_(("scheduled", "manual")), parse_runs.c.status.in_(ACTIVE_RUN_STATUSES))
+        ).one_or_none()
+        return None if row is None else RunProgress(*row)
+
+    def enqueue_run(self, run_id: int, purchased_since: datetime, now: datetime) -> RunProgress:
+        tracked = (items.c.state == "active") | ((items.c.state == "purchased") & (items.c.purchased_at > purchased_since))
+        links = (
+            select(item_links.c.tracked_link_id)
+            .select_from(
+                item_links.join(items, items.c.id == item_links.c.item_id)
+                .join(users, users.c.id == items.c.user_id)
+                .join(stores, stores.c.id == item_links.c.store_id)
+            )
+            .where(item_links.c.valid_to.is_(None), items.c.deleted_at.is_(None), users.c.disabled_at.is_(None), stores.c.enabled.is_(True), tracked)
+            .distinct()
+        )
+        added = self.connection.execute(
+            insert(check_tasks)
+            .from_select(
+                ["run_id", "tracked_link_id", "created_at"],
+                select(literal(run_id, BigInteger), links.subquery().c.tracked_link_id, literal(now, DateTime(timezone=True))),
+            )
+            # Ссылку уже проверяет другое задание (например, срочное) — второе не нужно.
+            .on_conflict_do_nothing(index_elements=["tracked_link_id"], index_where=ACTIVE_TASK_INDEX_WHERE)
+            .returning(check_tasks.c.id)
+        ).all()
+        self.connection.execute(update(parse_runs).where(parse_runs.c.id == run_id).values(total=len(added)))
+        self._close_if_drained(run_id, now)
+        return self._progress(run_id)
+
+    def stop_run(self, run_id: int, now: datetime) -> RunProgress | None:
+        active = (parse_runs.c.id == run_id) & parse_runs.c.kind.in_(("scheduled", "manual")) & parse_runs.c.status.in_(ACTIVE_RUN_STATUSES)
+        if self.connection.execute(select(exists().where(active))).scalar_one() is False:
+            return None
+        # Порядок блокировок как у выдачи и результата: сначала задания, потом запуск — без взаимной блокировки.
+        self.connection.execute(
+            update(check_tasks).where(check_tasks.c.run_id == run_id, check_tasks.c.status == "queued").values(status="cancelled", finished_at=now)
+        )
+        self.connection.execute(update(parse_runs).where(active).values(status="stopping"))
+        self._close_if_drained(run_id, now)
+        return self._progress(run_id)
+
+    def expired(self, now: datetime) -> list[ExpiredTask]:
+        rows = self.connection.execute(
+            select(check_tasks.c.id, check_tasks.c.run_id, check_tasks.c.attempt, tracked_links.c.id.label("link_id"),
+                   tracked_links.c.store_id, tracked_links.c.region_code, parse_runs.c.status.label("run_status"))
+            .select_from(
+                check_tasks.join(tracked_links, tracked_links.c.id == check_tasks.c.tracked_link_id)
+                .join(parse_runs, parse_runs.c.id == check_tasks.c.run_id)
+            )
+            .where(check_tasks.c.status == "leased", check_tasks.c.lease_until < now)
+            .order_by(check_tasks.c.id)
+            # Блокируется и запуск, чтобы остановка не прошла между чтением и возвратом в очередь. Занятое
+            # (по заданию прямо сейчас принимается результат или запуск меняют) пропускается до следующего обхода.
+            .with_for_update(skip_locked=True, of=[check_tasks, parse_runs])
+        ).all()
+        return [
+            ExpiredTask(LeasedTask(row.id, row.run_id, row.link_id, row.store_id, row.region_code), row.attempt, row.run_status == "stopping")
+            for row in rows
+        ]
+
+    def requeue(self, task_id: int) -> None:
+        self.connection.execute(
+            update(check_tasks).where(check_tasks.c.id == task_id).values(status="queued", worker_id=None, lease_until=None, heartbeat_at=None)
+        )
+
+    def cancel(self, task: LeasedTask, now: datetime) -> None:
+        self.connection.execute(
+            update(check_tasks).where(check_tasks.c.id == task.task_id).values(status="cancelled", lease_until=None, finished_at=now)
+        )
+        self._close_if_drained(task.run_id, now)
+
+    def _close_if_drained(self, run_id: int, now: datetime) -> None:
+        # Активных заданий не осталось — запуск завершён (в том числе остановленный и пустой).
         self.connection.execute(
             update(parse_runs)
-            .where(parse_runs.c.id == task.run_id, parse_runs.c.done + parse_runs.c.failed == parse_runs.c.total)
+            .where(
+                parse_runs.c.id == run_id,
+                parse_runs.c.status.in_(ACTIVE_RUN_STATUSES),
+                ~exists().where(check_tasks.c.run_id == run_id, ACTIVE_TASK),
+            )
             .values(status="finished", finished_at=now)
         )
+
+    def _progress(self, run_id: int) -> RunProgress:
+        return RunProgress(*self.connection.execute(_progress().where(parse_runs.c.id == run_id)).one())
 
     def _active_task(self, tracked_link_id: int) -> int | None:
         return self.connection.execute(
@@ -386,6 +489,18 @@ class SqlWorkerRepository:
 
     def touch(self, worker_id: int, now: datetime) -> None:
         self.connection.execute(update(workers).where(workers.c.id == worker_id).values(last_seen_at=now))
+
+
+class SqlSettingRepository:
+    def __init__(self, connection: Connection) -> None:
+        self.connection = connection
+
+    def get(self, key: str) -> object | None:
+        return self.connection.execute(select(settings.c.value_json).where(settings.c.key == key)).scalar_one_or_none()
+
+
+def _progress() -> Select:
+    return select(parse_runs.c.id, parse_runs.c.kind, parse_runs.c.status, parse_runs.c.total, parse_runs.c.done, parse_runs.c.failed)
 
 
 def _to_item_link(row: object) -> ItemLinkRecord:

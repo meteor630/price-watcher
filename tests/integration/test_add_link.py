@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from concurrency_helpers import overlapped
+from concurrency_helpers import HeldWork, overlapped
 from sqlalchemy import Engine, text
 
 from pricewatch.application.links import NEW_LINKS_PER_HOUR, add_link
@@ -243,25 +243,6 @@ def test_bad_address_is_refused_before_touching_database(engine: Engine, url: st
 
 
 # --- одновременность ---
-
-
-class HeldWork:
-    """Уже открытая транзакция помощника overlapped: сценарий не открывает и не фиксирует её сам."""
-
-    def __init__(self, work: SqlUnitOfWork) -> None:
-        self._work = work
-
-    def __getattr__(self, name: str) -> object:
-        return getattr(self._work, name)
-
-    def __enter__(self) -> "HeldWork":
-        return self
-
-    def __exit__(self, *exc_info: object) -> None:
-        return None
-
-    def commit(self) -> None:
-        return None
 
 
 def test_two_users_add_same_new_page_at_the_same_time(engine: Engine) -> None:
