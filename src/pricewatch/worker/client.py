@@ -1,4 +1,4 @@
-"""Клиент протокола worker (DEVELOPMENT_ARCHITECTURE.md, раздел 8): claim, heartbeat, result.
+"""Клиент протокола worker (DEVELOPMENT_ARCHITECTURE.md, раздел 8): claim, heartbeat, image, result.
 
 Сервер — доверенный адрес из настроек (внутренняя сеть или свой домен), поэтому здесь обычный
 HTTP-клиент, а не SafeFetcher магазинов. Сетевой сбой при отправке результата повторяется: сервер
@@ -32,6 +32,10 @@ class ServerUnavailable(Exception):
     """Сервер не ответил или ответил ошибкой — повторить позже."""
 
 
+class ImageRefused(Exception):
+    """Сервер не принял фото (422): файл не прошёл его проверку."""
+
+
 @dataclass(frozen=True, slots=True)
 class Task:
     task_id: int
@@ -41,6 +45,7 @@ class Task:
     parser_key: str
     fetch_method: str | None
     min_delay_ms: int
+    need_image: bool
 
 
 class ApiClient:
@@ -56,11 +61,14 @@ class ApiClient:
             return None
         return Task(
             int(task["task_id"]), str(task["url"]), str(task["region_code"]), str(task["store_host"]),
-            str(task["parser_key"]), task.get("fetch_method"), int(task["min_delay_ms"]),
+            str(task["parser_key"]), task.get("fetch_method"), int(task["min_delay_ms"]), bool(task["need_image"]),
         )
 
     def heartbeat(self, task_id: int) -> None:
         self._post("/worker/v1/heartbeat", {"task_id": task_id})
+
+    def image(self, task_id: int, webp: bytes) -> None:
+        self._send("/worker/v1/image", params={"task_id": task_id}, content=webp, content_type="image/webp")
 
     def result(self, task_id: int, payload: dict[str, Any]) -> None:
         for attempt in range(1, RESULT_ATTEMPTS + 1):
@@ -74,14 +82,23 @@ class ApiClient:
                 self._sleep(RETRY_PAUSE_S * attempt)
 
     def _post(self, path: str, body: dict[str, Any] | None) -> Any:
+        return self._send(path, json=body)
+
+    def _send(
+        self, path: str, *, json: dict[str, Any] | None = None, params: dict[str, Any] | None = None,
+        content: bytes | None = None, content_type: str | None = None,
+    ) -> Any:
+        headers = self._headers if content_type is None else {**self._headers, "Content-Type": content_type}
         try:
-            response = self._client.post(path, json=body, headers=self._headers)
+            response = self._client.post(path, json=json, params=params, content=content, headers=headers)
         except httpx2.TransportError as error:
             raise ServerUnavailable(type(error).__name__) from error
         if response.status_code == 401:
             raise WorkerRejected(path)
         if response.status_code == 404:
             raise LeaseLost(path)
+        if response.status_code == 422:
+            raise ImageRefused(path)
         if response.status_code == 204:
             return None
         if response.status_code != 200:

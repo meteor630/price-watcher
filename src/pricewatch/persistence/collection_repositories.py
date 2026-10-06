@@ -154,6 +154,12 @@ class SqlTrackedLinkRepository:
     def set_baseline_title(self, tracked_link_id: int, title: str) -> None:
         self.connection.execute(update(tracked_links).where(tracked_links.c.id == tracked_link_id).values(baseline_title=title))
 
+    def set_image_if_missing(self, tracked_link_id: int, image_path: str) -> bool:
+        updated = self.connection.execute(
+            update(tracked_links).where(tracked_links.c.id == tracked_link_id, tracked_links.c.image_path.is_(None)).values(image_path=image_path)
+        )
+        return updated.rowcount == 1
+
 
 class SqlItemLinkRepository:
     def __init__(self, connection: Connection) -> None:
@@ -311,7 +317,8 @@ class SqlQueueRepository:
         )
         row = self.connection.execute(
             select(check_tasks.c.id, check_tasks.c.run_id, tracked_links.c.id.label("link_id"), tracked_links.c.normalized_url,
-                   tracked_links.c.region_code, stores.c.canonical_host, stores.c.parser_key, stores.c.fetch_method, stores.c.min_delay_ms)
+                   tracked_links.c.region_code, tracked_links.c.image_path, stores.c.canonical_host, stores.c.parser_key, stores.c.fetch_method,
+                   stores.c.min_delay_ms)
             .select_from(check_tasks.join(tracked_links, tracked_links.c.id == check_tasks.c.tracked_link_id).join(stores, stores.c.id == tracked_links.c.store_id))
             .where(
                 check_tasks.c.status == "queued",
@@ -335,7 +342,7 @@ class SqlQueueRepository:
             update(parse_runs).where(parse_runs.c.id == row.run_id, parse_runs.c.status == "queued").values(status="running", started_at=now)
         )
         return ClaimedTask(row.id, row.link_id, row.normalized_url, row.region_code, row.canonical_host, row.parser_key,
-                           row.fetch_method, row.min_delay_ms, lease_until)
+                           row.fetch_method, row.min_delay_ms, lease_until, row.image_path is None)
 
     def extend(self, worker_id: int, task_id: int, now: datetime, lease_until: datetime) -> bool:
         updated = self.connection.execute(

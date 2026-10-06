@@ -1,23 +1,28 @@
-"""Протокол worker по HTTP (DEVELOPMENT_ARCHITECTURE.md, раздел 8): /worker/v1/claim, /heartbeat, /result.
+"""Протокол worker по HTTP (DEVELOPMENT_ARCHITECTURE.md, раздел 8): /worker/v1/claim, /heartbeat, /result, /image.
 
 Только Authorization: Bearer с токеном worker; токены приложения и cookie сайта здесь не действуют.
 В контракт приложения (openapi/v1.yaml) не входит: это внутренний протокол сервера и worker.
+Фото приходит телом запроса image/webp не больше 2 МБ; тело читается частями и обрывается на пределе.
 """
 
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
 
 from pricewatch.api.app_auth import bearer_token
 from pricewatch.api.context import get_context
+from pricewatch.domain.errors import ErrorCode, PriceWatcherError
+from pricewatch.media.images import MAX_INPUT_BYTES
 from pricewatch.application.worker_protocol import (
     DURATION_MAX_MS,
     PRICE_MAX,
     SITE_NAME_MAX,
     TITLE_MAX,
     WorkerResult,
+    attach_image,
     authenticate_worker,
     claim_task,
     extend_lease,
@@ -44,6 +49,7 @@ class TaskOut(BaseModel):
     fetch_method: str | None
     min_delay_ms: int
     lease_until: str
+    need_image: bool
 
 
 class ClaimOut(BaseModel):
@@ -85,7 +91,7 @@ def claim(request: Request, worker_id: int = Depends(current_worker)) -> ClaimOu
         task=TaskOut(
             task_id=task.task_id, url=task.url, region_code=task.region_code, store_host=task.store_host,
             parser_key=task.parser_key, fetch_method=task.fetch_method, min_delay_ms=task.min_delay_ms,
-            lease_until=_utc(task.lease_until),
+            lease_until=_utc(task.lease_until), need_image=task.need_image,
         )
     )
 
@@ -102,6 +108,27 @@ def result(body: ResultIn, request: Request, worker_id: int = Depends(current_wo
     fields = body.model_dump(exclude={"task_id"})
     submit_result(context.unit_of_work(), worker_id, body.task_id, WorkerResult(**fields), context.clock())
     return Response(status_code=204)
+
+
+@router.post("/image", status_code=204)
+async def image(
+    request: Request, task_id: Annotated[int, Query(ge=1, le=2**62)], worker_id: int = Depends(current_worker)
+) -> Response:
+    if request.headers.get("content-type") != "image/webp":
+        raise _bad_image("content_type")
+    data = bytearray()
+    async for chunk in request.stream():
+        data += chunk
+        if len(data) > MAX_INPUT_BYTES:
+            raise _bad_image("too_large")
+    context = get_context(request)
+    # Сценарий синхронный (база, перекодирование) — в пуле потоков, чтобы не держать цикл событий.
+    await run_in_threadpool(attach_image, context.unit_of_work(), context.images, worker_id, task_id, bytes(data), context.clock())
+    return Response(status_code=204)
+
+
+def _bad_image(reason: str) -> PriceWatcherError:
+    return PriceWatcherError(ErrorCode.VALIDATION_ERROR, {"fields": {"image": reason}})
 
 
 def _utc(moment: datetime) -> str:

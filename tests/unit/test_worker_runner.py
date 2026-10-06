@@ -1,4 +1,4 @@
-"""Цикл worker с подменёнными клиентом сервера и парсерами: результат, ошибки, паузы магазинов, аренда."""
+"""Цикл worker с подменёнными клиентом сервера, парсерами и загрузкой фото: результат, ошибки, паузы магазинов, аренда, фото."""
 
 import logging
 import threading
@@ -9,13 +9,14 @@ import pytest
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.pricing import Availability
 from pricewatch.parsers.contract import ParsedProduct, PriceSource
-from pricewatch.worker.client import LeaseLost, ServerUnavailable, Task, WorkerRejected
+from pricewatch.media.images import ImageRejected
+from pricewatch.worker.client import ImageRefused, LeaseLost, ServerUnavailable, Task, WorkerRejected
 from pricewatch.worker.parsing import Parsed
 from pricewatch.worker.runner import SERVER_RETRY_S, Runner
 
 
-def task(task_id: int = 1, host: str = "shop.example", delay_ms: int = 2000) -> Task:
-    return Task(task_id, f"https://{host}/p/{task_id}", "spb", host, "universal", None, delay_ms)
+def task(task_id: int = 1, host: str = "shop.example", delay_ms: int = 2000, need_image: bool = False) -> Task:
+    return Task(task_id, f"https://{host}/p/{task_id}", "spb", host, "universal", None, delay_ms, need_image)
 
 
 class FakeClient:
@@ -24,6 +25,9 @@ class FakeClient:
         self.results: list[tuple[int, dict[str, Any]]] = []
         self.heartbeats: list[int] = []
         self.result_error: Exception | None = None
+        self.images: list[tuple[int, bytes]] = []
+        self.image_error: Exception | None = None
+        self.calls: list[str] = []
 
     def claim(self) -> Task | None:
         item = self.tasks.pop(0)
@@ -34,7 +38,14 @@ class FakeClient:
     def heartbeat(self, task_id: int) -> None:
         self.heartbeats.append(task_id)
 
+    def image(self, task_id: int, webp: bytes) -> None:
+        self.calls.append("image")
+        if self.image_error is not None:
+            raise self.image_error
+        self.images.append((task_id, webp))
+
     def result(self, task_id: int, payload: dict[str, Any]) -> None:
+        self.calls.append("result")
         if self.result_error is not None:
             raise self.result_error
         self.results.append((task_id, payload))
@@ -58,6 +69,18 @@ class FakeParsers:
         return self.outcome  # type: ignore[return-value]
 
 
+class FakeImages:
+    def __init__(self, outcome: bytes | Exception = b"webp") -> None:
+        self.outcome = outcome
+        self.urls: list[str] = []
+
+    def load(self, image_url: str) -> bytes:
+        self.urls.append(image_url)
+        if isinstance(self.outcome, Exception):
+            raise self.outcome
+        return self.outcome
+
+
 class Clock:
     def __init__(self) -> None:
         self.now = 1000.0
@@ -72,9 +95,9 @@ class Clock:
         return False
 
 
-def runner(client: FakeClient, parsers: FakeParsers, clock: Clock | None = None, **kwargs: Any) -> Runner:
+def runner(client: FakeClient, parsers: FakeParsers, clock: Clock | None = None, images: FakeImages | None = None, **kwargs: Any) -> Runner:
     clock = clock or Clock()
-    return Runner(client, parsers, poll_seconds=10, clock=clock, wait=clock.wait, jitter=lambda limit: 1000, **kwargs)
+    return Runner(client, parsers, images or FakeImages(), poll_seconds=10, clock=clock, wait=clock.wait, jitter=lambda limit: 1000, **kwargs)
 
 
 def test_success_result_payload() -> None:
@@ -153,7 +176,7 @@ def test_lease_is_kept_alive_during_long_check() -> None:
     release = threading.Event()
     client = FakeClient([task()])
     parsers = FakeParsers(block=release)
-    work = Runner(client, parsers, poll_seconds=10, heartbeat_every_s=0.01)
+    work = Runner(client, parsers, FakeImages(), poll_seconds=10, heartbeat_every_s=0.01)
 
     beaten = threading.Event()
     original = client.heartbeat
@@ -205,3 +228,67 @@ def test_stop_ends_loop_after_current_step() -> None:
     work.run()
 
     assert [task_id for task_id, _ in client.results] == [1]
+
+
+# --- фото ---
+
+
+def test_image_is_sent_before_result_when_server_needs_it() -> None:
+    client, images = FakeClient([task(need_image=True)]), FakeImages(b"RIFF-webp")
+
+    runner(client, FakeParsers(), images=images).step()
+
+    assert images.urls == ["https://img.example/1.jpg"]
+    assert client.images == [(1, b"RIFF-webp")]
+    assert client.calls == ["image", "result"]  # пока задание в аренде
+    assert client.results[0][1]["status"] == "ok"
+
+
+def test_image_not_loaded_when_link_already_has_one() -> None:
+    client, images = FakeClient([task(need_image=False)]), FakeImages()
+
+    runner(client, FakeParsers(), images=images).step()
+
+    assert images.urls == [] and client.calls == ["result"]
+
+
+def test_failed_check_does_not_load_image() -> None:
+    client, images = FakeClient([task(need_image=True)]), FakeImages()
+
+    runner(client, FakeParsers(PriceWatcherError(ErrorCode.CAPTCHA)), images=images).step()
+
+    assert images.urls == []
+
+
+@pytest.mark.parametrize(
+    ("loader", "client_error", "reason"),
+    [
+        (ImageRejected("unreadable"), None, "unreadable"),
+        (PriceWatcherError(ErrorCode.TIMEOUT), None, "TIMEOUT"),
+        (b"webp", ImageRefused("/worker/v1/image"), "ImageRefused"),
+        (b"webp", ServerUnavailable("down"), "ServerUnavailable"),
+    ],
+)
+def test_image_failure_is_logged_and_price_still_sent(
+    caplog: pytest.LogCaptureFixture, loader: bytes | Exception, client_error: Exception | None, reason: str
+) -> None:
+    client = FakeClient([task(need_image=True)])
+    client.image_error = client_error
+
+    with caplog.at_level(logging.WARNING):
+        runner(client, FakeParsers(), images=FakeImages(loader)).step()
+
+    record = next(r for r in caplog.records if r.getMessage() == "Фото не загружено")
+    assert record.reason == reason  # type: ignore[attr-defined]
+    assert client.results[0][1]["status"] == "ok"
+
+
+def test_unexpected_image_error_is_logged_with_trace(caplog: pytest.LogCaptureFixture) -> None:
+    client = FakeClient([task(need_image=True)])
+
+    with caplog.at_level(logging.ERROR):
+        runner(client, FakeParsers(), images=FakeImages(MemoryError())).step()
+
+    record = next(r for r in caplog.records if r.getMessage() == "Неожиданная ошибка загрузки фото")
+    assert record.exc_info is not None
+    assert client.results[0][1]["status"] == "ok"

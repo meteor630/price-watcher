@@ -1,6 +1,7 @@
 """Вход приложения по HTTP: ответы по схемам OpenAPI, только bearer в /api/v1, ротация, выход."""
 
 import logging
+import tempfile
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -20,6 +21,7 @@ from pricewatch.application.app_auth import issue_pairing_code
 from pricewatch.application.passwords import PasswordHasher
 from pricewatch.application.web_auth import login
 from pricewatch.config.settings import Settings
+from pricewatch.media.store import MediaStore
 from pricewatch.persistence.database import create_db_engine
 from pricewatch.persistence.unit_of_work import SqlUnitOfWork
 
@@ -48,7 +50,7 @@ def make_app(engine: Engine, clock: list[datetime]) -> FastAPI:
     settings = Settings(
         env="test", public_origin="https://prices.example.ru", database_url="postgresql://u@h/d", secret_key=KEY, _env_file=None
     )  # type: ignore[call-arg]
-    context = ApiContext(lambda: SqlUnitOfWork(engine), KEY.encode(), HASHER, lambda: clock[0])
+    context = ApiContext(lambda: SqlUnitOfWork(engine), KEY.encode(), HASHER, lambda: clock[0], MediaStore(Path(tempfile.mkdtemp())))
     return create_app(settings, context)
 
 

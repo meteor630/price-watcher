@@ -9,6 +9,7 @@ dependencies = [
     "fastapi>=0.142.2",
     "httpx2>=2.13.1",
     "patchright>=1.63.0",
+    "pillow>=12.3",
     "price-parser>=0.5.1",
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.15",

@@ -15,6 +15,7 @@ ARCHITECTURE_PACKAGES = {
     "web",
     "parsers",
     "worker",
+    "media",
     "scheduler",
     "bot",
     "observability",

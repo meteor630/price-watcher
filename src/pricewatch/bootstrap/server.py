@@ -18,6 +18,7 @@ from pricewatch.api.context import ApiContext
 from pricewatch.application.passwords import PasswordHasher
 from pricewatch.config.settings import ConfigError, Settings, load_settings
 from pricewatch.domain.errors import PriceWatcherError
+from pricewatch.media.store import MediaStore
 from pricewatch.observability.json_log import configure_logging
 from pricewatch.persistence.database import create_db_engine, server_version
 from pricewatch.persistence.schema import SchemaMismatch, check_schema
@@ -45,12 +46,13 @@ def check_database(engine: Engine) -> bool:
 
 
 def build_context(settings: Settings, engine: Engine) -> ApiContext:
-    """Всё, что приложению нужно от сборки: настоящая база, серверный ключ, argon2 по умолчанию, часы UTC."""
+    """Всё, что приложению нужно от сборки: настоящая база, серверный ключ, argon2 по умолчанию, часы UTC, каталог картинок."""
     return ApiContext(
         unit_of_work=lambda: SqlUnitOfWork(engine),
         secret_key=settings.secret_key.get_secret_value().encode("utf-8"),
         hasher=PasswordHasher(),
         clock=lambda: datetime.now(UTC),
+        images=MediaStore(settings.media_dir),
     )
 
 

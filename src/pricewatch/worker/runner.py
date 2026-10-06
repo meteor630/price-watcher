@@ -1,10 +1,12 @@
-"""Цикл worker: взять задание → выдержать паузу магазина → проверить ссылку → отправить результат.
+"""Цикл worker: взять задание → выдержать паузу магазина → проверить ссылку → (фото) → отправить результат.
 
 - Пока идёт проверка, аренда продлевается каждые 30 секунд (аренда — 2 минуты).
 - Между запросами к одному магазину — его пауза из задания; у браузерных магазинов (пауза от 5 с)
   к ней добавляются случайные 0–4 с: так ходит человек, а не робот (решение 06.10.2026).
 - Ошибка магазина уходит на сервер своим кодом. Неожиданная ошибка парсера записывается в журнал
   с трассировкой и уходит как INTERNAL_ERROR: одна сломанная ссылка не останавливает worker.
+- Фото скачивается, только если сервер отметил в задании, что его у ссылки нет, и проверка удалась.
+  Сбой фото пишется в журнал и не мешает цене: результат уходит как обычно.
 - Сервер не принял токен — worker останавливается: без токена работать нельзя.
 - Остановка (stop) дожидается конца текущей проверки: результат не теряется.
 """
@@ -17,7 +19,8 @@ from collections.abc import Callable
 from typing import Any, Protocol
 
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
-from pricewatch.worker.client import LeaseLost, ServerUnavailable, Task
+from pricewatch.media.images import ImageRejected
+from pricewatch.worker.client import ImageRefused, LeaseLost, ServerUnavailable, Task
 from pricewatch.worker.parsing import Parsed
 
 logger = logging.getLogger(__name__)
@@ -31,6 +34,7 @@ SERVER_RETRY_S = 15.0
 class Client(Protocol):
     def claim(self) -> Task | None: ...
     def heartbeat(self, task_id: int) -> None: ...
+    def image(self, task_id: int, webp: bytes) -> None: ...
     def result(self, task_id: int, payload: dict[str, Any]) -> None: ...
 
 
@@ -38,11 +42,16 @@ class Parser(Protocol):
     def parse(self, url: str, region_code: str, parser_key: str, store_host: str, fetch_method: str | None) -> Parsed: ...
 
 
+class ImageSource(Protocol):
+    def load(self, image_url: str) -> bytes: ...
+
+
 class Runner:
     def __init__(
         self,
         client: Client,
         parsers: Parser,
+        images: ImageSource,
         *,
         poll_seconds: float,
         clock: Callable[[], float] = time.monotonic,
@@ -52,6 +61,7 @@ class Runner:
     ) -> None:
         self._client = client
         self._parsers = parsers
+        self._images = images
         self._poll_seconds = poll_seconds
         self._clock = clock
         self._stopping = threading.Event()
@@ -102,19 +112,39 @@ class Runner:
         beat = threading.Thread(target=self._keep_lease, args=(task.task_id, done), daemon=True)
         beat.start()
         try:
-            parsed = self._parsers.parse(task.url, task.region_code, task.parser_key, task.store_host, task.fetch_method)
-            payload = _success(parsed)
-        except PriceWatcherError as error:
-            payload = {"status": error.code.value}
-        except Exception:
-            # Неожиданная ошибка парсера: трассировка — в журнал, на сервер — общий код, worker живёт дальше.
-            logger.exception("Неожиданная ошибка проверки ссылки", extra={"task_id": task.task_id, "store": task.store_host})
-            payload = {"status": ErrorCode.INTERNAL_ERROR.value}
+            payload, image_url = self._parse(task)
+            if task.need_image and image_url is not None:
+                self._send_image(task, image_url)
         finally:
             done.set()
             beat.join()
         payload["duration_ms"] = int((self._clock() - started) * 1000)
         return payload
+
+    def _parse(self, task: Task) -> tuple[dict[str, Any], str | None]:
+        try:
+            parsed = self._parsers.parse(task.url, task.region_code, task.parser_key, task.store_host, task.fetch_method)
+        except PriceWatcherError as error:
+            return {"status": error.code.value}, None
+        except Exception:
+            # Неожиданная ошибка парсера: трассировка — в журнал, на сервер — общий код, worker живёт дальше.
+            logger.exception("Неожиданная ошибка проверки ссылки", extra={"task_id": task.task_id, "store": task.store_host})
+            return {"status": ErrorCode.INTERNAL_ERROR.value}, None
+        return _success(parsed), parsed.product.image_url
+
+    def _send_image(self, task: Task, image_url: str) -> None:
+        extra: dict[str, Any] = {"task_id": task.task_id, "store": task.store_host}
+        try:
+            self._client.image(task.task_id, self._images.load(image_url))
+        except ImageRejected as error:
+            logger.warning("Фото не загружено", extra=extra | {"reason": error.reason})
+        except PriceWatcherError as error:
+            logger.warning("Фото не загружено", extra=extra | {"reason": error.code.value})
+        except (ImageRefused, LeaseLost, ServerUnavailable) as error:
+            logger.warning("Фото не загружено", extra=extra | {"reason": type(error).__name__})
+        except Exception:
+            # Сбой фото не должен отнимать у ссылки цену: трассировка — в журнал, результат уходит дальше.
+            logger.exception("Неожиданная ошибка загрузки фото", extra=extra)
 
     def _keep_lease(self, task_id: int, done: threading.Event) -> None:
         while not done.wait(self._heartbeat_every_s):

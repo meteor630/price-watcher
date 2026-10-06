@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     listen_host: str = "127.0.0.1"
     listen_port: int = Field(default=8000, ge=1, le=65535)
+    media_dir: Path = Path("media")
 
     @field_validator("public_origin")
     @classmethod

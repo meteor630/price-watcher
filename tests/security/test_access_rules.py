@@ -7,9 +7,11 @@
   Новое действие администратора добавляется в этот список.
 """
 
+import tempfile
 import uuid
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -22,6 +24,7 @@ from pricewatch.application.passwords import PasswordHasher
 from pricewatch.config.settings import Settings
 from pricewatch.domain.accounts import Role
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
+from pricewatch.media.store import MediaStore
 from pricewatch.persistence.database import create_db_engine
 from pricewatch.persistence.unit_of_work import SqlUnitOfWork
 
@@ -45,7 +48,7 @@ def make_client(engine: Engine) -> TestClient:
     settings = Settings(
         env="test", public_origin="https://prices.example.ru", database_url="postgresql://u@h/d", secret_key="k" * 40, _env_file=None
     )  # type: ignore[call-arg]
-    context = ApiContext(lambda: SqlUnitOfWork(engine), KEY, PasswordHasher(time_cost=1, memory_cost=8192), lambda: NOW)
+    context = ApiContext(lambda: SqlUnitOfWork(engine), KEY, PasswordHasher(time_cost=1, memory_cost=8192), lambda: NOW, MediaStore(Path(tempfile.mkdtemp())))
     return TestClient(create_app(settings, context), base_url="https://testserver")
 
 

@@ -1,12 +1,16 @@
-"""Протокол worker по HTTP: только токен worker, строгие схемы, чужое задание не трогается, токен не в журнале."""
+"""Протокол worker по HTTP: только токен worker, строгие схемы, чужое задание не трогается, токен не в журнале; фото — недоверенный файл."""
 
 import logging
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
+from io import BytesIO
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx2 import Response
+from PIL import Image
 from sqlalchemy import Engine, text
 
 from pricewatch.api.app import create_app
@@ -17,6 +21,8 @@ from pricewatch.application.links import add_link
 from pricewatch.application.passwords import PasswordHasher
 from pricewatch.application.worker_protocol import create_worker
 from pricewatch.config.settings import Settings
+from pricewatch.media.images import MAX_INPUT_BYTES
+from pricewatch.media.store import MediaStore
 from pricewatch.parsers.catalog import LinkCatalog
 from pricewatch.persistence.database import create_db_engine
 from pricewatch.persistence.unit_of_work import SqlUnitOfWork
@@ -35,9 +41,9 @@ def engine(migrated_database_url: str) -> Iterator[Engine]:
 
 
 @pytest.fixture
-def client(engine: Engine) -> TestClient:
+def client(engine: Engine, tmp_path: Path) -> TestClient:
     settings = Settings(env="test", public_origin="https://prices.example.ru", database_url="postgresql://u@h/d", secret_key=KEY, _env_file=None)  # type: ignore[call-arg]
-    context = ApiContext(lambda: SqlUnitOfWork(engine), KEY.encode(), PasswordHasher(time_cost=1, memory_cost=8192), lambda: NOW)
+    context = ApiContext(lambda: SqlUnitOfWork(engine), KEY.encode(), PasswordHasher(time_cost=1, memory_cost=8192), lambda: NOW, MediaStore(tmp_path))
     return TestClient(create_app(settings, context), base_url="https://testserver")
 
 
@@ -147,3 +153,78 @@ def test_worker_token_never_logged(client: TestClient, engine: Engine, caplog: p
         client.post("/worker/v1/heartbeat", json={"task_id": 999_999}, headers=bearer(token))
 
     assert token not in "\n".join(str(vars(record)) for record in caplog.records)
+
+
+# --- фото ---
+
+
+def picture(fmt: str = "WEBP", size: tuple[int, int] = (40, 30)) -> bytes:
+    out = BytesIO()
+    Image.new("RGB", size, "orange").save(out, fmt)
+    return out.getvalue()
+
+
+def upload(client: TestClient, token: str, task_id: int, data: bytes, content_type: str = "image/webp") -> Response:
+    return client.post("/worker/v1/image", params={"task_id": task_id}, content=data, headers=bearer(token) | {"Content-Type": content_type})
+
+
+def image_path(engine: Engine, task_id: int) -> str | None:
+    with engine.connect() as db:
+        return db.execute(
+            text("SELECT l.image_path FROM tracked_links l JOIN check_tasks t ON t.tracked_link_id = l.id WHERE t.id = :t"), {"t": task_id}
+        ).scalar_one()
+
+
+def test_image_is_stored_and_link_no_longer_needs_one(client: TestClient, engine: Engine, tmp_path: Path) -> None:
+    token = worker_token(engine)
+    queued_link(engine)
+    task = claim(client, token)["task"]
+    assert task["need_image"] is True
+
+    response = upload(client, token, task["task_id"], picture())
+
+    assert response.status_code == 204, response.text
+    stored = image_path(engine, task["task_id"])
+    assert stored is not None and (tmp_path / stored).is_file()
+    with Image.open(tmp_path / stored) as saved:
+        assert saved.format == "WEBP"
+    assert upload(client, token, task["task_id"], picture(size=(50, 50))).status_code == 204
+    assert image_path(engine, task["task_id"]) == stored  # первое фото остаётся
+
+
+def test_image_route_needs_worker_token(client: TestClient) -> None:
+    response = client.post("/worker/v1/image", params={"task_id": 1}, content=picture(), headers={"Content-Type": "image/webp"})
+
+    assert response.status_code == 401
+
+
+def test_image_for_someone_elses_task_is_not_found(client: TestClient, engine: Engine) -> None:
+    owner, stranger = worker_token(engine), worker_token(engine)
+    queued_link(engine)
+    task_id = claim(client, owner)["task"]["task_id"]
+
+    assert upload(client, stranger, task_id, picture()).status_code == 404
+    assert image_path(engine, task_id) is None
+
+
+@pytest.mark.parametrize(
+    ("data", "content_type", "reason"),
+    [
+        (picture(), "image/png", "content_type"),
+        (picture("JPEG"), "image/webp", "unreadable"),  # чужой формат под видом WebP
+        (b"<svg/>", "image/webp", "unreadable"),
+        (b"\0" * (MAX_INPUT_BYTES + 1), "image/webp", "too_large"),
+    ],
+    ids=["тип", "jpeg", "svg", "больше 2 МБ"],
+)
+def test_bad_image_is_refused(client: TestClient, engine: Engine, tmp_path: Path, data: bytes, content_type: str, reason: str) -> None:
+    token = worker_token(engine)
+    queued_link(engine)
+    task_id = claim(client, token)["task"]["task_id"]
+
+    response = upload(client, token, task_id, data, content_type)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert image_path(engine, task_id) is None
+    assert list(tmp_path.iterdir()) == []

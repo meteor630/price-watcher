@@ -1,5 +1,5 @@
 """Цикл планировщика: каждые 30 секунд вернуть просроченные задания, удалить данные пользователей,
-заблокированных 7 суток назад, и запустить наступившую проверку.
+заблокированных 7 суток назад, стереть удалённое 30 дней назад и запустить наступившую проверку.
 
 - Наступивший слот — последний из промежутка с прошлого удачного обхода; после старта промежуток
   начинается с 00:00 текущих суток по Москве: один пропущенный запуск за сутки выполняется.
@@ -14,6 +14,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, time
 from typing import Protocol
 
+from pricewatch.application.ports import PurgedCounts
 from pricewatch.application.runs import ExpiredLeases, ScheduledStart
 from pricewatch.domain.days import day_start, moscow_date
 from pricewatch.domain.schedule import due_slot
@@ -28,6 +29,7 @@ class Jobs(Protocol):
     def start_scheduled_run(self, slot_key: str, now: datetime) -> ScheduledStart: ...
     def expire_leases(self, now: datetime) -> ExpiredLeases: ...
     def delete_blocked_users_data(self, now: datetime) -> int: ...
+    def purge_deleted(self, now: datetime) -> PurgedCounts: ...
 
 
 class Scheduler:
@@ -69,6 +71,11 @@ class Scheduler:
         deleted = self._jobs.delete_blocked_users_data(now)
         if deleted:
             logger.info("Данные заблокированных пользователей удалены", extra={"users": deleted})
+        purged = self._jobs.purge_deleted(now)
+        if purged != PurgedCounts():
+            logger.info(
+                "Удалённое стёрто окончательно", extra={"categories": purged.categories, "groups": purged.groups, "items": purged.items}
+            )
         after = self._after or day_start(moscow_date(now))
         slot = due_slot(self._jobs.schedule_times(), after, now)
         if slot is not None:

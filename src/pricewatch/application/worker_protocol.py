@@ -10,6 +10,8 @@
 - Успешная проверка проходит правила подозрительных изменений (раздел 6): смена названия или скачок
   цены ждут решения администратора; ценовое подозрение закрывается само, если новая цена вернулась
   в порог. Первое название ссылки становится эталонным.
+- Фото: в задании отмечено, что у ссылки его ещё нет; worker присылает перекодированный файл по своему
+  действующему заданию, сервер проверяет его ещё раз и записывает путь, если фото у ссылки всё ещё нет.
 - Блокировка (403/429) или капча ставят магазин на паузу по ступеням (domain.store_pause). Пока ступени
   не исчерпаны, задание ждёт в очереди, в историю ничего не пишется. Исчерпаны — магазин отдыхает до
   следующего планового запуска, задание и все ждущие задания магазина закрываются этой ошибкой,
@@ -19,7 +21,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from pricewatch.application.ports import ClaimedTask, LeasedTask, NewObservation, UnitOfWork
+from pricewatch.application.ports import ClaimedTask, ImageStore, LeasedTask, NewObservation, UnitOfWork
 from pricewatch.application.runs import configured_times
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.names import clean_name
@@ -110,6 +112,15 @@ def extend_lease(uow: UnitOfWork, worker_id: int, task_id: int, now: datetime) -
             raise PriceWatcherError(ErrorCode.NOT_FOUND)
         uow.commit()
     return lease_until
+
+
+def attach_image(uow: UnitOfWork, images: ImageStore, worker_id: int, task_id: int, data: bytes, now: datetime) -> None:
+    with uow:
+        task = uow.queue.leased(worker_id, task_id, now)
+        if task is None:
+            raise PriceWatcherError(ErrorCode.NOT_FOUND)
+        uow.tracked_links.set_image_if_missing(task.tracked_link_id, images.save(data))
+        uow.commit()
 
 
 def submit_result(

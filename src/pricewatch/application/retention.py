@@ -1,15 +1,20 @@
-"""Удаление данных заблокированных пользователей (DEVELOPMENT_ARCHITECTURE.md, раздел 5, «Удаление и отмена»).
+"""Удаление данных заблокированных пользователей и окончательная очистка удалённого
+(DEVELOPMENT_ARCHITECTURE.md, раздел 5, «Удаление и отмена»).
 
 Через 7 суток после блокировки все товары (с покупками), группы и категории пользователя мягко
 удаляются; окончательно их сотрёт общая очистка через 30 дней. Учётная запись остаётся
 заблокированной. Общие ссылки каталога и история цен не трогаются. Разблокировка до срока снимает
 отметку блокировки — удалять нечего; повторная блокировка начинает отсчёт заново.
+
+Мягко удалённые категории, группы и товары стираются окончательно через 30 дней — вместе с тем,
+что в них лежит, и с привязками ссылок. Каталог ссылок и история цен общие и остаются.
 """
 
 from datetime import datetime
 
-from pricewatch.application.ports import UnitOfWork
+from pricewatch.application.ports import PurgedCounts, UnitOfWork
 from pricewatch.domain.accounts import BLOCKED_DATA_KEPT
+from pricewatch.domain.shopping import PURGE_AFTER
 
 
 def delete_blocked_users_data(uow: UnitOfWork, now: datetime) -> int:
@@ -20,3 +25,10 @@ def delete_blocked_users_data(uow: UnitOfWork, now: datetime) -> int:
             uow.personal_data.soft_delete_all(user_id, now)
         uow.commit()
     return len(owners)
+
+
+def purge_deleted(uow: UnitOfWork, now: datetime) -> PurgedCounts:
+    with uow:
+        purged = uow.personal_data.purge_deleted(now - PURGE_AFTER)
+        uow.commit()
+    return purged

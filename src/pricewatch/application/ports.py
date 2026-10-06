@@ -196,6 +196,17 @@ class PersonalDataRepository(Protocol):
     def soft_delete_all(self, user_id: int, now: datetime) -> None:
         """Мягко удалить все товары, группы и категории пользователя (как обычное удаление: deleted_at, версия)."""
         ...
+    def purge_deleted(self, deleted_before: datetime) -> "PurgedCounts":
+        """Окончательно стереть удалённые не позже `deleted_before` категории, группы, товары вместе с содержимым
+        и привязками ссылок; каталог ссылок и история цен остаются."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class PurgedCounts:
+    categories: int = 0
+    groups: int = 0
+    items: int = 0
 
 
 # --- Сбор цен и очередь (этап 6) ---
@@ -275,6 +286,9 @@ class TrackedLinkRepository(Protocol):
         ...
     def baseline_title(self, tracked_link_id: int) -> str | None: ...
     def set_baseline_title(self, tracked_link_id: int, title: str) -> None: ...
+    def set_image_if_missing(self, tracked_link_id: int, image_path: str) -> bool:
+        """Записать путь фото, если у ссылки его ещё нет; False — фото уже есть."""
+        ...
 
 
 class ItemLinkRepository(Protocol):
@@ -355,6 +369,8 @@ class ClaimedTask:
     fetch_method: str | None
     min_delay_ms: int
     lease_until: datetime
+    # У ссылки ещё нет фото: worker скачает его вместе с проверкой.
+    need_image: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -434,6 +450,13 @@ class NotificationRepository(Protocol):
     def notify_admins(self, kind: str, dedup_key: str, payload: dict[str, object], now: datetime) -> int:
         """Уведомление каждому действующему администратору: в колокольчик и в Telegram, если он привязан.
         Повтор с тем же dedup_key не создаёт новых строк. Число созданных."""
+        ...
+
+
+class ImageStore(Protocol):
+    def save(self, data: bytes) -> str:
+        """Проверить и сохранить фото от worker; путь относительно каталога картинок.
+        Неверный файл — VALIDATION_ERROR по полю image."""
         ...
 
 

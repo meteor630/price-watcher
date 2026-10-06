@@ -51,12 +51,12 @@
 - Файлы: `alembic.ini` — расположение миграций; адреса базы в нём нет.
 - Файлы: `.python-version` — Python 3.13.
 - Файлы: `.gitignore`
-- Файлы: `.env.example` — все настройки с пояснениями, без секретов; копируется в .env. PRICEWATCH_SECRET_KEY — ключ HMAC для кодов, токенов, сессий; его смена разлогинивает всех.
+- Файлы: `.env.example` — все настройки с пояснениями, без секретов; копируется в .env. PRICEWATCH_SECRET_KEY — ключ HMAC для кодов, токенов, сессий; его смена разлогинивает всех. PRICEWATCH_MEDIA_DIR — каталог фото, входит в резервную копию.
 - Файлы: `worker.env.example` — настройки worker без токена; копируется в worker.env (в Git не попадает, как и профили браузера .browser-profiles).
 - Файлы: `.github/workflows/ci.yml` — CI на каждый push: тесты, import-linter, проверка карты на Linux и на Windows (PostgreSQL 18 сборки EDB), gitleaks по всей истории. Действия закреплены по хешу, gitleaks и PostgreSQL для Windows — с проверкой контрольной суммы.
 - Файлы: `.gitleaksignore` — ложные срабатывания gitleaks по точному отпечатку; только ненастоящие значения из тестов и только с согласия владельца.
 
-Зависимости рабочего кода: pydantic-settings (MIT), fastapi (MIT), uvicorn (BSD-3), sqlalchemy (MIT), psycopg (LGPL-3.0, как неизменённая библиотека), alembic (MIT), argon2-cffi (MIT), tzdata (Apache-2.0), httpx2 (BSD-3), price-parser (BSD-3), patchright (Apache-2.0; нужен установленный Google Chrome, на Linux — Xvfb). Для разработки: pytest, import-linter, grimp, openapi-spec-validator.
+Зависимости рабочего кода: pydantic-settings (MIT), fastapi (MIT), uvicorn (BSD-3), sqlalchemy (MIT), psycopg (LGPL-3.0, как неизменённая библиотека), alembic (MIT), argon2-cffi (MIT), tzdata (Apache-2.0), httpx2 (BSD-3), price-parser (BSD-3), patchright (Apache-2.0; нужен установленный Google Chrome, на Linux — Xvfb), pillow (MIT-CMU). Для разработки: pytest, import-linter, grimp, openapi-spec-validator.
 
 ## Пакеты
 
@@ -69,7 +69,7 @@
 - Тесты: `uv run pytest tests/unit/test_domain_errors.py tests/unit/test_domain_names.py tests/unit/test_domain_shopping.py tests/unit/test_domain_tokens.py tests/unit/test_domain_accounts.py tests/unit/test_domain_money.py tests/unit/test_domain_days.py tests/unit/test_domain_pricing.py tests/unit/test_domain_totals.py tests/unit/test_domain_charts.py tests/unit/test_domain_review.py tests/unit/test_domain_purchases.py tests/unit/test_domain_schedule.py tests/unit/test_domain_store_pause.py`
 - Файлы: `src/pricewatch/domain/errors.py` — коды ошибок, безопасные сообщения, базовое исключение PriceWatcherError.
 - Файлы: `src/pricewatch/domain/names.py` — очистка имён для показа, ключ сравнения (регистр, пробелы, «ё», NFKC), пределы длины и количества.
-- Файлы: `src/pricewatch/domain/shopping.py` — неизменяемые записи Category, Group, Item; состояния товара ItemState.
+- Файлы: `src/pricewatch/domain/shopping.py` — неизменяемые записи Category, Group, Item; состояния товара ItemState; срок окончательной очистки удалённого (30 дней).
 - Файлы: `src/pricewatch/domain/tokens.py` — случайные токены и коды связки, HMAC с назначением, вывод следующего токена из предыдущего.
 - Файлы: `src/pricewatch/domain/accounts.py` — роли, User, правила логина и пароля (NFKC), отображаемое имя, срок хранения данных заблокированного (7 суток).
 - Файлы: `src/pricewatch/domain/money.py` — целые копейки, строки «12 990 ₽», «−652 ₽», процент с одним знаком (половины вверх), изменение Change.
@@ -88,9 +88,9 @@
 - Зависит от: `pricewatch.domain`
 - Тесты: `uv run pytest tests/unit/test_passwords.py tests/integration/test_create_admin_command.py tests/integration/test_registration.py tests/integration/test_web_login.py tests/integration/test_app_auth.py tests/integration/test_add_link.py tests/integration/test_worker_protocol.py tests/integration/test_runs.py tests/integration/test_store_pauses.py tests/integration/test_retention.py`
 - Файлы: `src/pricewatch/application/ports.py` — интерфейсы репозиториев и единицы работы; общие правила владельца, версий, перестановки, удаления; LinkResolver — описание адреса от сборщика цен.
-- Файлы: `src/pricewatch/application/worker_protocol.py` — протокол worker: токен (HMAC WORKER, ротация с перекрытием), аренда 2 мин, продление, результат как недоверенный ввод, правила подозрительных изменений, автозакрытие ценового подозрения, первое название — эталон; блокировка и капча — пауза магазина по ступеням, задание ждёт без траты попытки; исчерпано — магазин отдыхает до следующего запуска, его ждущие задания закрываются ошибкой, уведомление store_paused администраторам; другой ответ снимает паузу.
+- Файлы: `src/pricewatch/application/worker_protocol.py` — протокол worker: токен (HMAC WORKER, ротация с перекрытием), аренда 2 мин, продление, результат как недоверенный ввод, правила подозрительных изменений, автозакрытие ценового подозрения, первое название — эталон; блокировка и капча — пауза магазина по ступеням, задание ждёт без траты попытки; исчерпано — магазин отдыхает до следующего запуска, его ждущие задания закрываются ошибкой, уведомление store_paused администраторам; другой ответ снимает паузу; фото — по своему действующему заданию, путь записывается, если у ссылки его ещё нет.
 - Файлы: `src/pricewatch/application/runs.py` — запуски: ручной (только администратор; второй — RUN_IN_PROGRESS с прогрессом) и плановый по слоту, какие ссылки входят, остановка, истёкшая аренда (возврат, после 3 попыток TIMEOUT в историю), времена расписания из настроек.
-- Файлы: `src/pricewatch/application/retention.py` — данные пользователя, заблокированного 7 суток назад: товары, группы, категории мягко удаляются; общий каталог не трогается.
+- Файлы: `src/pricewatch/application/retention.py` — данные пользователя, заблокированного 7 суток назад: товары, группы, категории мягко удаляются; удалённое 30 дней назад стирается окончательно вместе с содержимым и привязками ссылок; общий каталог и история цен не трогаются.
 - Файлы: `src/pricewatch/application/links.py` — добавление ссылки к товару: магазин создаётся сам, каталог без дублей, замена ссылки того же магазина, свежая цена (моложе суток) или срочное задание, лимит 20 новых ссылок в час.
 - Файлы: `src/pricewatch/application/passwords.py` — PasswordHasher: argon2id (argon2-cffi), нормализация, фиктивная проверка для выравнивания времени.
 - Файлы: `src/pricewatch/application/app_auth.py` — вход приложения: код связки (лимит по IP), устройство, ротация refresh (вывод через HMAC, окно 60 с, повтор позже — отзыв устройства), access-токен, выход.
@@ -107,7 +107,7 @@
 - Файлы: `src/pricewatch/persistence/migrations/`, `src/pricewatch/persistence/migrations/versions/` — миграции Alembic; env.py берёт адрес базы из настроек (config) и пишет журнал в JSON (observability).
 - Файлы: `src/pricewatch/persistence/collection_repositories.py` — магазины, ссылки каталога, привязки, наблюдения, очередь (выдача FOR UPDATE SKIP LOCKED с блокировкой магазина, продление, закрытие со счётчиками; запуск завершается, когда активных заданий не осталось; задания запуска одной вставкой; остановка и истёкшая аренда — блокировки в порядке «задание, потом запуск»; исчерпанная пауза закрывает ждущие задания магазина, запуски блокируются по возрастанию номера), пауза магазина, настройки, уведомления администраторам (повтор по dedup_key не создаёт строк), worker: вставка ON CONFLICT по уникальным индексам; условие частичного индекса — буквально (общий план подготовленного запроса).
 - Файлы: `src/pricewatch/persistence/schema.py` — настройка Alembic из кода, без alembic.ini; ревизия кода и базы, SchemaMismatch с подсказкой.
-- Файлы: `src/pricewatch/persistence/shopping_repositories.py` — репозитории категорий, групп, товаров; изменения состава списка блокируют родителя подъёмом его версии; данные заблокированных — мягкое удаление всего сразу, занятые администратором пользователи пропускаются.
+- Файлы: `src/pricewatch/persistence/shopping_repositories.py` — репозитории категорий, групп, товаров; изменения состава списка блокируют родителя подъёмом его версии; данные заблокированных — мягкое удаление всего сразу, занятые администратором пользователи пропускаются; окончательная очистка: привязки → товары → группы → категории, восстановленное за это время не стирается.
 - Файлы: `src/pricewatch/persistence/unit_of_work.py` — SqlUnitOfWork: одно соединение и транзакция; без commit — откат; недоступность, обрыв и взаимная блокировка → DB_ERROR (503).
 - Файлы: `src/pricewatch/persistence/user_repository.py` — пользователи; занятый логин без учёта регистра — LOGIN_TAKEN.
 - Файлы: `src/pricewatch/persistence/app_auth_repositories.py` — коды связки, устройства, access- и refresh-токены; claim и find_refresh блокируют строку.
@@ -117,13 +117,13 @@
 ### pricewatch.api
 - Путь: `src/pricewatch/api/`
 - Отвечает: маршруты `/api/v1`, `/web`, `/worker/v1`, `/internal/v1`; аутентификация
-- Зависит от: `pricewatch.application`, `pricewatch.config`, `pricewatch.domain`, `pricewatch.observability`
+- Зависит от: `pricewatch.application`, `pricewatch.config`, `pricewatch.domain`, `pricewatch.media`, `pricewatch.observability`
 - Тесты: `uv run pytest tests/unit/test_api_app.py tests/security/test_client_ip.py tests/security/test_web_session_http.py tests/security/test_app_auth_http.py tests/security/test_access_rules.py tests/integration/test_server_start.py tests/security/test_worker_http.py`
-- Файлы: `src/pricewatch/api/worker_v1.py` — /worker/v1/claim, /heartbeat, /result: только токен worker, строгие схемы (лишние поля и неверные типы — 422); вне контракта приложения.
+- Файлы: `src/pricewatch/api/worker_v1.py` — /worker/v1/claim (с признаком need_image), /heartbeat, /result, /image (тело image/webp до 2 МБ, читается частями): только токен worker, строгие схемы (лишние поля и неверные типы — 422); вне контракта приложения.
 - Файлы: `src/pricewatch/api/app.py` — create_app: обработчики ошибок, CORS только своему домену, без автодокументации.
 - Файлы: `src/pricewatch/api/edge.py` — внешний слой: request_id, защитные заголовки, 500 без утечек, журнал запросов без строки запроса.
 - Файлы: `src/pricewatch/api/errors.py` — HTTP-статус каждого кода ошибки, тело по схеме ErrorResponse.
-- Файлы: `src/pricewatch/api/context.py` — ApiContext (единицы работы, ключ, хешер, часы) от bootstrap; IP посетителя из request.state.
+- Файлы: `src/pricewatch/api/context.py` — ApiContext (единицы работы, ключ, хешер, часы, каталог фото) от bootstrap; IP посетителя из request.state.
 - Файлы: `src/pricewatch/api/web_auth.py` — cookie pw_session (HttpOnly, Secure, SameSite=Lax), зависимость web_user: только cookie; для изменяющих — Origin и X-CSRF-Token.
 - Файлы: `src/pricewatch/api/app_auth.py` — зависимость app_user: только Authorization: Bearer, cookie не читается.
 - Файлы: `src/pricewatch/api/v1_auth.py` — /api/v1/auth/pair, /refresh, /logout, /me по OpenAPI; ответы с токенами — Cache-Control: no-store; время — UTC.
@@ -169,11 +169,12 @@
 ### pricewatch.worker
 - Путь: `src/pricewatch/worker/`
 - Отвечает: клиент очереди, запуск парсеров, загрузка картинок; с сервером только по HTTP /worker/v1, к базе не подключается
-- Зависит от: `pricewatch.config`, `pricewatch.domain`, `pricewatch.observability`, `pricewatch.parsers`
-- Тесты: `uv run pytest tests/unit/test_worker_runner.py tests/integration/test_worker_end_to_end.py tests/integration/test_worker_start.py tests/unit/test_package_layout.py`
+- Зависит от: `pricewatch.config`, `pricewatch.domain`, `pricewatch.media`, `pricewatch.observability`, `pricewatch.parsers`
+- Тесты: `uv run pytest tests/unit/test_worker_runner.py tests/unit/test_worker_images.py tests/integration/test_worker_end_to_end.py tests/integration/test_worker_start.py tests/unit/test_package_layout.py`
 - Файлы: `src/pricewatch/worker/client.py` — клиент протокола: claim, heartbeat, result (сетевой сбой результата повторяется до 5 раз); 401 — токен не принят, 404 — аренда потеряна; прокси окружения не используются.
+- Файлы: `src/pricewatch/worker/images.py` — фото по адресу из карточки: SafeFetcher с пределом 2 МБ, ответ не 200 — отказ, перекодирование в WebP.
 - Файлы: `src/pricewatch/worker/parsing.py` — адаптер магазина по ключу из задания, иначе общий парсер со способом, который сервер помнит у магазина; один браузер на процесс.
-- Файлы: `src/pricewatch/worker/runner.py` — цикл взять → пауза магазина (у браузерных +0–4 с случайно) → проверить → отправить; аренда продлевается каждые 30 с; неожиданная ошибка — в журнал и INTERNAL_ERROR; остановка после текущей проверки.
+- Файлы: `src/pricewatch/worker/runner.py` — цикл взять → пауза магазина (у браузерных +0–4 с случайно) → проверить → фото, если сервер его просит → отправить; сбой фото — в журнал, цена уходит; аренда продлевается каждые 30 с; неожиданная ошибка — в журнал и INTERNAL_ERROR; остановка после текущей проверки.
 - Файлы: `src/pricewatch/worker/__main__.py` — запуск python -m pricewatch.worker: настройки PRICEWATCH_WORKER_* и worker.env, журнал JSON, SIGINT/SIGTERM; выход 2 — конфигурация, 4 — токен не принят.
 
 ### pricewatch.scheduler
@@ -181,13 +182,21 @@
 - Отвечает: плановые запуски; сценарии получает от bootstrap
 - Зависит от: `pricewatch.application`, `pricewatch.domain`
 - Тесты: `uv run pytest tests/unit/test_scheduler_loop.py tests/integration/test_scheduler_start.py tests/unit/test_package_layout.py`
-- Файлы: `src/pricewatch/scheduler/loop.py` — обход каждые 30 с: просроченные задания, данные заблокированных 7 суток назад, наступивший слот (после старта — с 00:00 текущих суток: один пропущенный запуск), пропуск при идущем запуске — в журнал; сбой обхода — в журнал, слот повторится.
+- Файлы: `src/pricewatch/scheduler/loop.py` — обход каждые 30 с: просроченные задания, данные заблокированных 7 суток назад, очистка удалённого 30 дней назад, наступивший слот (после старта — с 00:00 текущих суток: один пропущенный запуск), пропуск при идущем запуске — в журнал; сбой обхода — в журнал, слот повторится.
 
 ### pricewatch.bot
 - Путь: `src/pricewatch/bot/`
 - Отвечает: Telegram-бот и сторож
 - Зависит от: —
 - Тесты: `uv run pytest tests/unit/test_package_layout.py`
+
+### pricewatch.media
+- Путь: `src/pricewatch/media/`
+- Отвечает: перекодирование недоверенных фото в WebP и каталог картинок сервера; общий для worker и сервера
+- Зависит от: `pricewatch.domain`
+- Тесты: `uv run pytest tests/unit/test_media.py tests/security/test_worker_http.py tests/integration/test_worker_end_to_end.py`
+- Файлы: `src/pricewatch/media/images.py` — to_webp: JPEG, PNG, WebP до 2 МБ и 40 Мп (размер по заголовку до распаковки), первый кадр, без метаданных, WebP не больше 800×800 (Pillow).
+- Файлы: `src/pricewatch/media/store.py` — MediaStore (реализует ImageStore): присланный WebP перекодируется ещё раз, имя — SHA-256 содержимого «ab/<хеш>.webp», запись через временный файл.
 
 ### pricewatch.observability
 - Путь: `src/pricewatch/observability/`
@@ -201,7 +210,7 @@
 ### pricewatch.bootstrap
 - Путь: `src/pricewatch/bootstrap/`
 - Отвечает: сборка приложения, связывает сценарии с репозиториями; без бизнес-логики
-- Зависит от: `pricewatch.api`, `pricewatch.application`, `pricewatch.config`, `pricewatch.domain`, `pricewatch.observability`, `pricewatch.persistence`, `pricewatch.scheduler`
+- Зависит от: `pricewatch.api`, `pricewatch.application`, `pricewatch.config`, `pricewatch.domain`, `pricewatch.media`, `pricewatch.observability`, `pricewatch.persistence`, `pricewatch.scheduler`
 - Тесты: `uv run pytest tests/integration/test_server_start.py tests/integration/test_create_admin_command.py tests/integration/test_worker_commands.py tests/integration/test_scheduler_start.py`
 - Файлы: `src/pricewatch/bootstrap/scheduling.py` — процесс планировщика: настройки, журнал, проверка базы, сценарии запусков на SqlUnitOfWork, сигналы остановки; выход 2 — конфигурация, 3 — база.
 - Файлы: `src/pricewatch/bootstrap/commands.py` — команды serve, scheduler, create-admin (пароль только скрытым вводом или из stdin), create-worker и rotate-worker-token (токен печатается один раз).
@@ -212,7 +221,7 @@
 - Отвечает: настройки процесса из окружения и .env; ошибка без значений; секреты регистрируются для журнала; не импортируется domain и application
 - Зависит от: `pricewatch.observability`
 - Тесты: `uv run pytest tests/unit/test_config_settings.py tests/unit/test_package_layout.py`
-- Файлы: `src/pricewatch/config/settings.py` — Settings, load_settings, ConfigError; WorkerSettings и load_worker_settings (PRICEWATCH_WORKER_*, worker.env; сервер и worker не видят переменных друг друга).
+- Файлы: `src/pricewatch/config/settings.py` — Settings (в том числе media_dir — каталог фото), load_settings, ConfigError; WorkerSettings и load_worker_settings (PRICEWATCH_WORKER_*, worker.env; сервер и worker не видят переменных друг друга).
 
 ## Границы модулей
 

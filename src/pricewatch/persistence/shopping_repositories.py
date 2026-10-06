@@ -11,10 +11,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import Connection, Row, Select, Table, Update, bindparam, exists, func, select, update
+from sqlalchemy import Connection, Row, Select, Table, Update, bindparam, delete, exists, func, select, update
 from sqlalchemy.exc import IntegrityError
 
-from pricewatch.application.ports import UNCHANGED, ItemChanges, NewItem
+from pricewatch.application.ports import UNCHANGED, ItemChanges, NewItem, PurgedCounts
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.names import (
     CATEGORY_NAME_MAX,
@@ -31,6 +31,7 @@ from pricewatch.persistence.models import (
     GROUP_NAME_INDEX,
     CategoryRow,
     GroupRow,
+    ItemLinkRow,
     ItemRow,
     UserRow,
 )
@@ -39,6 +40,7 @@ users: Table = UserRow.__table__
 categories: Table = CategoryRow.__table__
 groups: Table = GroupRow.__table__
 items: Table = ItemRow.__table__
+item_links: Table = ItemLinkRow.__table__
 
 
 @dataclass(frozen=True, slots=True)
@@ -560,3 +562,23 @@ class SqlPersonalDataRepository:
         self.connection.execute(
             update(users).where(users.c.id == user_id).values(categories_order_version=users.c.categories_order_version + 1)
         )
+
+    def purge_deleted(self, deleted_before: datetime) -> PurgedCounts:
+        # Удалённая категория или группа прячет всё содержимое — стирается вместе с ним.
+        doomed_categories = select(categories.c.id).where(categories.c.deleted_at <= deleted_before)
+        doomed_groups = select(groups.c.id).where((groups.c.deleted_at <= deleted_before) | groups.c.category_id.in_(doomed_categories))
+        doomed_items = select(items.c.id).where(
+            (items.c.deleted_at <= deleted_before) | items.c.group_id.in_(doomed_groups) | items.c.category_id.in_(doomed_categories)
+        )
+        category_ids = list(self.connection.execute(doomed_categories.with_for_update()).scalars())
+        group_ids = list(self.connection.execute(doomed_groups.with_for_update()).scalars())
+        item_ids = list(self.connection.execute(doomed_items.with_for_update()).scalars())
+        # Привязки ссылок к товарам уходят с товарами; сами ссылки каталога и их история цен — общие.
+        if item_ids:
+            self.connection.execute(delete(item_links).where(item_links.c.item_id.in_(item_ids)))
+            self.connection.execute(delete(items).where(items.c.id.in_(item_ids)))
+        if group_ids:
+            self.connection.execute(delete(groups).where(groups.c.id.in_(group_ids)))
+        if category_ids:
+            self.connection.execute(delete(categories).where(categories.c.id.in_(category_ids)))
+        return PurgedCounts(len(category_ids), len(group_ids), len(item_ids))

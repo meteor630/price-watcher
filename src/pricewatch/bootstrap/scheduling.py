@@ -11,7 +11,8 @@ from pathlib import Path
 
 from sqlalchemy import Engine
 
-from pricewatch.application.retention import delete_blocked_users_data
+from pricewatch.application.ports import PurgedCounts
+from pricewatch.application.retention import delete_blocked_users_data, purge_deleted
 from pricewatch.application.runs import ExpiredLeases, ScheduledStart, expire_leases, schedule_times, start_scheduled_run
 from pricewatch.bootstrap.server import EXIT_CONFIG, EXIT_DATABASE, check_database
 from pricewatch.config.settings import ConfigError, load_settings
@@ -40,6 +41,9 @@ class SqlJobs:
 
     def delete_blocked_users_data(self, now: datetime) -> int:
         return delete_blocked_users_data(SqlUnitOfWork(self._engine), now)
+
+    def purge_deleted(self, now: datetime) -> PurgedCounts:
+        return purge_deleted(SqlUnitOfWork(self._engine), now)
 
 
 def run_scheduler(env_file: Path = Path(".env")) -> int:

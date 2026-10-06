@@ -1,16 +1,20 @@
-"""Данные заблокированного пользователя мягко удаляются через 7 суток; общие ссылки и история цен остаются.
+"""Данные заблокированного пользователя мягко удаляются через 7 суток; удалённое стирается через 30 дней;
+общие ссылки и история цен остаются.
 
 У модуля своя база: сценарий обходит всех пользователей базы, чужие строки других модулей мешали бы.
 """
 
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from concurrency_helpers import lock_waiters, wait_for
 from sqlalchemy import Engine, text
 from test_runs import bind, item, link, sql, store, user
 
-from pricewatch.application.retention import delete_blocked_users_data
+from pricewatch.application.ports import PurgedCounts
+from pricewatch.application.retention import delete_blocked_users_data, purge_deleted
 from pricewatch.persistence.database import create_db_engine
 from pricewatch.persistence.unit_of_work import SqlUnitOfWork
 
@@ -123,3 +127,81 @@ def test_user_being_changed_by_admin_is_left_for_next_pass(engine: Engine) -> No
         assert run(engine) == 0
 
     assert run(engine) == 1
+
+
+
+# --- окончательная очистка через 30 дней ---
+
+MONTH = timedelta(days=30)
+
+
+def purge(engine: Engine, at: datetime = NOW) -> PurgedCounts:
+    return purge_deleted(SqlUnitOfWork(engine), at)
+
+
+def exists_row(engine: Engine, table: str, row_id: int) -> bool:
+    return sql(engine, f"SELECT count(*) FROM {table} WHERE id = :i", i=row_id) == [(1,)]  # noqa: S608 — имя таблицы из теста
+
+
+def test_item_deleted_thirty_days_ago_is_purged_with_its_links(engine: Engine) -> None:
+    user_id, item_id = owner_with_data(engine, None)
+    link_id = sql(engine, "SELECT tracked_link_id FROM item_links WHERE item_id = :i", i=item_id)[0][0]
+    sql(engine, "UPDATE items SET deleted_at = :d WHERE id = :i", d=NOW - MONTH, i=item_id)
+
+    assert purge(engine) == PurgedCounts(items=1)
+
+    assert not exists_row(engine, "items", item_id)
+    assert sql(engine, "SELECT count(*) FROM item_links WHERE item_id = :i", i=item_id) == [(0,)]
+    assert exists_row(engine, "tracked_links", link_id)  # каталог общий
+    assert alive(engine, user_id) == {"categories": 2, "groups": 1, "items": 1}
+
+
+def test_younger_than_thirty_days_stays(engine: Engine) -> None:
+    _, item_id = owner_with_data(engine, None)
+    sql(engine, "UPDATE items SET deleted_at = :d WHERE id = :i", d=NOW - MONTH + timedelta(seconds=1), i=item_id)
+
+    assert purge(engine) == PurgedCounts()
+    assert exists_row(engine, "items", item_id)
+
+
+def test_deleted_group_takes_its_items_but_not_category(engine: Engine) -> None:
+    _, item_id = owner_with_data(engine, None)
+    group, category = sql(engine, "SELECT group_id, category_id FROM items WHERE id = :i", i=item_id)[0]
+    sql(engine, "UPDATE groups SET deleted_at = :d WHERE id = :g", d=NOW - MONTH, g=group)  # товар внутри не удалён отдельно
+
+    assert purge(engine) == PurgedCounts(groups=1, items=1)
+    assert not exists_row(engine, "items", item_id)
+    assert exists_row(engine, "categories", category)
+
+
+def test_deleted_category_takes_groups_and_items(engine: Engine) -> None:
+    _, item_id = owner_with_data(engine, None)
+    category = sql(engine, "SELECT category_id FROM items WHERE id = :i", i=item_id)[0][0]
+    sql(engine, "UPDATE categories SET deleted_at = :d WHERE id = :c", d=NOW - MONTH, c=category)
+
+    assert purge(engine) == PurgedCounts(categories=1, groups=1, items=1)
+    assert not exists_row(engine, "categories", category)
+
+
+def test_blocked_user_data_is_gone_after_seven_plus_thirty_days(engine: Engine) -> None:
+    user_id, _ = owner_with_data(engine, NOW - WEEK)
+    run(engine)
+
+    assert purge(engine, NOW + MONTH - timedelta(seconds=1)) == PurgedCounts()
+    assert purge(engine, NOW + MONTH) == PurgedCounts(categories=2, groups=1, items=2)
+    assert sql(engine, "SELECT count(*) FROM users WHERE id = :u", u=user_id) == [(1,)]  # учётная запись остаётся
+
+
+def test_restored_meanwhile_is_not_purged(engine: Engine) -> None:
+    _, item_id = owner_with_data(engine, None)
+    sql(engine, "UPDATE items SET deleted_at = :d WHERE id = :i", d=NOW - MONTH, i=item_id)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with engine.begin() as restoring:
+            restoring.execute(text("UPDATE items SET deleted_at = NULL WHERE id = :i"), {"i": item_id})
+            purging = pool.submit(purge, engine)
+            wait_for(lambda: lock_waiters(engine) > 0, "очистка ждёт восстановление")
+        # Восстановление зафиксировано раньше, чем очистка перепроверила строку.
+        assert purging.result(10) == PurgedCounts()
+
+    assert exists_row(engine, "items", item_id)

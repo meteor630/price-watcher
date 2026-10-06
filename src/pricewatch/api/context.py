@@ -1,4 +1,4 @@
-"""Что приложению нужно от сборки: единицы работы, серверный ключ, хешер, часы.
+"""Что приложению нужно от сборки: единицы работы, серверный ключ, хешер, часы, каталог картинок.
 
 Передаётся из bootstrap в create_app; тесты подставляют свой контекст.
 """
@@ -10,7 +10,7 @@ from datetime import datetime
 from fastapi import Request
 
 from pricewatch.application.passwords import PasswordHasher
-from pricewatch.application.ports import UnitOfWork
+from pricewatch.application.ports import ImageStore, UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,6 +19,7 @@ class ApiContext:
     secret_key: bytes
     hasher: PasswordHasher
     clock: Callable[[], datetime]
+    images: ImageStore
 
 
 def get_context(request: Request) -> ApiContext:

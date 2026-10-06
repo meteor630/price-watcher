@@ -5,7 +5,7 @@ from datetime import datetime, time, timedelta
 
 import pytest
 
-from pricewatch.application.ports import RunProgress
+from pricewatch.application.ports import PurgedCounts, RunProgress
 from pricewatch.application.runs import ExpiredLeases, ScheduledStart
 from pricewatch.domain.days import MOSCOW
 from pricewatch.scheduler.loop import Scheduler
@@ -22,6 +22,8 @@ class FakeJobs:
         self.expire_calls = 0
         self.deleted = 0
         self.deleted_at: list[datetime] = []
+        self.purged = PurgedCounts()
+        self.purged_at: list[datetime] = []
         self.fail: Exception | None = None
 
     def schedule_times(self) -> tuple[time, ...]:
@@ -40,6 +42,10 @@ class FakeJobs:
     def delete_blocked_users_data(self, now: datetime) -> int:
         self.deleted_at.append(now)
         return self.deleted
+
+    def purge_deleted(self, now: datetime) -> PurgedCounts:
+        self.purged_at.append(now)
+        return self.purged
 
 
 class Clock:
@@ -151,3 +157,15 @@ def test_blocked_users_data_is_checked_every_tick_and_logged(caplog: pytest.LogC
     assert jobs.deleted_at == [msk(8), msk(8) + timedelta(seconds=30)]
     records = [r for r in caplog.records if r.getMessage() == "Данные заблокированных пользователей удалены"]
     assert [r.users for r in records] == [2]  # type: ignore[attr-defined]
+
+
+def test_purge_runs_every_tick_and_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    jobs = FakeJobs()
+    jobs.purged = PurgedCounts(categories=1, groups=0, items=4)
+
+    with caplog.at_level(logging.INFO):
+        Scheduler(jobs, clock=Clock(msk(8))).tick()
+
+    assert jobs.purged_at == [msk(8)]
+    record = next(r for r in caplog.records if r.getMessage() == "Удалённое стёрто окончательно")
+    assert (record.categories, record.groups, record.items) == (1, 0, 4)  # type: ignore[attr-defined]

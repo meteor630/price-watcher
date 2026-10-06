@@ -5,6 +5,7 @@
 
 import itertools
 import logging
+import tempfile
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -23,6 +24,7 @@ from pricewatch.api.web_auth import CSRF_HEADER, SESSION_COOKIE, set_session_coo
 from pricewatch.application.passwords import PasswordHasher
 from pricewatch.application.web_auth import SessionUser, login
 from pricewatch.config.settings import Settings
+from pricewatch.media.store import MediaStore
 from pricewatch.persistence.database import create_db_engine
 from pricewatch.persistence.unit_of_work import SqlUnitOfWork
 
@@ -56,6 +58,7 @@ def make_app(engine: Engine) -> FastAPI:
         secret_key=KEY.encode(),
         hasher=HASHER,
         clock=lambda: NOW,
+        images=MediaStore(Path(tempfile.mkdtemp())),  # фото здесь не загружаются
     )
     app = create_app(settings, context)
 

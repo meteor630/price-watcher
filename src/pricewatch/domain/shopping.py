@@ -4,7 +4,11 @@
 """
 
 from dataclasses import dataclass
+from datetime import timedelta
 from enum import StrEnum
+
+# Мягко удалённое стирается окончательно через 30 дней (DEVELOPMENT_ARCHITECTURE.md, раздел 5).
+PURGE_AFTER = timedelta(days=30)
 
 
 class ItemState(StrEnum):

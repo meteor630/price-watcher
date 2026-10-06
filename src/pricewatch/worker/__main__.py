@@ -11,6 +11,7 @@ import sys
 from pricewatch.config.settings import ConfigError, load_worker_settings
 from pricewatch.observability.json_log import configure_logging, use_utf8_streams
 from pricewatch.worker.client import ApiClient, WorkerRejected, http_client
+from pricewatch.worker.images import ImageLoader
 from pricewatch.worker.parsing import Parsers
 from pricewatch.worker.runner import Runner
 
@@ -29,8 +30,9 @@ def main() -> int:
         return EXIT_CONFIG
     configure_logging(settings.log_level)
     parsers = Parsers(settings.profiles_dir)
+    images = ImageLoader()
     with http_client(settings.api_url) as client:
-        runner = Runner(ApiClient(client, settings.token.get_secret_value()), parsers, poll_seconds=settings.poll_seconds)
+        runner = Runner(ApiClient(client, settings.token.get_secret_value()), parsers, images, poll_seconds=settings.poll_seconds)
         for name in ("SIGINT", "SIGTERM"):
             if hasattr(signal, name):
                 signal.signal(getattr(signal, name), lambda *_: runner.stop())
@@ -42,6 +44,7 @@ def main() -> int:
             return EXIT_REJECTED
         finally:
             parsers.close()
+            images.close()
     logger.info("Worker остановлен")
     return 0
 

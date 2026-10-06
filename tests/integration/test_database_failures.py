@@ -1,11 +1,13 @@
 """Сбои базы: недоступность, обрыв, взаимная блокировка → DB_ERROR (503); ошибки запросов не маскируются."""
 
 import logging
+import tempfile
 import threading
 import uuid
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from pathlib import Path
 from urllib.parse import quote
 
 import pytest
@@ -19,6 +21,7 @@ from pricewatch.api.context import ApiContext, get_context
 from pricewatch.application.passwords import PasswordHasher
 from pricewatch.config.settings import Settings
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
+from pricewatch.media.store import MediaStore
 from pricewatch.observability.redaction import register_secret
 from pricewatch.persistence.database import create_db_engine
 from pricewatch.persistence.unit_of_work import SqlUnitOfWork
@@ -105,7 +108,7 @@ def test_db_failure_over_http_is_503_with_logged_cause(unreachable: Engine, capl
     settings = Settings(
         env="test", public_origin="https://prices.example.ru", database_url=UNREACHABLE, secret_key="k" * 40, _env_file=None
     )  # type: ignore[call-arg]
-    context = ApiContext(lambda: SqlUnitOfWork(unreachable), b"k" * 40, PasswordHasher(time_cost=1, memory_cost=8192), lambda: datetime.now(UTC))
+    context = ApiContext(lambda: SqlUnitOfWork(unreachable), b"k" * 40, PasswordHasher(time_cost=1, memory_cost=8192), lambda: datetime.now(UTC), MediaStore(Path(tempfile.mkdtemp())))
     app = create_app(settings, context)
 
     @app.get("/t/db")

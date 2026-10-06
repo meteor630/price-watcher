@@ -19,6 +19,8 @@ htmlcov/
 worker.env
 # Профили браузера worker: cookies магазинов
 .browser-profiles/
+# Фото товаров — данные сервера
+/media/
 
 # Xcode
 ios/**/xcuserdata/
