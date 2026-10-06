@@ -53,7 +53,7 @@
 - Файлы: `.github/workflows/ci.yml` — CI на каждый push: тесты, import-linter, проверка карты на Linux и на Windows (PostgreSQL 18 сборки EDB), gitleaks по всей истории. Действия закреплены по хешу, gitleaks и PostgreSQL для Windows — с проверкой контрольной суммы.
 - Файлы: `.gitleaksignore` — ложные срабатывания gitleaks по точному отпечатку; только ненастоящие значения из тестов и только с согласия владельца.
 
-Зависимости рабочего кода: pydantic-settings (MIT), fastapi (MIT), uvicorn (BSD-3), sqlalchemy (MIT), psycopg (LGPL-3.0, как неизменённая библиотека), alembic (MIT), argon2-cffi (MIT), tzdata (Apache-2.0), httpx2 (BSD-3), price-parser (BSD-3). Для разработки: pytest, import-linter, grimp, openapi-spec-validator.
+Зависимости рабочего кода: pydantic-settings (MIT), fastapi (MIT), uvicorn (BSD-3), sqlalchemy (MIT), psycopg (LGPL-3.0, как неизменённая библиотека), alembic (MIT), argon2-cffi (MIT), tzdata (Apache-2.0), httpx2 (BSD-3), price-parser (BSD-3), patchright (Apache-2.0; нужен установленный Google Chrome, на Linux — Xvfb). Для разработки: pytest, import-linter, grimp, openapi-spec-validator.
 
 ## Пакеты
 
@@ -130,12 +130,14 @@
 - Путь: `src/pricewatch/parsers/`
 - Отвечает: registry, общий парсер, адаптеры магазинов, нормализаторы
 - Зависит от: `pricewatch.domain`
-- Тесты: `uv run pytest tests/unit/test_package_layout.py tests/unit/test_parsers_urls.py tests/unit/test_parsers_registry.py tests/unit/test_parsers_fetch.py tests/unit/test_parsers_prices.py tests/unit/test_parsers_generic.py`
+- Тесты: `uv run pytest tests/unit/test_package_layout.py tests/unit/test_parsers_urls.py tests/unit/test_parsers_registry.py tests/unit/test_parsers_fetch.py tests/unit/test_parsers_prices.py tests/unit/test_parsers_generic.py tests/unit/test_parsers_egress.py tests/integration/test_browser_egress.py`
 - Файлы: `src/pricewatch/parsers/urls.py` — только https по имени (IP в любой записи, логин, порт — INVALID_URL), punycode, без фрагмента и меток рекламы, параметры по порядку; имя магазина без www. и m.
 - Файлы: `src/pricewatch/parsers/contract.py` — ParsedProduct (цены в копейках, только RUB, регион) и интерфейс адаптера StoreParser.
 - Файлы: `src/pricewatch/parsers/fetch.py` — SafeFetcher на httpx2: одно разрешение имени на шаг, все адреса публичные (NAT64, IPv4 в IPv6, многоадресные учтены), соединение на проверенный адрес с SNI по имени, перенаправления вручную до 5, предел 5 МБ после распаковки и 20 с на всё, прокси окружения игнорируются.
 - Файлы: `src/pricewatch/parsers/prices.py` — цена в копейки без float: строгий разбор структурированных значений; кандидаты из текста через price-parser только при явном знаке рубля.
 - Файлы: `src/pricewatch/parsers/generic.py` — общий парсер: JSON-LD (@graph, AggregateOffer, priceSpecification) → Open Graph и meta → микроразметка; не рубли — UNSUPPORTED_CURRENCY; без цены — PRICE_NOT_FOUND с кандидатами; коды ответа магазина → ошибки сбора цен.
+- Файлы: `src/pricewatch/parsers/egress.py` — проверяющий прокси для Chrome: только CONNECT имя:443 с публичными адресами, соединение на проверенный адрес, без вскрытия шифрования.
+- Файлы: `src/pricewatch/parsers/browser.py` — BrowserFetcher: patchright + установленный Chrome с окном за краем экрана, профиль на магазин со сбросом при метке робота, ожидание результата, перехват JSON страницы, весь трафик через EgressProxy.
 - Файлы: `src/pricewatch/parsers/registry.py` — адаптер по имени сайта: поддомены относятся к магазину, похожие имена — нет; одно имя — один адаптер.
 
 ### pricewatch.worker
@@ -261,7 +263,9 @@
 | Защита от SSRF | своя на httpx2: одно разрешение имени, проверка адреса, соединение на проверенный адрес, проверка каждого перенаправления | подход httpx-secure (github.com/Zaczero/pkgs, 0BSD) | httpx-secure (нужен второй клиент httpx, только async), ssrf-guard (новый, без истории), Advocate (в архиве) |
 | Структурированные данные | свой разбор JSON-LD и meta/Open Graph на стандартной библиотеке | случаи `@graph` и AggregateOffer — по extruct (github.com/scrapinghub/extruct, BSD-3) и changedetection.io (Apache-2.0) | extruct (lxml, rdflib и ещё 5 пакетов, выпуск 11.2024) |
 | Цена из текста | price-parser → Decimal → копейки с проверкой точности | github.com/scrapinghub/price-parser, BSD-3 | свой разбор (меньше форматов) |
-| Wildberries | открытый JSON card.wb.ru/cards/v4/detail | подход из github.com/Duff89/wildberries_parser (без лицензии — код не копируется) | браузер (медленно) |
+| Браузер за защитой от ботов | patchright + установленный Chrome с окном, профиль на магазин, сброс профиля при метке робота, перехват JSON страницы | способ — из рабочего парсера владельца (prise-bot), переписан; github.com/Kaliiiiiiiiii-Vinyzu/patchright-python, Apache-2.0 | Playwright и Chrome без patchright (06.10.2026 не проходят Wildberries, Ozon, DNS), undetected-chromedriver (Selenium, ломается с новыми Chrome) |
+| SSRF в браузере | свой проверяющий CONNECT-прокси (EgressProxy) | — | перехват `route` Playwright (не видит шаги перенаправлений, выключает кэш) |
+| Wildberries | JSON `/__internal/u-card/cards/v4/detail`, который запрашивает сама страница в браузере | способ — из парсера владельца; адрес card.wb.ru закрыт защитой wbaas (06.10.2026) | открытый card.wb.ru (403 без токена), github.com/Duff89/wildberries_parser (устаревший адрес, без лицензии) |
 | CSRF | свой токен, привязанный к серверной сессии, и проверка Origin | — | starlette-csrf (не развивается с 2023), fastapi-csrf-protect (вторая cookie и секрет) |
 
 Шрифты, лицензия SIL OFL 1.1, источник — npm-пакеты @fontsource-variable:

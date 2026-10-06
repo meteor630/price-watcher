@@ -47,7 +47,8 @@ jobs:
         run: uv sync --locked
 
       - name: Тесты
-        run: uv run pytest
+        # Браузерные тесты запускают Google Chrome с окном: на сервере без монитора — виртуальный экран.
+        run: xvfb-run -a uv run pytest
 
       - name: Границы модулей
         run: uv run lint-imports
