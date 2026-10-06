@@ -88,3 +88,29 @@ def test_address_without_listing_is_invalid(raw: str) -> None:
         canonical_url(normalize_url(raw))
 
     assert caught.value.code is ErrorCode.INVALID_URL
+
+
+# --- снятое объявление: настоящая страница от 06.10.2026 (JSON-LD остаётся, в нём OutOfStock) ---
+
+CLOSED = (Path(__file__).resolve().parents[1] / "fixtures" / "stores" / "avito" / "closed_listing.html").read_text(encoding="utf-8")
+
+
+def test_closed_listing_from_saved_page() -> None:
+    product = parse(FakeBrowser(CLOSED), url="https://m.avito.ru/moskva/tovary_dlya_kompyutera/klaviatura_space65r3_ot_graystudio_3518455623?context=H4s")
+
+    assert (product.title, product.price_minor, product.availability) == ("Клавиатура Space65r3 от Graystudio", None, Availability.OUT_OF_STOCK)
+
+
+def test_closed_text_wins_over_stale_json_ld() -> None:
+    # Если данные для поисковиков отстали и ещё говорят «в наличии», надпись на странице важнее.
+    html = CLOSED.replace("http://schema.org/OutOfStock", "http://schema.org/InStock")
+
+    product = parse(FakeBrowser(html))
+
+    assert (product.availability, product.price_minor) == (Availability.OUT_OF_STOCK, None)
+
+
+def test_closed_listing_without_price_in_json_ld() -> None:
+    html = CLOSED.replace('"price":"30000",', "")
+
+    assert parse(FakeBrowser(html)).availability is Availability.OUT_OF_STOCK

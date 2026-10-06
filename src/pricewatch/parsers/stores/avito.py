@@ -6,7 +6,8 @@
 Объявление — JSON-LD Product (@graph) с ценой продавца: её разбирает общий парсер.
 Цена объявления от региона смотрящего не зависит: её назначил продавец, поэтому регион не
 подтверждается отдельно; город объявления виден в адресе (/sankt-peterburg/…).
-Снятое объявление: товара в JSON-LD нет, на странице «снято с публикации» или «объявление закрыто».
+Снятое объявление (06.10.2026): JSON-LD остаётся, в нём OutOfStock, а на странице — «Объявление снято
+с публикации.». Надпись на странице важнее данных для поисковиков: объявление считается снятым.
 """
 
 import html as html_entities
@@ -38,14 +39,15 @@ class AvitoParser:
         listing = canonical_url(url)
         page = self._browser.fetch(listing, KEY, _loaded)
         html = page.html
+        if _closed(html):
+            # Сначала надпись: данные для поисковиков у снятого объявления могут отставать или быть без цены.
+            return ParsedProduct(_title(html), None, None, Availability.OUT_OF_STOCK, None, region_code, site_name="Авито")
         if PRODUCT_JSON_LD.search(html):
             product = parse_html(html, listing, region_code)
             return ParsedProduct(
                 product.title, product.price_minor, None, product.availability, product.image_url,
                 region_code, product.source, "Авито", product.notes,
             )
-        if _closed(html):
-            return ParsedProduct(_title(html), None, None, Availability.OUT_OF_STOCK, None, region_code, site_name="Авито")
         raise _not_loaded(page)
 
 
