@@ -50,7 +50,7 @@ def test_error_carries_code_and_catalog_message() -> None:
     error = PriceWatcherError(ErrorCode.STORE_NOT_ALLOWED)
 
     assert error.code is ErrorCode.STORE_NOT_ALLOWED
-    assert error.safe_message == "Этот магазин пока не подключён. Попросите администратора добавить его."
+    assert error.safe_message == "Этот сайт отключён администратором."
     assert str(error) == f"STORE_NOT_ALLOWED: {error.safe_message}"
     assert dict(error.details) == {}
 

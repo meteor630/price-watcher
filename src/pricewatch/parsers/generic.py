@@ -136,6 +136,7 @@ def parse_html(html: str, page_url: NormalizedUrl, region_code: str) -> ParsedPr
     offers = next((source for source in sources if _informative(source)), [])
     title = _first_text([_text(product.get("name")) for product in products] + [page.meta.get("og:title"), page.itemprops.get("name"), page.title])
     image = _image([_image_url(product.get("image")) for product in products] + [page.meta.get("og:image")], page_url)
+    site_name = _first_text([page.meta.get("og:site_name")])
 
     priced = [offer for offer in offers if offer.price_minor is not None]
     rubles = [offer for offer in priced if is_ruble(offer.currency)]
@@ -145,9 +146,9 @@ def parse_html(html: str, page_url: NormalizedUrl, region_code: str) -> ParsedPr
     if in_stock:
         best = min(in_stock, key=lambda offer: offer.price_minor or 0)
         availability = Availability.IN_STOCK if best.availability is Availability.IN_STOCK else Availability.UNKNOWN
-        return ParsedProduct(title, best.price_minor, None, availability, image, region_code)
+        return ParsedProduct(title, best.price_minor, None, availability, image, region_code, site_name=site_name)
     if any(offer.availability is Availability.OUT_OF_STOCK for offer in offers):
-        return ParsedProduct(title, None, None, Availability.OUT_OF_STOCK, image, region_code)
+        return ParsedProduct(title, None, None, Availability.OUT_OF_STOCK, image, region_code, site_name=site_name)
     raise PriceWatcherError(ErrorCode.PRICE_NOT_FOUND, {"candidates": list(text_candidates(page.texts))})
 
 

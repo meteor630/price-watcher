@@ -24,7 +24,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from patchright.sync_api import BrowserContext, Error, Page, Playwright, Response, sync_playwright
 
@@ -76,6 +76,8 @@ class BrowserPage:
     status: int
     html: str
     json: list[CapturedJson] = field(default_factory=list)
+    # Результат скрипта-зонда (например, VISUAL_JS) на последнем опросе страницы.
+    probe: Any = None
 
 
 Ready = Callable[[BrowserPage], bool]
@@ -96,6 +98,14 @@ FETCH_JSON_JS = """async ([urls, headers, maxBytes]) => Promise.all(urls.map(asy
 class JsonReply:
     status: int  # 0 — запрос не дошёл (сеть, прокси отказал)
     body: str | None  # None — нет ответа или он больше предела
+
+
+def _probe(tab: Page, script: str, previous: Any) -> Any:
+    """Результат зонда или прошлый, если страница как раз перезагружается."""
+    try:
+        return tab.evaluate(script)
+    except Error:
+        return previous
 
 
 def looks_blocked(page: BrowserPage) -> bool:
@@ -148,7 +158,9 @@ class OpenPage:
 class StoreBrowser(Protocol):
     """То, что нужно адаптеру от браузера; рабочая реализация — BrowserFetcher."""
 
-    def open(self, url: NormalizedUrl, store_key: str, ready: Ready, timeout_s: float = ...) -> OpenPage: ...
+    def open(
+        self, url: NormalizedUrl, store_key: str, ready: Ready, timeout_s: float = ..., probe_js: str | None = ...
+    ) -> OpenPage: ...
 
 
 class BrowserFetcher:
@@ -166,29 +178,38 @@ class BrowserFetcher:
         self._close_browser()
         self._proxy.close()
 
-    def fetch(self, url: NormalizedUrl, store_key: str, ready: Ready, timeout_s: float = 25.0) -> BrowserPage:
+    def fetch(
+        self, url: NormalizedUrl, store_key: str, ready: Ready, timeout_s: float = 25.0, probe_js: str | None = None
+    ) -> BrowserPage:
         """Открыть страницу в профиле магазина и дождаться `ready` или конца времени.
 
         Если товар не появился, а страница похожа на заглушку защиты, профиль магазина стирается
         и делается вторая, последняя попытка.
         """
-        with self.open(url, store_key, ready, timeout_s) as opened:
+        with self.open(url, store_key, ready, timeout_s, probe_js) as opened:
             return opened.page
 
-    def open(self, url: NormalizedUrl, store_key: str, ready: Ready, timeout_s: float = 25.0) -> OpenPage:
-        """Как `fetch`, но страница остаётся открытой для запросов JSON изнутри неё."""
-        page, tab = self._load(url, store_key, ready, timeout_s)
+    def open(
+        self, url: NormalizedUrl, store_key: str, ready: Ready, timeout_s: float = 25.0, probe_js: str | None = None
+    ) -> OpenPage:
+        """Как `fetch`, но страница остаётся открытой для запросов JSON изнутри неё.
+
+        `probe_js` выполняется в странице на каждом опросе; результат — в `BrowserPage.probe`.
+        """
+        page, tab = self._load(url, store_key, ready, timeout_s, probe_js)
         return OpenPage(page, tab)
 
-    def _load(self, url: NormalizedUrl, store_key: str, ready: Ready, timeout_s: float) -> tuple[BrowserPage, Page]:
+    def _load(
+        self, url: NormalizedUrl, store_key: str, ready: Ready, timeout_s: float, probe_js: str | None
+    ) -> tuple[BrowserPage, Page]:
         if public_address(url.host, self._resolver) is None:
             raise PriceWatcherError(ErrorCode.INVALID_URL)
-        page, tab = self._open(url, store_key, ready, timeout_s)
+        page, tab = self._open(url, store_key, ready, timeout_s, probe_js)
         if ready(page) or not looks_blocked(page):
             return page, tab
         tab.close()
         self._reset_profile()
-        return self._open(url, store_key, ready, timeout_s)
+        return self._open(url, store_key, ready, timeout_s, probe_js)
 
     def context(self, store_key: str) -> BrowserContext:
         """Chrome с профилем магазина; запускается при первом обращении."""
@@ -204,10 +225,13 @@ class BrowserFetcher:
             headless=False,
             args=[*CHROME_ARGS, f"--proxy-server=http://127.0.0.1:{self._proxy.port}"],
             no_viewport=True,
+            accept_downloads=False,  # сайты пользователей не могут ничего скачать на worker
         )
         return self._context
 
-    def _open(self, url: NormalizedUrl, store_key: str, ready: Ready, timeout_s: float) -> tuple[BrowserPage, Page]:
+    def _open(
+        self, url: NormalizedUrl, store_key: str, ready: Ready, timeout_s: float, probe_js: str | None
+    ) -> tuple[BrowserPage, Page]:
         """Загрузить страницу и дождаться результата; вкладку закрывает вызывающий."""
         tab = self.context(store_key).new_page()
         result = BrowserPage(url, url.url, 0, "")
@@ -219,6 +243,8 @@ class BrowserFetcher:
                 html = _snapshot(tab)
                 if html is not None:
                     result.html = html
+                if probe_js is not None:
+                    result.probe = _probe(tab, probe_js, result.probe)
                 result.final_url = tab.url
                 if (result.html and ready(result)) or time.monotonic() > deadline:
                     break

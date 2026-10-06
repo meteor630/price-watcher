@@ -7,6 +7,7 @@ BLOCKED, CAPTCHA, TIMEOUT, REGION_MISMATCH, UNSUPPORTED_CURRENCY. Цена не 
 """
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Protocol
 
 from pricewatch.domain.pricing import Availability
@@ -14,6 +15,13 @@ from pricewatch.parsers.urls import NormalizedUrl
 
 TITLE_MAX = 500
 IMAGE_URL_MAX = 2048
+
+
+class PriceSource(StrEnum):
+    """Откуда взята цена — показывается пользователю рядом с ценой."""
+
+    SITE_DATA = "site_data"  # данные магазина: JSON-LD, meta, JSON страницы
+    PAGE = "page"  # найдена «глазами» на странице
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +33,10 @@ class ParsedProduct:
     image_url: str | None
     # Регион, для которого магазин подтвердил цену.
     region_code: str
+    source: PriceSource = PriceSource.SITE_DATA
+    # Название сайта для автоматически созданного магазина (og:site_name).
+    site_name: str | None = None
+    notes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         for value in (self.price_minor, self.card_price_minor):

@@ -121,7 +121,7 @@ def run_with(fetcher: BrowserFetcher, monkeypatch: pytest.MonkeyPatch, pages: li
         def close(self) -> None:
             events.append("close")
 
-    def fake_open(url, store_key, ready, timeout_s):  # type: ignore[no-untyped-def]
+    def fake_open(url, store_key, ready, timeout_s, probe_js):  # type: ignore[no-untyped-def]
         events.append("open")
         return next(queue), FakeTab()
 
