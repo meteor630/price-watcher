@@ -130,7 +130,7 @@
 - Путь: `src/pricewatch/parsers/`
 - Отвечает: registry, общий парсер, адаптеры магазинов, нормализаторы
 - Зависит от: `pricewatch.domain`
-- Тесты: `uv run pytest tests/unit/test_package_layout.py tests/unit/test_parsers_urls.py tests/unit/test_parsers_registry.py tests/unit/test_parsers_fetch.py tests/unit/test_parsers_prices.py tests/unit/test_parsers_generic.py tests/unit/test_parsers_egress.py tests/integration/test_browser_egress.py tests/unit/test_parsers_wildberries.py tests/unit/test_parsers_regard.py tests/unit/test_parsers_visual.py tests/integration/test_visual_in_chrome.py tests/unit/test_parsers_universal.py tests/unit/test_parsers_dns.py tests/unit/test_parsers_ozon.py tests/unit/test_parsers_yandex_market.py`
+- Тесты: `uv run pytest tests/unit/test_package_layout.py tests/unit/test_parsers_urls.py tests/unit/test_parsers_registry.py tests/unit/test_parsers_fetch.py tests/unit/test_parsers_prices.py tests/unit/test_parsers_generic.py tests/unit/test_parsers_egress.py tests/integration/test_browser_egress.py tests/unit/test_parsers_wildberries.py tests/unit/test_parsers_regard.py tests/unit/test_parsers_visual.py tests/integration/test_visual_in_chrome.py tests/unit/test_parsers_universal.py tests/unit/test_parsers_dns.py tests/unit/test_parsers_ozon.py tests/unit/test_parsers_yandex_market.py tests/unit/test_parsers_avito.py`
 - Файлы: `src/pricewatch/parsers/urls.py` — только https по имени (IP в любой записи, логин, порт — INVALID_URL), punycode, без фрагмента и меток рекламы, параметры по порядку; имя магазина без www. и m.
 - Файлы: `src/pricewatch/parsers/contract.py` — ParsedProduct (цены в копейках, только RUB, регион, источник цены, название сайта, заметки) и интерфейс адаптера StoreParser.
 - Файлы: `src/pricewatch/parsers/fetch.py` — SafeFetcher на httpx2: cookies магазина только на его сайт и поддомены; одно разрешение имени на шаг, все адреса публичные (NAT64, IPv4 в IPv6, многоадресные учтены), соединение на проверенный адрес с SNI по имени, перенаправления вручную до 5, предел 5 МБ после распаковки и 20 с на всё, прокси окружения игнорируются.
@@ -147,6 +147,8 @@
 - Файлы: `tests/fixtures/stores/ozon` — карточка и страница закончившегося товара от 06.10.2026, сокращённые до og-метаданных, h1, виджетов цены или webOutOfStock и города.
 - Файлы: `src/pricewatch/parsers/stores/yandex_market.py` — Яндекс Маркет: быстрый запрос, при капче — браузер; регион из данных страницы (id 2 — Санкт-Петербург); цены из priceDetails («без карты» — обычная, «Пэй» — по карте), остальное из JSON-LD; «нет в продаже» — isNotOnSale.
 - Файлы: `tests/fixtures/stores/yandex_market` — карточки в продаже и снятой с продажи от 06.10.2026, сокращённые до JSON-LD, h1, региона и priceDetails.
+- Файлы: `src/pricewatch/parsers/stores/avito.py` — Авито: только браузер с профилем, где проверка пройдена вручную; цена продавца из JSON-LD; снятое объявление по тексту; защита — CAPTCHA.
+- Файлы: `tests/fixtures/stores/avito` — объявление от 06.10.2026, сокращённое до og, JSON-LD и h1; текст продавца заменён.
 - Файлы: `src/pricewatch/parsers/stores/regard.py` — Регард без браузера: cookie city_id (Санкт-Петербург — 137), город подтверждается town.cookieTownId из __NEXT_DATA__, цена — общим парсером.
 - Файлы: `tests/fixtures/stores/regard` — настоящая страница товара от 06.10.2026, сокращённая: JSON-LD целиком (с похожими товарами) и состояние города.
 - Файлы: `tests/fixtures/stores/wildberries` — образцы ответов WB от 06.10.2026: карточка товара, геоданные Санкт-Петербурга (без IP и подписи).
