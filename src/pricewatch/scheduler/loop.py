@@ -1,4 +1,5 @@
-"""Цикл планировщика: каждые 30 секунд вернуть просроченные задания и запустить наступившую проверку.
+"""Цикл планировщика: каждые 30 секунд вернуть просроченные задания, удалить данные пользователей,
+заблокированных 7 суток назад, и запустить наступившую проверку.
 
 - Наступивший слот — последний из промежутка с прошлого удачного обхода; после старта промежуток
   начинается с 00:00 текущих суток по Москве: один пропущенный запуск за сутки выполняется.
@@ -26,6 +27,7 @@ class Jobs(Protocol):
     def schedule_times(self) -> tuple[time, ...]: ...
     def start_scheduled_run(self, slot_key: str, now: datetime) -> ScheduledStart: ...
     def expire_leases(self, now: datetime) -> ExpiredLeases: ...
+    def delete_blocked_users_data(self, now: datetime) -> int: ...
 
 
 class Scheduler:
@@ -64,6 +66,9 @@ class Scheduler:
                 "Аренда заданий истекла",
                 extra={"requeued": expired.requeued, "failed": expired.failed, "cancelled": expired.cancelled},
             )
+        deleted = self._jobs.delete_blocked_users_data(now)
+        if deleted:
+            logger.info("Данные заблокированных пользователей удалены", extra={"users": deleted})
         after = self._after or day_start(moscow_date(now))
         slot = due_slot(self._jobs.schedule_times(), after, now)
         if slot is not None:

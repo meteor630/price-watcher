@@ -71,7 +71,7 @@
 - Файлы: `src/pricewatch/domain/names.py` — очистка имён для показа, ключ сравнения (регистр, пробелы, «ё», NFKC), пределы длины и количества.
 - Файлы: `src/pricewatch/domain/shopping.py` — неизменяемые записи Category, Group, Item; состояния товара ItemState.
 - Файлы: `src/pricewatch/domain/tokens.py` — случайные токены и коды связки, HMAC с назначением, вывод следующего токена из предыдущего.
-- Файлы: `src/pricewatch/domain/accounts.py` — роли, User, правила логина и пароля (NFKC), отображаемое имя.
+- Файлы: `src/pricewatch/domain/accounts.py` — роли, User, правила логина и пароля (NFKC), отображаемое имя, срок хранения данных заблокированного (7 суток).
 - Файлы: `src/pricewatch/domain/money.py` — целые копейки, строки «12 990 ₽», «−652 ₽», процент с одним знаком (половины вверх), изменение Change.
 - Файлы: `src/pricewatch/domain/pricing.py` — наблюдение, действующая цена, участие ссылки (меньше 7 суток), статус ссылки и товара по порядку раздела 6, лучшая цена, «на проверке»; расчёт на любой момент (проверки отсортированы один раз, граница — двоичным поиском).
 - Файлы: `src/pricewatch/domain/totals.py` — привязки ссылок [valid_from, valid_to), цена товара на момент, отметка «в итоге» при устаревшей цене, итог, изменение «только из-за цен», минимум периода.
@@ -86,10 +86,11 @@
 - Путь: `src/pricewatch/application/`
 - Отвечает: сценарии и интерфейсы репозиториев
 - Зависит от: `pricewatch.domain`
-- Тесты: `uv run pytest tests/unit/test_passwords.py tests/integration/test_create_admin_command.py tests/integration/test_registration.py tests/integration/test_web_login.py tests/integration/test_app_auth.py tests/integration/test_add_link.py tests/integration/test_worker_protocol.py tests/integration/test_runs.py tests/integration/test_store_pauses.py`
+- Тесты: `uv run pytest tests/unit/test_passwords.py tests/integration/test_create_admin_command.py tests/integration/test_registration.py tests/integration/test_web_login.py tests/integration/test_app_auth.py tests/integration/test_add_link.py tests/integration/test_worker_protocol.py tests/integration/test_runs.py tests/integration/test_store_pauses.py tests/integration/test_retention.py`
 - Файлы: `src/pricewatch/application/ports.py` — интерфейсы репозиториев и единицы работы; общие правила владельца, версий, перестановки, удаления; LinkResolver — описание адреса от сборщика цен.
 - Файлы: `src/pricewatch/application/worker_protocol.py` — протокол worker: токен (HMAC WORKER, ротация с перекрытием), аренда 2 мин, продление, результат как недоверенный ввод, правила подозрительных изменений, автозакрытие ценового подозрения, первое название — эталон; блокировка и капча — пауза магазина по ступеням, задание ждёт без траты попытки; исчерпано — магазин отдыхает до следующего запуска, его ждущие задания закрываются ошибкой, уведомление store_paused администраторам; другой ответ снимает паузу.
 - Файлы: `src/pricewatch/application/runs.py` — запуски: ручной (только администратор; второй — RUN_IN_PROGRESS с прогрессом) и плановый по слоту, какие ссылки входят, остановка, истёкшая аренда (возврат, после 3 попыток TIMEOUT в историю), времена расписания из настроек.
+- Файлы: `src/pricewatch/application/retention.py` — данные пользователя, заблокированного 7 суток назад: товары, группы, категории мягко удаляются; общий каталог не трогается.
 - Файлы: `src/pricewatch/application/links.py` — добавление ссылки к товару: магазин создаётся сам, каталог без дублей, замена ссылки того же магазина, свежая цена (моложе суток) или срочное задание, лимит 20 новых ссылок в час.
 - Файлы: `src/pricewatch/application/passwords.py` — PasswordHasher: argon2id (argon2-cffi), нормализация, фиктивная проверка для выравнивания времени.
 - Файлы: `src/pricewatch/application/app_auth.py` — вход приложения: код связки (лимит по IP), устройство, ротация refresh (вывод через HMAC, окно 60 с, повтор позже — отзыв устройства), access-токен, выход.
@@ -100,13 +101,13 @@
 - Путь: `src/pricewatch/persistence/`
 - Отвечает: модели БД, репозитории, миграции
 - Зависит от: `pricewatch.application`, `pricewatch.config`, `pricewatch.domain`, `pricewatch.observability`
-- Тесты: `uv run pytest tests/integration/test_database_connection.py tests/integration/test_migrations.py tests/integration/test_schema_constraints.py tests/integration/test_shopping_repositories.py tests/integration/test_concurrency.py tests/integration/test_schema_check.py tests/integration/test_user_repository.py tests/integration/test_database_failures.py tests/integration/test_queue_schema.py tests/integration/test_collection_repositories.py tests/integration/test_runs.py tests/integration/test_store_pauses.py`
+- Тесты: `uv run pytest tests/integration/test_database_connection.py tests/integration/test_migrations.py tests/integration/test_schema_constraints.py tests/integration/test_shopping_repositories.py tests/integration/test_concurrency.py tests/integration/test_schema_check.py tests/integration/test_user_repository.py tests/integration/test_database_failures.py tests/integration/test_queue_schema.py tests/integration/test_collection_repositories.py tests/integration/test_runs.py tests/integration/test_store_pauses.py tests/integration/test_retention.py`
 - Файлы: `src/pricewatch/persistence/database.py` — подключение: малый пул, hide_parameters, соединение в UTC, DB_ERROR при недоступной базе.
 - Файлы: `src/pricewatch/persistence/models.py` — таблицы списка покупок (составные ключи владельца), входа (в *_hash только HMAC в hex — проверка в базе) и сбора цен с очередью: магазины, ссылки, привязки, наблюдения, запуски, задания, worker, настройки, уведомления; гарантии раздела 8 — частичными уникальными индексами; имена ограничений по правилу.
 - Файлы: `src/pricewatch/persistence/migrations/`, `src/pricewatch/persistence/migrations/versions/` — миграции Alembic; env.py берёт адрес базы из настроек (config) и пишет журнал в JSON (observability).
 - Файлы: `src/pricewatch/persistence/collection_repositories.py` — магазины, ссылки каталога, привязки, наблюдения, очередь (выдача FOR UPDATE SKIP LOCKED с блокировкой магазина, продление, закрытие со счётчиками; запуск завершается, когда активных заданий не осталось; задания запуска одной вставкой; остановка и истёкшая аренда — блокировки в порядке «задание, потом запуск»; исчерпанная пауза закрывает ждущие задания магазина, запуски блокируются по возрастанию номера), пауза магазина, настройки, уведомления администраторам (повтор по dedup_key не создаёт строк), worker: вставка ON CONFLICT по уникальным индексам; условие частичного индекса — буквально (общий план подготовленного запроса).
 - Файлы: `src/pricewatch/persistence/schema.py` — настройка Alembic из кода, без alembic.ini; ревизия кода и базы, SchemaMismatch с подсказкой.
-- Файлы: `src/pricewatch/persistence/shopping_repositories.py` — репозитории категорий, групп, товаров; изменения состава списка блокируют родителя подъёмом его версии.
+- Файлы: `src/pricewatch/persistence/shopping_repositories.py` — репозитории категорий, групп, товаров; изменения состава списка блокируют родителя подъёмом его версии; данные заблокированных — мягкое удаление всего сразу, занятые администратором пользователи пропускаются.
 - Файлы: `src/pricewatch/persistence/unit_of_work.py` — SqlUnitOfWork: одно соединение и транзакция; без commit — откат; недоступность, обрыв и взаимная блокировка → DB_ERROR (503).
 - Файлы: `src/pricewatch/persistence/user_repository.py` — пользователи; занятый логин без учёта регистра — LOGIN_TAKEN.
 - Файлы: `src/pricewatch/persistence/app_auth_repositories.py` — коды связки, устройства, access- и refresh-токены; claim и find_refresh блокируют строку.
@@ -180,7 +181,7 @@
 - Отвечает: плановые запуски; сценарии получает от bootstrap
 - Зависит от: `pricewatch.application`, `pricewatch.domain`
 - Тесты: `uv run pytest tests/unit/test_scheduler_loop.py tests/integration/test_scheduler_start.py tests/unit/test_package_layout.py`
-- Файлы: `src/pricewatch/scheduler/loop.py` — обход каждые 30 с: просроченные задания, наступивший слот (после старта — с 00:00 текущих суток: один пропущенный запуск), пропуск при идущем запуске — в журнал; сбой обхода — в журнал, слот повторится.
+- Файлы: `src/pricewatch/scheduler/loop.py` — обход каждые 30 с: просроченные задания, данные заблокированных 7 суток назад, наступивший слот (после старта — с 00:00 текущих суток: один пропущенный запуск), пропуск при идущем запуске — в журнал; сбой обхода — в журнал, слот повторится.
 
 ### pricewatch.bot
 - Путь: `src/pricewatch/bot/`

@@ -188,6 +188,16 @@ class ItemRepository(Protocol):
     ) -> int: ...
 
 
+class PersonalDataRepository(Protocol):
+    def blocked_owners(self, blocked_before: datetime) -> list[int]:
+        """Пользователи, заблокированные не позже `blocked_before`, у которых остались неудалённые данные;
+        строки пользователей блокируются, занятые другой транзакцией пропускаются до следующего раза."""
+        ...
+    def soft_delete_all(self, user_id: int, now: datetime) -> None:
+        """Мягко удалить все товары, группы и категории пользователя (как обычное удаление: deleted_at, версия)."""
+        ...
+
+
 # --- Сбор цен и очередь (этап 6) ---
 
 
@@ -446,6 +456,7 @@ class UnitOfWork(Protocol):
     categories: CategoryRepository
     groups: GroupRepository
     items: ItemRepository
+    personal_data: PersonalDataRepository
     stores: StoreRepository
     tracked_links: TrackedLinkRepository
     item_links: ItemLinkRepository

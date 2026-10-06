@@ -20,6 +20,8 @@ class FakeJobs:
         self.outcome = ScheduledStart(progress=RUN)
         self.expired = ExpiredLeases()
         self.expire_calls = 0
+        self.deleted = 0
+        self.deleted_at: list[datetime] = []
         self.fail: Exception | None = None
 
     def schedule_times(self) -> tuple[time, ...]:
@@ -34,6 +36,10 @@ class FakeJobs:
     def expire_leases(self, now: datetime) -> ExpiredLeases:
         self.expire_calls += 1
         return self.expired
+
+    def delete_blocked_users_data(self, now: datetime) -> int:
+        self.deleted_at.append(now)
+        return self.deleted
 
 
 class Clock:
@@ -129,3 +135,19 @@ def test_stop_ends_loop() -> None:
     scheduler.run()
 
     assert jobs.started == []
+
+
+def test_blocked_users_data_is_checked_every_tick_and_logged(caplog: pytest.LogCaptureFixture) -> None:
+    jobs, clock = FakeJobs(), Clock(msk(8))
+    jobs.deleted = 2
+    scheduler = Scheduler(jobs, clock=clock)
+
+    with caplog.at_level(logging.INFO):
+        scheduler.tick()
+        jobs.deleted = 0
+        clock.now += timedelta(seconds=30)
+        scheduler.tick()
+
+    assert jobs.deleted_at == [msk(8), msk(8) + timedelta(seconds=30)]
+    records = [r for r in caplog.records if r.getMessage() == "Данные заблокированных пользователей удалены"]
+    assert [r.users for r in records] == [2]  # type: ignore[attr-defined]

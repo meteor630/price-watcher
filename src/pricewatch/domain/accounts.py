@@ -31,6 +31,8 @@ ACCESS_TOKEN_LIFETIME = timedelta(minutes=15)
 REFRESH_TOKEN_LIFETIME = timedelta(days=60)
 REFRESH_REPLAY_WINDOW = timedelta(seconds=60)
 DEVICE_NAME_MAX = 80
+# Данные заблокированного пользователя мягко удаляются через 7 суток после блокировки (решение 06.10.2026).
+BLOCKED_DATA_KEPT = timedelta(days=7)
 
 
 class Role(StrEnum):

@@ -35,6 +35,7 @@ from pricewatch.persistence.shopping_repositories import (
     SqlCategoryRepository,
     SqlGroupRepository,
     SqlItemRepository,
+    SqlPersonalDataRepository,
 )
 from pricewatch.persistence.user_repository import SqlUserRepository
 
@@ -69,6 +70,7 @@ class SqlUnitOfWork:
         self.categories = SqlCategoryRepository(self._connection)
         self.groups = SqlGroupRepository(self._connection)
         self.items = SqlItemRepository(self._connection)
+        self.personal_data = SqlPersonalDataRepository(self._connection)
         self.stores = SqlStoreRepository(self._connection)
         self.tracked_links = SqlTrackedLinkRepository(self._connection)
         self.item_links = SqlItemLinkRepository(self._connection)

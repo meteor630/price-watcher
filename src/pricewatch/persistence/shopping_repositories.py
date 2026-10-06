@@ -9,8 +9,9 @@
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime
 
-from sqlalchemy import Connection, Row, Select, Table, Update, bindparam, func, select, update
+from sqlalchemy import Connection, Row, Select, Table, Update, bindparam, exists, func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from pricewatch.application.ports import UNCHANGED, ItemChanges, NewItem
@@ -526,4 +527,36 @@ class SqlItemRepository:
                 items.c.deleted_at.is_(None),
             )
             .scalar_subquery()
+        )
+
+
+class SqlPersonalDataRepository:
+    def __init__(self, connection: Connection) -> None:
+        self.connection = connection
+
+    def blocked_owners(self, blocked_before: datetime) -> list[int]:
+        has_data = (
+            exists().where(categories.c.user_id == users.c.id, categories.c.deleted_at.is_(None))
+            | exists().where(groups.c.user_id == users.c.id, groups.c.deleted_at.is_(None))
+            | exists().where(items.c.user_id == users.c.id, items.c.deleted_at.is_(None))
+        )
+        return list(
+            self.connection.execute(
+                select(users.c.id)
+                .where(users.c.disabled_at.is_not(None), users.c.disabled_at <= blocked_before, has_data)
+                .order_by(users.c.id)
+                # Пока администратор меняет пользователя (например, разблокирует), его данные не трогаются.
+                .with_for_update(skip_locked=True, of=users)
+            ).scalars()
+        )
+
+    def soft_delete_all(self, user_id: int, now: datetime) -> None:
+        for table in (items, groups, categories):
+            self.connection.execute(
+                update(table)
+                .where(table.c.user_id == user_id, table.c.deleted_at.is_(None))
+                .values(deleted_at=now, version=table.c.version + 1, updated_at=now)
+            )
+        self.connection.execute(
+            update(users).where(users.c.id == user_id).values(categories_order_version=users.c.categories_order_version + 1)
         )
