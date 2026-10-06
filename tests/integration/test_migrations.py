@@ -127,3 +127,9 @@ def test_offline_mode_is_refused(empty_database_url: str) -> None:
     with pytest.raises(RuntimeError, match="офлайн"):
         command.upgrade(alembic_config(empty_database_url), "head", sql=True)
 
+
+
+def test_alembic_ini_is_ascii() -> None:
+    # Alembic читает alembic.ini в кодировке системы (encoding="locale"): на Windows кириллица
+    # в комментарии ломает любую команду alembic.
+    (ROOT / "alembic.ini").read_bytes().decode("ascii")

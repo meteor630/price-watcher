@@ -1,5 +1,6 @@
 import importlib
 import pkgutil
+from pathlib import Path
 
 import pytest
 
@@ -36,4 +37,5 @@ def test_packages_match_architecture() -> None:
 
 
 def test_package_installed_from_src() -> None:
-    assert any(path.endswith("src/pricewatch") for path in pricewatch.__path__)
+    # Сравнение по частям пути: на Windows разделитель — обратная косая черта.
+    assert any(Path(path).parts[-2:] == ("src", "pricewatch") for path in pricewatch.__path__)

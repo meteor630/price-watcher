@@ -25,8 +25,9 @@ def run_lint(root: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [str(LINT_IMPORTS), "--no-cache", "--config", str(root / "pyproject.toml")],
         cwd=root,
-        # Окружение целиком: без SYSTEMROOT Python на Windows не запускается. Вывод — UTF-8.
-        env={**os.environ, "PYTHONPATH": str(root / "src"), "PYTHONIOENCODING": "utf-8"},
+        # Окружение целиком: без SYSTEMROOT Python на Windows не запускается. Вывод — UTF-8 и без
+        # переноса строк: иначе длинное имя контракта при узком терминале разбивается на две строки.
+        env={**os.environ, "PYTHONPATH": str(root / "src"), "PYTHONIOENCODING": "utf-8", "COLUMNS": "1000"},
         capture_output=True,
         encoding="utf-8",
         check=False,
