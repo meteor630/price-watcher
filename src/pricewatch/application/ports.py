@@ -410,6 +410,25 @@ class StorePause:
     level: int
 
 
+@dataclass(frozen=True, slots=True)
+class StoreOverview:
+    """Магазин для администратора: сколько ссылок каталога и сколько пользователей следят за ним сейчас."""
+
+    store_id: int
+    canonical_host: str
+    display_name: str
+    color_token: str
+    has_card_price: bool
+    enabled: bool
+    auto_created: bool
+    fetch_method: str | None
+    paused_until: datetime | None
+    pause_reason: str | None
+    link_count: int
+    watcher_count: int
+    used: bool
+
+
 class StoreRepository(Protocol):
     def get_or_create(self, target: LinkTarget, now: datetime) -> StoreRecord:
         """Магазин по имени сайта; нет — создаётся. Одновременное создание даёт одну строку."""
@@ -423,6 +442,16 @@ class StoreRepository(Protocol):
     def pause(self, store_id: int, reason: str, level: int, until: datetime) -> None: ...
     def clear_pause(self, store_id: int) -> None:
         """Магазин ответил не блокировкой и не капчей: пауза и ступень сбрасываются."""
+        ...
+    def overview(self) -> list[StoreOverview]:
+        """Все магазины по названию; `used` — есть ссылки каталога, привязки или покупки в этом магазине."""
+        ...
+    def update(self, store_id: int, *, display_name: str, color: str) -> StoreOverview:
+        """Новое название и цвет; нет магазина — NOT_FOUND."""
+        ...
+    def set_enabled(self, store_id: int, enabled: bool) -> StoreOverview: ...
+    def delete_unused(self, store_id: int) -> StoreOverview:
+        """Удалить магазин без ссылок, привязок и покупок; используемый — VALIDATION_ERROR (store: in_use)."""
         ...
 
 

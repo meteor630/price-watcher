@@ -1,0 +1,16 @@
+<dialog class="dialog" data-modal data-open aria-labelledby="store-confirm-title">
+  <form class="dialog__body" data-close-on-success hx-post="/web/stores/{{ store.store_id }}/{{ action }}" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">
+    {% if action == "toggle" %}
+    <input type="hidden" name="enabled" value="{{ 'false' if store.enabled else 'true' }}">
+    <h2 id="store-confirm-title" class="dialog__title">{{ "Отключить" if store.enabled else "Включить" }} «{{ store.display_name }}»?</h2>
+    <p class="dialog__text">{% if store.enabled %}Ссылки магазина перестанут проверяться у всех ({{ count_word(store.watcher_count, "пользователь", "пользователя", "пользователей") }}): последняя цена останется с пометкой «магазин отключён» и не войдёт в итог, новые ссылки на него добавить будет нельзя.{% else %}Ссылки магазина снова будут проверяться, цены вернутся в итог.{% endif %}</p>
+    {% else %}
+    <h2 id="store-confirm-title" class="dialog__title">Удалить «{{ store.display_name }}»?</h2>
+    <p class="dialog__text">На магазин нет ни одной ссылки. Если ссылку на {{ store.canonical_host }} добавят снова, магазин создастся заново.</p>
+    {% endif %}
+    <div class="dialog__actions">
+      <button class="btn btn--ghost" type="button" data-dialog-close data-autofocus>Отмена</button>
+      <button class="btn {{ 'btn--danger' if action == 'delete' or store.enabled else 'btn--primary' }}" type="submit">{% if action == "delete" %}Удалить{% elif store.enabled %}Отключить{% else %}Включить{% endif %}</button>
+    </div>
+  </form>
+</dialog>

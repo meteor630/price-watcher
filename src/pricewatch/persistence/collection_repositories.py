@@ -9,7 +9,7 @@ from datetime import datetime
 
 from collections.abc import Sequence
 
-from sqlalchemy import BigInteger, Connection, DateTime, Select, Table, exists, func, literal, select, text, update
+from sqlalchemy import BigInteger, Connection, DateTime, Row, Select, Table, Update, exists, func, literal, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import insert
 
@@ -24,6 +24,7 @@ from pricewatch.application.ports import (
     RunInfo,
     RunProgress,
     StorePause,
+    StoreOverview,
     StoreRecord,
     StoredSetting,
     WorkerAuth,
@@ -103,6 +104,62 @@ class SqlStoreRepository:
                 .where(stores.c.id == store_id, stores.c.auto_created.is_(True), stores.c.display_name == stores.c.canonical_host)
                 .values(display_name=site_name[:SITE_NAME_MAX])
             )
+
+    def overview(self) -> list[StoreOverview]:
+        found = [self._overview_row(row) for row in self.connection.execute(self._overview())]
+        # Порядок — в Python: правила сортировки базы различаются на Linux и Windows.
+        return sorted(found, key=lambda store: (store.display_name.casefold(), store.store_id))
+
+    def update(self, store_id: int, *, display_name: str, color: str) -> StoreOverview:
+        self._changed(update(stores).where(stores.c.id == store_id).values(display_name=display_name, color=color).returning(stores.c.id))
+        return self._one(store_id)
+
+    def set_enabled(self, store_id: int, enabled: bool) -> StoreOverview:
+        self._changed(update(stores).where(stores.c.id == store_id).values(enabled=enabled).returning(stores.c.id))
+        return self._one(store_id)
+
+    def delete_unused(self, store_id: int) -> StoreOverview:
+        current = self._one(store_id)
+        if current.used:
+            raise PriceWatcherError(ErrorCode.VALIDATION_ERROR, {"fields": {"store": "in_use"}})
+        try:
+            with self.connection.begin_nested():
+                self.connection.execute(stores.delete().where(stores.c.id == store_id))
+        except IntegrityError as error:
+            # Ссылку на магазин добавили между проверкой и удалением.
+            raise PriceWatcherError(ErrorCode.VALIDATION_ERROR, {"fields": {"store": "in_use"}}) from error
+        return current
+
+    def _changed(self, statement: Update) -> None:
+        if self.connection.execute(statement).scalar_one_or_none() is None:
+            raise PriceWatcherError(ErrorCode.NOT_FOUND)
+
+    def _one(self, store_id: int) -> StoreOverview:
+        row = self.connection.execute(self._overview().where(stores.c.id == store_id)).one_or_none()
+        if row is None:
+            raise PriceWatcherError(ErrorCode.NOT_FOUND)
+        return self._overview_row(row)
+
+    def _overview(self) -> Select:
+        link_count = select(func.count()).where(tracked_links.c.store_id == stores.c.id).scalar_subquery()
+        watchers = (
+            select(func.count(func.distinct(item_links.c.user_id)))
+            .where(item_links.c.store_id == stores.c.id, item_links.c.valid_to.is_(None))
+            .scalar_subquery()
+        )
+        used = (
+            exists().where(tracked_links.c.store_id == stores.c.id)
+            | exists().where(item_links.c.store_id == stores.c.id)
+            | exists().where(items.c.purchase_store_id == stores.c.id)
+        )
+        return select(stores, link_count.label("link_count"), watchers.label("watcher_count"), used.label("used"))
+
+    @staticmethod
+    def _overview_row(row: Row) -> StoreOverview:
+        return StoreOverview(
+            row.id, row.canonical_host, row.display_name, row.color, row.has_card_price, row.enabled, row.auto_created,
+            row.fetch_method, row.paused_until, row.pause_reason, row.link_count, row.watcher_count, row.used,
+        )
 
     def pause_state(self, store_id: int) -> StorePause:
         row = self.connection.execute(

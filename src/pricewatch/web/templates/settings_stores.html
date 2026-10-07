@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "_macros.html" import settings_tabs %}
+{% block title %}Настройки — магазины{% endblock %}
+{% block content %}
+<nav class="crumbs" aria-label="Путь"><a href="/web/">Главная</a><span aria-hidden="true"> › </span><span class="crumbs__here" aria-current="page">Настройки</span></nav>
+<h1 class="page-title">Настройки</h1>
+<p class="summary">Магазины появляются сами, когда пользователь добавляет ссылку с нового сайта. Здесь — название, цвет и включение для всех пользователей.</p>
+{{ settings_tabs("stores", true) }}
+
+<div id="page-rest">
+  {% if not stores %}
+  <div class="empty"><h2 class="empty__title">Магазинов пока нет</h2><p class="empty__text">Они появятся, когда кто-нибудь добавит ссылку на товар.</p></div>
+  {% else %}
+  <ul class="edit-list store-list">
+    {% for store in stores %}
+    <li class="edit-row store-row{% if not store.enabled %} store-row--off{% endif %}" data-store="{{ store.store_id }}">
+      <div class="edit-row__main">
+        <span class="store-dot store-dot--{{ store.color_token }} store-row__dot" aria-hidden="true"></span>
+        <div class="edit-row__text" id="store-{{ store.store_id }}">
+          <span class="edit-row__name">{{ store.display_name }}</span>
+          <span class="edit-row__meta">{{ store.canonical_host }} · {{ count_word(store.link_count, "ссылка", "ссылки", "ссылок") }} · {{ count_word(store.watcher_count, "пользователь", "пользователя", "пользователей") }}</span>
+          <span class="store-row__flags">
+            {% if not store.enabled %}<span class="flag flag--check_failed">отключён</span>
+            {% elif store.paused_until %}<span class="flag flag--review">пауза до {{ moscow_moment(store.paused_until) }} · {{ "капча" if store.pause_reason == "CAPTCHA" else "ограничил доступ" }}</span>
+            {% else %}<span class="flag flag--bought">работает</span>{% endif %}
+            <span class="flag">{{ {"browser": "через браузер", "http": "без браузера"}.get(store.fetch_method, "способ ещё не известен") }}</span>
+            {% if store.has_card_price %}<span class="flag">цена по карте</span>{% endif %}
+            {% if store.auto_created %}<span class="flag">создан из ссылки</span>{% endif %}
+          </span>
+        </div>
+        <div class="edit-row__actions">
+          <button class="btn btn--ghost btn--small" type="button" hx-get="/web/stores/{{ store.store_id }}/edit" hx-target="#store-{{ store.store_id }}" hx-swap="innerHTML">Изменить</button>
+          <button class="btn btn--ghost btn--small" type="button" hx-get="/web/stores/{{ store.store_id }}/toggle" hx-target="#dialog" hx-swap="innerHTML">{{ "Отключить" if store.enabled else "Включить" }}</button>
+          {% if not store.used %}<button class="btn btn--danger btn--small" type="button" hx-get="/web/stores/{{ store.store_id }}/delete" hx-target="#dialog" hx-swap="innerHTML">Удалить</button>{% endif %}
+        </div>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</div>
+<div id="dialog"></div>
+{% endblock %}

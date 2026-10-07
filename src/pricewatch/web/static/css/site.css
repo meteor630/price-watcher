@@ -2592,3 +2592,65 @@ a.cat {
   gap: var(--space-2);
   margin-top: auto;
 }
+
+/* ---------- настройки «Магазины» ---------- */
+
+.store-row__dot {
+  width: 12px;
+  height: 12px;
+  margin-top: 6px;
+}
+
+.store-row--off .edit-row__name {
+  color: var(--color-muted);
+}
+
+.store-row__flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.store-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.swatches {
+  display: flex;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.swatch {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.swatch:has(input:checked) {
+  border-color: var(--color-fg);
+}
+
+.swatch:has(input:focus-visible) {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.swatch__dot {
+  width: 18px;
+  height: 18px;
+}
+
+.store-list {
+  margin-top: var(--space-4);
+}

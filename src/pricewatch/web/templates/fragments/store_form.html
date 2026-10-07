@@ -1,0 +1,12 @@
+<form class="store-form" hx-post="/web/stores/{{ store.store_id }}/edit" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">
+  <label class="visually-hidden" for="store-name-{{ store.store_id }}">Название магазина</label>
+  <input class="input input--inline" id="store-name-{{ store.store_id }}" name="name" type="text" value="{{ store.display_name }}" maxlength="100" required autocomplete="off" data-autofocus>
+  <fieldset class="swatches">
+    <legend class="visually-hidden">Цвет магазина</legend>
+    {% for color in colors %}
+    <label class="swatch"><input class="visually-hidden" type="radio" name="color" value="{{ color }}" {% if color == store.color_token %}checked{% endif %}><span class="store-dot store-dot--{{ color }} swatch__dot" aria-hidden="true"></span><span class="visually-hidden">Цвет {{ loop.index }}</span></label>
+    {% endfor %}
+  </fieldset>
+  <button class="btn btn--primary btn--small" type="submit">Сохранить</button>
+  <a class="btn btn--ghost btn--small" href="/web/settings/stores">Отмена</a>
+</form>
