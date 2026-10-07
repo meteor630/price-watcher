@@ -110,15 +110,18 @@ def _as_seen_by_user(
 ) -> dict[int, tuple[Observation, ...]]:
     """История каждой ссылки так, как её видит пользователь: подозрительное засчитано по его решениям (domain.review)."""
     checked = uow.price_data.observations(link_ids, since)
+    contexts = user_contexts(uow, user_id, link_ids, bindings)
+    return {link_id: resolve_for_user(checked[link_id], contexts[link_id]) for link_id in link_ids}
+
+
+def user_contexts(uow: UnitOfWork, user_id: int, link_ids: list[int], bindings: list[LinkBinding]) -> dict[int, UserContext]:
+    """Решения пользователя, его эталон названия и с какого момента он следит за каждой ссылкой (первая привязка, в том числе закрытая)."""
     states = uow.price_data.review_states(user_id, link_ids)
     watching: dict[int, datetime] = {}
     for binding in bindings:
         if binding.tracked_link_id not in watching or binding.valid_from < watching[binding.tracked_link_id]:
             watching[binding.tracked_link_id] = binding.valid_from
-    return {
-        link_id: resolve_for_user(checked[link_id], UserContext(states[link_id].baseline_title, watching[link_id], states[link_id].decisions))
-        for link_id in link_ids
-    }
+    return {link_id: UserContext(states[link_id].baseline_title, watching[link_id], states[link_id].decisions) for link_id in link_ids}
 
 
 def only_row(priced: PricedList) -> PricedRow:

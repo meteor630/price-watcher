@@ -311,6 +311,11 @@ class SqlObservationRepository:
             update(price_observations).where(price_observations.c.id.in_(list(observation_ids))).values(confirmation="rejected")
         )
 
+    def link_of(self, observation_id: int) -> int | None:
+        return self.connection.execute(
+            select(price_observations.c.tracked_link_id).where(price_observations.c.id == observation_id)
+        ).scalar_one_or_none()
+
 
 class SqlQueueRepository:
     def __init__(self, connection: Connection) -> None:
@@ -529,6 +534,19 @@ class SqlQueueRepository:
         for run_id in run_ids:
             self._close_if_drained(run_id, now)
         return len(queued)
+
+    def active_task(self, tracked_link_id: int) -> int | None:
+        return self._active_task(tracked_link_id)
+
+    def cancel_queued(self, task_id: int, now: datetime) -> bool:
+        run_id = self.connection.execute(
+            update(check_tasks).where(check_tasks.c.id == task_id, check_tasks.c.status == "queued")
+            .values(status="cancelled", finished_at=now).returning(check_tasks.c.run_id)
+        ).scalar_one_or_none()
+        if run_id is None:
+            return False
+        self._close_if_drained(run_id, now)
+        return True
 
     def cancel(self, task: LeasedTask, now: datetime) -> None:
         self.connection.execute(

@@ -43,6 +43,6 @@
   <main id="main" class="wrap main">
     {% block content %}{% endblock %}
   </main>
-  <div id="flash" class="flash" role="status" aria-live="polite">{% if flash_message is defined and flash_message %}<p class="alert alert--error" role="alert">{{ flash_message }}</p>{% endif %}{% if toast is defined and toast %}<div class="toast" data-toast><span>{{ toast }}</span><button class="toast__undo" type="button" hx-post="/web/undo" hx-vals='{"token": "{{ undo_token }}"}'>Отменить</button><span class="toast__bar" aria-hidden="true"></span></div>{% endif %}</div>
+  <div id="flash" class="flash" role="status" aria-live="polite">{% if flash_message is defined and flash_message %}<p class="alert alert--error" role="alert">{{ flash_message }}</p>{% endif %}{% if toast is defined and toast %}<div class="toast" data-toast><span>{{ toast }}</span>{% if undo_token is defined and undo_token %}<button class="toast__undo" type="button" hx-post="/web/undo" hx-vals='{"token": "{{ undo_token }}"}'>Отменить</button>{% endif %}<span class="toast__bar" aria-hidden="true"></span></div>{% endif %}</div>
 </body>
 </html>

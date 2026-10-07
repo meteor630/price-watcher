@@ -23,6 +23,9 @@ class UndoKind(StrEnum):
     # Отмена покупки и архива возвращает товар в список.
     PURCHASE = "purchase"
     ARCHIVE = "archive"
+    # Решение по подозрительному изменению и поставленная перепроверка.
+    DECISION = "decision"
+    RECHECK = "recheck"
 
 
 def issue_undo(key: bytes, user_id: int, kind: UndoKind, entity_id: int, now: datetime) -> str:

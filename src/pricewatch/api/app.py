@@ -14,6 +14,7 @@ from pricewatch.api.v1_categories import router as v1_categories_router
 from pricewatch.api.v1_dashboard import router as v1_dashboard_router
 from pricewatch.api.v1_items import router as v1_items_router
 from pricewatch.api.v1_purchases import router as v1_purchases_router
+from pricewatch.api.v1_reviews import router as v1_reviews_router
 from pricewatch.api.v1_runs import router as v1_runs_router
 from pricewatch.api.web_categories import router as web_categories_router
 from pricewatch.api.web_home import router as web_home_router
@@ -21,6 +22,7 @@ from pricewatch.api.web_items import router as web_items_router
 from pricewatch.api.web_pages import router as web_pages_router
 from pricewatch.api.web_settings import router as web_settings_router
 from pricewatch.api.web_purchases import router as web_purchases_router
+from pricewatch.api.web_reviews import router as web_reviews_router
 from pricewatch.api.web_runs import router as web_runs_router
 from pricewatch.api.web_settings_check import router as web_settings_check_router
 from pricewatch.api.web_settings_items import router as web_settings_items_router
@@ -44,6 +46,7 @@ def create_app(settings: Settings, context: ApiContext | None = None) -> FastAPI
     app.include_router(v1_items_router)
     app.include_router(v1_purchases_router)
     app.include_router(v1_runs_router)
+    app.include_router(v1_reviews_router)
     app.include_router(worker_v1_router)
     app.include_router(web_pages_router)
     app.include_router(web_home_router)
@@ -51,6 +54,7 @@ def create_app(settings: Settings, context: ApiContext | None = None) -> FastAPI
     app.include_router(web_items_router)
     app.include_router(web_purchases_router)
     app.include_router(web_runs_router)
+    app.include_router(web_reviews_router)
     app.include_router(web_settings_router)
     app.include_router(web_settings_items_router)
     app.include_router(web_settings_check_router)

@@ -353,9 +353,6 @@ class PriceDataRepository(Protocol):
     def link_states(self, user_id: int, item_id: int) -> list["LinkState"]:
         """Действующие ссылки товара: магазин, включён ли он, идёт ли проверка, последняя проверка."""
         ...
-    def pending_reviews(self) -> int:
-        """Число изменений, ждущих решения администратора."""
-        ...
 
 
 # --- Сбор цен и очередь (этап 6) ---
@@ -494,6 +491,9 @@ class ObservationRepository(Protocol):
         """Наблюдения ссылки, ждущие решения."""
         ...
     def reject(self, observation_ids: Sequence[int]) -> None: ...
+    def link_of(self, observation_id: int) -> int | None:
+        """Ссылка наблюдения; None — такого наблюдения нет."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -572,6 +572,12 @@ class QueueRepository(Protocol):
     def enqueue_on_add(self, tracked_link_id: int, now: datetime) -> int:
         """Срочное задание на одну ссылку (запуск вида on_add); уже есть активное — его номер."""
         ...
+    def active_task(self, tracked_link_id: int) -> int | None:
+        """Ждущее или выданное задание ссылки, если есть."""
+        ...
+    def cancel_queued(self, task_id: int, now: datetime) -> bool:
+        """Отменить задание, которое worker ещё не взял; запуск без активных заданий завершается. False — уже взято или закрыто."""
+        ...
     def claim(self, worker_id: int, now: datetime, lease_until: datetime) -> ClaimedTask | None:
         """Задание в аренду: самое срочное из магазинов, которые включены, не на паузе и не заняты другим заданием."""
         ...
@@ -624,6 +630,35 @@ class NotificationRepository(Protocol):
         ...
 
 
+@dataclass(frozen=True, slots=True)
+class AuditEvent:
+    """Запись журнала; `actor_id` None — действие системы (например, автоматическое закрытие подозрения)."""
+
+    actor_id: int | None
+    action: str
+    entity_type: str
+    entity_id: int | None
+    before: dict[str, object] | None
+    after: dict[str, object] | None
+    at: datetime
+
+
+class AuditRepository(Protocol):
+    def add(self, event: AuditEvent) -> None: ...
+    def recent(self, actor_id: int, action: str, since: datetime) -> list[datetime]:
+        """Моменты действий пользователя этого вида начиная с `since`, по возрастанию (для лимитов)."""
+        ...
+
+
+class DecisionRepository(Protocol):
+    def add(self, user_id: int, observation_id: int, decision: Decision, now: datetime) -> int:
+        """Решение пользователя; уже есть решение по этому наблюдению — VERSION_CONFLICT."""
+        ...
+    def delete(self, user_id: int, decision_id: int) -> tuple[int, Decision] | None:
+        """Удалить своё решение («Отменить»): наблюдение и каким было решение; чужое или нет — None."""
+        ...
+
+
 class ImageStore(Protocol):
     def save(self, data: bytes) -> str:
         """Проверить и сохранить фото от worker; путь относительно каталога картинок.
@@ -673,6 +708,8 @@ class UnitOfWork(Protocol):
     idempotency: IdempotencyRepository
     settings: SettingRepository
     notifications: NotificationRepository
+    decisions: DecisionRepository
+    audit: AuditRepository
 
     def __enter__(self) -> Self: ...
     def __exit__(

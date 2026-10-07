@@ -91,7 +91,7 @@ def test_dashboard_matches_contract_and_has_etag(client: TestClient, engine: Eng
     assert body["total_minor"] == 3 * 900_00 + 3
     assert (body["panels"]["cheaper"], body["change"]) == (0, None)  # неделю назад цен ещё не было
     assert day["panels"]["cheaper"] == 3 and day["change"]["direction"] == "down"
-    assert body["reviews_pending"] is None and body["run"]["can_start"] is False
+    assert body["reviews_pending"] == 0 and body["run"]["can_start"] is False
     assert isinstance(body["total_minor"], int) and len(body["categories"][0]["sparkline"]) == 30
     cached = client.get("/api/v1/dashboard", params={"period": "week"}, headers=headers | {"If-None-Match": response.headers["ETag"]})
     assert cached.status_code == 304 and cached.content == b""

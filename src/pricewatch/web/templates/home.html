@@ -17,6 +17,7 @@
 {% if session_user.user.is_admin %}{% set run = board.run %}{% include "fragments/run_panel.html" %}{% endif %}
 
 <div id="page-rest">
+  {% if reviews %}{% set period = board.period %}{% include "fragments/review_cards.html" %}{% endif %}
   <p class="summary">
     {{ board.in_total_count }} в итоге, ещё {{ board.watching_count }} только наблюдаю.
     {{ since | capitalize }} изменений цен: {{ board.panels.cheaper + board.panels.pricier }}.

@@ -17,6 +17,7 @@ from enum import StrEnum
 
 from pricewatch.application.ports import StoreInfo, UnitOfWork
 from pricewatch.application.price_view import PricedRow, StoreView, load, price_text, store_view
+from pricewatch.application.reviews import cards_in
 from pricewatch.application.worker_protocol import LEASE
 from pricewatch.domain.accounts import User
 from pricewatch.domain.charts import ChartPoint, ChartRange, chart_days, sum_chart
@@ -99,7 +100,8 @@ class Dashboard:
     categories_order_version: int
     panels: Panels
     run: RunView
-    reviews_pending: int | None
+    # Сколько карточек «Требует решения» у пользователя (каждый решает за свои товары).
+    reviews_pending: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,7 +128,7 @@ def dashboard(uow: UnitOfWork, user: User, period: Period, now: datetime) -> Das
         order_version = uow.categories.order_version(user.id)
         rows, stores = _rows(uow, user.id, period, now)
         run = _run_view(uow, user, now)
-        reviews = uow.price_data.pending_reviews() if user.is_admin else None
+        reviews = len(cards_in(uow, user, now))
     totals = [row.total_item for row in rows]
     cards = []
     for category in categories:

@@ -3,16 +3,15 @@
 - Время ежедневной проверки и до двух дополнительных, по Москве («ЧЧ:ММ», без повторов): настройка `check_times`,
   планировщик подхватывает её на следующем обходе.
 - Срок актуальности цены в сутках (1–30): настройка `stale_after_days`, сразу действует на итоги, графики и пометки.
-- Сохранение — по версиям обеих настроек (чужая правка — VERSION_CONFLICT); ошибки — по полям; изменение пишется в журнал.
+- Сохранение — по версиям обеих настроек (чужая правка — VERSION_CONFLICT); ошибки — по полям; изменение пишется в журнал (audit_events).
 """
 
-import logging
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, time
 
-from pricewatch.application.ports import UnitOfWork
+from pricewatch.application.ports import AuditEvent, UnitOfWork
 from pricewatch.application.price_view import STALE_AFTER_SETTING
 from pricewatch.application.runs import CHECK_TIMES_SETTING, configured_times, require_admin
 from pricewatch.domain.accounts import User
@@ -20,7 +19,6 @@ from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.pricing import STALE_AFTER_DAYS_MAX, STALE_AFTER_DAYS_MIN, stale_after_setting
 from pricewatch.domain.schedule import TIME_FORMAT, TIMES_MAX, next_slot_at
 
-logger = logging.getLogger(__name__)
 DAYS_FORMAT = re.compile(r"[0-9]{1,3}")
 
 
@@ -48,11 +46,12 @@ def save_check_settings(
     values, days = _validated(times, stale_after_days)
     with uow:
         require_admin(uow, user.id)
+        before = _current(uow, now)
         uow.settings.write(CHECK_TIMES_SETTING, values, times_version, user.id, now)
         uow.settings.write(STALE_AFTER_SETTING, days, stale_version, user.id, now)
         saved = _current(uow, now)
+        uow.audit.add(AuditEvent(user.id, "check_settings_changed", "settings", None, _audit(before), _audit(saved), now))
         uow.commit()
-    logger.info("Настройки проверки изменены", extra={"actor_id": user.id, "check_times": values, "stale_after_days": days})
     return saved
 
 
@@ -68,6 +67,10 @@ def _current(uow: UnitOfWork, now: datetime) -> CheckSettings:
         stale_version=0 if stale_setting is None else stale_setting.version,
         next_run_at=next_slot_at(times, now),
     )
+
+
+def _audit(settings: CheckSettings) -> dict[str, object]:
+    return {"check_times": [at.strftime("%H:%M") for at in settings.times], "stale_after_days": settings.stale_after_days}
 
 
 def _validated(times: Sequence[str], stale_after_days: str) -> tuple[list[str], int]:

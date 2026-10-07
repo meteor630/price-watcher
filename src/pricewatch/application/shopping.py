@@ -22,6 +22,7 @@ from enum import StrEnum
 
 from pricewatch.application.links import add_link
 from pricewatch.application.ports import UNCHANGED, ItemChanges, LinkResolver, LinkState, NewItem, UnitOfWork
+from pricewatch.application.reviews import undo_decision, undo_recheck
 from pricewatch.domain.accounts import User
 from pricewatch.domain.errors import SAFE_MESSAGES, ErrorCode, PriceWatcherError
 from pricewatch.domain.money import format_rub
@@ -109,6 +110,10 @@ def undo_delete(uow: UnitOfWork, key: bytes, user: User, token: str, now: dateti
         elif kind is UndoKind.LINK:
             if not uow.item_links.reopen(user.id, entity_id):
                 raise PriceWatcherError(ErrorCode.NOT_FOUND, {"undo": "replaced"})
+        elif kind is UndoKind.DECISION:
+            undo_decision(uow, user, entity_id, now)
+        elif kind is UndoKind.RECHECK:
+            undo_recheck(uow, user, entity_id, now)
         else:
             item = uow.items.get(user.id, entity_id)
             # Товар уже вернули в список или перевели дальше — отменять нечего.

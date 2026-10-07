@@ -151,18 +151,61 @@ class UserContext:
     decisions: Mapping[int, Decision]
 
 
+@dataclass(frozen=True, slots=True)
+class OpenReview:
+    """Подозрительное наблюдение, ждущее решения пользователя: что изменилось относительно его последней
+    засчитанной цены и его эталона названия."""
+
+    observation_id: int
+    checked_at: datetime
+    kinds: frozenset[ReviewKind]
+    before_price_minor: int | None
+    after_price_minor: int | None
+    before_title: str | None
+    after_title: str | None
+
+
 def resolve_for_user(checked: Sequence[Checked], context: UserContext, thresholds: Thresholds = Thresholds()) -> tuple[Observation, ...]:
     """Наблюдения ссылки так, как их видит пользователь: засчитанные — confirmed, отклонённые — rejected,
     ждущие его решения — pending. Порядок — по времени проверки."""
+    return tuple(step.observation for step in _walk(checked, context, thresholds))
+
+
+def open_review(checked: Sequence[Checked], context: UserContext, thresholds: Thresholds = Thresholds()) -> OpenReview | None:
+    """Последнее наблюдение, ждущее решения пользователя, если после него не было засчитанной ему цены."""
+    found: OpenReview | None = None
+    for step in _walk(checked, context, thresholds):
+        observation = step.observation
+        if observation.confirmation is Confirmation.PENDING:
+            verdict = review(step.title_before, step.price_before, step.item.title, observation.effective_price_minor, thresholds)
+            found = OpenReview(
+                step.item.observation_id, observation.checked_at, verdict.kinds, step.price_before, observation.effective_price_minor,
+                step.title_before, step.item.title,
+            )
+        elif observation.is_success:
+            found = None
+    return found
+
+
+@dataclass(frozen=True, slots=True)
+class _Step:
+    item: Checked
+    observation: Observation
+    price_before: int | None
+    title_before: str | None
+
+
+def _walk(checked: Sequence[Checked], context: UserContext, thresholds: Thresholds) -> list[_Step]:
     ordered = sorted(checked, key=lambda item: (item.observation.checked_at, item.observation_id))
     decided_up_to = max((index for index, item in enumerate(ordered) if item.observation_id in context.decisions), default=-1)
     last_price: int | None = None
     title = context.baseline_title
-    resolved = []
+    steps = []
     for index, item in enumerate(ordered):
         observation = item.observation
         confirmation = observation.confirmation
         decision = context.decisions.get(item.observation_id)
+        price_before, title_before = last_price, title
         if observation.failure is None and confirmation is not Confirmation.CONFIRMED:
             before_watching = confirmation is Confirmation.PENDING and observation.checked_at < context.watching_since
             if decision is Decision.ACCEPT or before_watching:
@@ -175,5 +218,6 @@ def resolve_for_user(checked: Sequence[Checked], context: UserContext, threshold
                 title = item.title
         if observation.failure is None and confirmation is Confirmation.CONFIRMED and observation.effective_price_minor is not None:
             last_price = observation.effective_price_minor
-        resolved.append(observation if confirmation is observation.confirmation else replace(observation, confirmation=confirmation))
-    return tuple(resolved)
+        seen = observation if confirmation is observation.confirmation else replace(observation, confirmation=confirmation)
+        steps.append(_Step(item, seen, price_before, title_before))
+    return steps

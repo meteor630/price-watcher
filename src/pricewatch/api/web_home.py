@@ -13,6 +13,7 @@ from starlette.responses import HTMLResponse
 from pricewatch.api.context import get_context
 from pricewatch.api.web_auth import web_user
 from pricewatch.application.dashboard import Panel, dashboard, panel_items
+from pricewatch.application.reviews import review_cards
 from pricewatch.application.web_auth import SessionUser
 from pricewatch.domain.days import Period
 from pricewatch.web.templates import render
@@ -36,9 +37,20 @@ PANEL_EMPTY = {
 
 @router.get("/web/")
 def home_page(request: Request, period: Period = Period.DAY, session: SessionUser = Depends(web_user)) -> HTMLResponse:
+    return HTMLResponse(home_html(request, session, period))
+
+
+def home_html(
+    request: Request, session: SessionUser, period: Period, *, flash: str | None = None, toast: str | None = None, undo_token: str | None = None
+) -> str:
+    """Главная целиком: её ответы htmx берут сводку, остальное и сообщение (решения, порядок карточек)."""
     context = get_context(request)
     board = dashboard(context.unit_of_work(), session.user, period, context.clock())
-    return HTMLResponse(render("home.html", session_user=session, board=board, header_run=board.run, panels=PANEL_TITLES))
+    reviews = review_cards(context.unit_of_work(), session.user, context.clock()) if board.reviews_pending else []
+    return render(
+        "home.html", session_user=session, board=board, header_run=board.run, panels=PANEL_TITLES, reviews=reviews,
+        flash_message=flash, toast=toast, undo_token=undo_token,
+    )
 
 
 @router.get("/web/dashboard/items")

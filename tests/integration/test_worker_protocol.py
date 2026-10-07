@@ -331,9 +331,12 @@ def test_price_jump_waits_and_closes_itself_when_price_returns(engine: Engine) -
 
     rows = query(engine, "SELECT price_minor, confirmation FROM price_observations WHERE tracked_link_id = :l ORDER BY checked_at", l=added.tracked_link_id)
     assert rows == [(100_000, "confirmed"), (40_000, "rejected"), (101_000, "confirmed")]
+    audit = query(engine, "SELECT actor_id, action, entity_id, after_json->>'price_minor' FROM audit_events WHERE entity_type = 'tracked_link' AND entity_id = :l",
+                  l=added.tracked_link_id)
+    assert audit == [(None, "price_review_auto_closed", added.tracked_link_id, "101000")]  # закрытие само — с записью в журнал
 
 
-def test_title_change_waits_for_admin_and_does_not_close_itself(engine: Engine) -> None:
+def test_title_change_waits_for_decision_and_does_not_close_itself(engine: Engine) -> None:
     worker_id = worker(engine)
     drain(engine, worker_id)
     host = f"shop-{uuid.uuid4().hex[:8]}.example"

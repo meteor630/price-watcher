@@ -106,7 +106,7 @@ def test_empty_list(engine: Engine) -> None:
     assert (board.total_minor, board.total_text, board.change, board.categories) == (0, "0\xa0₽", None, [])
     assert (board.panels.tracked, board.panels.cheaper, board.panels.pricier, board.panels.out_of_stock) == (0, 0, 0, 0)
     assert (board.run.status, board.run.run_id, board.run.can_start) == ("idle", None, False)
-    assert board.reviews_pending is None
+    assert board.reviews_pending == 0  # каждый видит число своих карточек «Требует решения»
     assert str(board.as_of) == "2026-10-06"
 
 

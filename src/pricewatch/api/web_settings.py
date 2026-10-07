@@ -17,9 +17,9 @@ from starlette.responses import HTMLResponse, RedirectResponse, Response
 from pricewatch.api.context import get_context
 from pricewatch.api.web_auth import web_user
 from pricewatch.api.web_forms import read_form
-from pricewatch.api.web_home import PANEL_TITLES
+from pricewatch.api.web_home import home_html
 from pricewatch.application.category import CategoryOverview, GroupOverview, categories_overview
-from pricewatch.application.dashboard import dashboard, run_status
+from pricewatch.application.dashboard import run_status
 from pricewatch.application.shopping import (
     create_category, create_group, delete_category, delete_group, rename_category, rename_group, reorder_categories, reorder_groups, undo_delete,
 )
@@ -126,7 +126,7 @@ async def categories_order(request: Request, session: SessionUser = Depends(web_
             period = Period(form.get("period", "day"))
         except ValueError as error:
             raise PriceWatcherError(ErrorCode.VALIDATION_ERROR, {"fields": {"period": "invalid"}}) from error
-        return HTMLResponse(await run_in_threadpool(_home_page, request, session, period, flash))
+        return HTMLResponse(await run_in_threadpool(lambda: home_html(request, session, period, flash=flash)))
     return HTMLResponse(await run_in_threadpool(_settings_page, request, session, flash))
 
 
@@ -234,7 +234,3 @@ def _settings_page(request: Request, session: SessionUser, flash: str | None = N
     )
 
 
-def _home_page(request: Request, session: SessionUser, period: Period, flash: str | None) -> str:
-    context = get_context(request)
-    board = dashboard(context.unit_of_work(), session.user, period, context.clock())
-    return render("home.html", session_user=session, board=board, header_run=board.run, panels=PANEL_TITLES, flash_message=flash)

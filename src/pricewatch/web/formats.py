@@ -45,6 +45,8 @@ def moscow_moment(moment: datetime) -> str:
     return f"{local:%d.%m} в {local:%H:%M}"
 
 
+REVIEW_KIND_LABELS = {"price_jump": "Скачок цены", "title_changed": "Название изменилось"}
+
 # Проверка ещё идёт: статус в шапке и блок запуска опрашивают сервер, пока она не закончится.
 ACTIVE_RUN_STATUSES = frozenset({"queued", "running", "stopping", "worker_offline"})
 

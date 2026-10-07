@@ -1,0 +1,46 @@
+{# «Требует решения»: подозрительные изменения по товарам пользователя. Решение действует только на его товары. #}
+<section class="section reviews" id="reviews" aria-labelledby="reviews-title">
+  <div class="section__head">
+    <h2 id="reviews-title" class="section__title">Требует решения <span class="count-pill num">{{ reviews | length }}</span></h2>
+    <p class="eyebrow">Решение действует только на ваши товары</p>
+  </div>
+  <ul class="review-list">
+    {% for card in reviews %}
+    {% set common = '"period": "' ~ period.value ~ '"' %}
+    <li class="review-card" data-review="{{ card.review_id }}">
+      <div class="review-card__head">
+        {% for kind in card.kinds | sort %}<span class="flag flag--review">{{ review_kind_labels[kind.value] }}</span>{% endfor %}
+        <time class="review-card__when" datetime="{{ card.checked_at.isoformat() }}">{{ moscow_moment(card.checked_at) }}</time>
+      </div>
+      <p class="review-card__item">
+        {% for ref in card.items %}<a class="row__link" href="/web/items/{{ ref.item_id }}">{{ ref.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+        <span class="review-card__store"><span class="store-dot store-dot--{{ card.store.color_token }}" aria-hidden="true"></span>{{ card.store.name }}</span>
+        <a class="review-card__open" href="{{ card.url }}" target="_blank" rel="noopener noreferrer">открыть в магазине</a>
+      </p>
+      {% if "price_jump" in card.kinds %}
+      <p class="review-card__change num">
+        <span class="review-card__before">{{ card.before_price_text }}</span><span aria-hidden="true"> → </span><span class="visually-hidden"> стало </span><strong>{{ card.after_price_text }}</strong>
+        <span class="pill pill--{{ card.change.direction.value }}"><span aria-hidden="true">{{ arrows[card.change.direction.value] }}</span> {{ card.change.percent_text }}</span>
+      </p>
+      {% endif %}
+      {% if "title_changed" in card.kinds %}
+      <dl class="review-card__titles">
+        <div><dt>Было</dt><dd>{{ card.before_title }}</dd></div>
+        <div><dt>Стало</dt><dd>{{ card.after_title }}</dd></div>
+      </dl>
+      {% endif %}
+      <div class="review-card__actions">
+        <button class="btn btn--primary btn--small" type="button" hx-post="/web/reviews/{{ card.review_id }}/accept" hx-vals='{ {{ common }} }'
+                hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#hero-figures,#flash" hx-disabled-elt="this">Принять</button>
+        <button class="btn btn--ghost btn--small" type="button" hx-post="/web/reviews/{{ card.review_id }}/reject" hx-vals='{ {{ common }} }'
+                hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#hero-figures,#flash" hx-disabled-elt="this">Отклонить</button>
+        {% if "price_jump" in card.kinds %}
+        <button class="btn btn--ghost btn--small" type="button" hx-post="/web/reviews/{{ card.review_id }}/recheck" hx-vals='{ {{ common }} }'
+                hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#hero-figures,#flash" hx-disabled-elt="this">Перепроверить сейчас</button>
+        {% endif %}
+        <a class="btn btn--ghost btn--small" href="/web/settings/items?edit={{ card.items[0].item_id }}">Изменить ссылку</a>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>

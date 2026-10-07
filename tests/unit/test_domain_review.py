@@ -13,6 +13,7 @@ from pricewatch.domain.review import (
     Thresholds,
     UserContext,
     closes_price_review,
+    open_review,
     price_jumped,
     resolve_for_user,
     review,
@@ -258,3 +259,24 @@ def test_exactly_on_threshold_counts_for_user() -> None:
     history = [obs(1, 1, 30_000), obs(2, 2, 45_000, PENDING), obs(3, 26, 58_500, PENDING)]
 
     assert seen_as(history, {2: Decision.ACCEPT}) == ["confirmed", "confirmed", "confirmed"]  # ровно +30 % от 45 000 — не подозрительно
+
+
+def test_open_review_shows_what_changed_for_this_user() -> None:
+    history = [obs(1, 1, 30_000), obs(2, 2, 45_000, PENDING), obs(3, 26, 46_000, PENDING)]
+
+    mine = open_review(history, UserContext(TITLE, T0, {}))
+    after_accept = open_review(history, UserContext(TITLE, T0, {2: Decision.ACCEPT}))
+
+    assert mine is not None
+    assert (mine.observation_id, mine.kinds, mine.before_price_minor, mine.after_price_minor) == (3, {ReviewKind.PRICE_JUMP}, 30_000, 46_000)
+    assert after_accept is None  # 46 000 от принятых 45 000 засчитана сама
+
+
+def test_open_review_closed_by_later_counted_price_and_title_change_shown() -> None:
+    returned = [obs(1, 1, 30_000), obs(2, 2, 45_000, PENDING), obs(3, 3, 30_100)]
+    renamed = [obs(1, 1, 30_000), obs(2, 2, 30_000, PENDING, title="Холодильник")]
+
+    found = open_review(renamed, UserContext(TITLE, T0, {}))
+
+    assert open_review(returned, UserContext(TITLE, T0, {})) is None
+    assert found is not None and (found.kinds, found.before_title, found.after_title) == ({ReviewKind.TITLE_CHANGED}, TITLE, "Холодильник")

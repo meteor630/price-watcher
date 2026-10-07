@@ -112,3 +112,15 @@ def test_stale_after_days_changes_totals_and_item_card(engine: Engine) -> None:
     assert (card.price_status.value, card.stale_after_days) == ("stale", 4)
     save(engine, admin, ["09:00", "", ""], days="5")
     assert admin.board().total_minor == 1000_00
+
+
+def test_change_is_written_to_audit(engine: Engine) -> None:
+    admin = World(engine, Role.ADMIN)
+
+    save(engine, admin, ["10:00", "", ""], days="5")
+
+    with engine.connect() as db:
+        rows = db.execute(text("SELECT actor_id, action, before_json, after_json FROM audit_events")).all()
+    assert [tuple(row) for row in rows] == [
+        (admin.user.id, "check_settings_changed", {"check_times": ["09:00"], "stale_after_days": 7}, {"check_times": ["10:00"], "stale_after_days": 5})
+    ]

@@ -591,6 +591,28 @@ class PriceDecisionRow(Base):
     )
 
 
+class AuditEventRow(Base):
+    """Журнал действий: кто (None — система), что сделал, с какой записью, до и после."""
+
+    __tablename__ = "audit_events"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    actor_id: Mapped[int | None] = mapped_column(BigInteger)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_type: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_id: Mapped[int | None] = mapped_column(BigInteger)
+    before_json: Mapped[Any | None] = mapped_column(JSONB)
+    after_json: Mapped[Any | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        ForeignKeyConstraint(["actor_id"], ["users.id"]),
+        CheckConstraint("action ~ '^[a-z_]{1,60}$'", name="action_format"),
+        CheckConstraint("entity_type ~ '^[a-z_]{1,60}$'", name="entity_type_format"),
+        Index("ix_audit_events_actor_id_action_created_at", "actor_id", "action", "created_at"),
+    )
+
+
 class NotificationRow(Base):
     """Уведомление одному получателю в одном канале; одинаковые склеиваются по dedup_key.
 

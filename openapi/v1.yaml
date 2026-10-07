@@ -497,7 +497,11 @@ paths:
   /reviews:
     get:
       tags: [reviews]
-      summary: Подозрительные изменения, ждущие решения (администратор)
+      summary: Подозрительные изменения по товарам пользователя, ждущие его решения
+      description: >
+        Каждый решает только за свои товары (решение владельца 07.10.2026): одна карточка на ссылку,
+        привязанную к товару «в списке», — последнее наблюдение, ждущее решения, относительно последней
+        засчитанной пользователю цены и его эталона названия.
       parameters:
         - $ref: "#/components/parameters/Cursor"
         - $ref: "#/components/parameters/Limit"
@@ -518,14 +522,16 @@ paths:
                     $ref: "#/components/schemas/NextCursor"
         "401":
           $ref: "#/components/responses/Error"
-        "403":
+        "422":
           $ref: "#/components/responses/Error"
 
   /reviews/{review_id}/decision:
     post:
       tags: [reviews]
-      summary: Принять или отклонить подозрительное изменение (администратор)
-      description: Замена ссылки делается на сайте и в этот контракт пока не входит.
+      summary: Принять или отклонить подозрительное изменение — только для своих товаров
+      description: >
+        Решение закрывает и более ранние нерешённые наблюдения той же ссылки. Уже решённая или чужая
+        карточка — 404. Замена ссылки — изменение ссылки своего товара; перепроверка — на сайте.
       parameters:
         - name: review_id
           in: path
@@ -553,8 +559,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/Review"
         "401":
-          $ref: "#/components/responses/Error"
-        "403":
           $ref: "#/components/responses/Error"
         "404":
           $ref: "#/components/responses/Error"
@@ -956,9 +960,9 @@ components:
         run:
           $ref: "#/components/schemas/RunStatus"
         reviews_pending:
-          type: [integer, "null"]
+          type: integer
           minimum: 0
-          description: Число изменений, ждущих решения; `null` для обычного пользователя.
+          description: Число карточек «Требует решения» пользователя (каждый решает за свои товары).
 
     CategoryCard:
       type: object
@@ -1507,6 +1511,16 @@ components:
           type: [string, "null"]
           x-known-values: [accept, reject]
           description: "`null` — решения ещё нет."
+        kinds:
+          type: array
+          description: Все причины; `kind` — главная (смена названия важнее скачка цены).
+          items:
+            type: string
+            x-known-values: [title_changed, price_jump]
+        before_price_text:
+          type: [string, "null"]
+        after_price_text:
+          type: [string, "null"]
 
     Notification:
       type: object

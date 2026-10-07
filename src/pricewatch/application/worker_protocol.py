@@ -22,7 +22,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from pricewatch.application.ports import ClaimedTask, ImageStore, LeasedTask, NewObservation, UnitOfWork
+from pricewatch.application.ports import AuditEvent, ClaimedTask, ImageStore, LeasedTask, NewObservation, UnitOfWork
 from pricewatch.application.runs import configured_times
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.names import clean_name
@@ -145,7 +145,7 @@ def submit_result(
             uow.stores.clear_pause(task.store_id)
         confirmation = Confirmation.CONFIRMED
         if checked.status == "ok":
-            confirmation = _review(uow, task.tracked_link_id, checked, thresholds)
+            confirmation = _review(uow, task.tracked_link_id, checked, thresholds, now)
             uow.stores.learn(task.store_id, checked.fetch_method, checked.site_name)
             if confirmation is Confirmation.CONFIRMED:
                 # Цена снова актуальна: особый режим «устаревшая цена в итоге» снимается (раздел 6).
@@ -182,7 +182,7 @@ def _pause_store(uow: UnitOfWork, task: LeasedTask, reason: ErrorCode, now: date
     return True
 
 
-def _review(uow: UnitOfWork, tracked_link_id: int, result: WorkerResult, thresholds: Thresholds) -> Confirmation:
+def _review(uow: UnitOfWork, tracked_link_id: int, result: WorkerResult, thresholds: Thresholds, now: datetime) -> Confirmation:
     baseline = uow.tracked_links.baseline_title(tracked_link_id)
     if baseline is None and result.title is not None:
         uow.tracked_links.set_baseline_title(tracked_link_id, result.title)
@@ -199,6 +199,7 @@ def _review(uow: UnitOfWork, tracked_link_id: int, result: WorkerResult, thresho
         ]
         if stale:
             uow.observations.reject(stale)
+            uow.audit.add(AuditEvent(None, "price_review_auto_closed", "tracked_link", tracked_link_id, {"observations": stale}, {"price_minor": price}, now))
     return verdict.confirmation
 
 

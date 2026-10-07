@@ -33,6 +33,7 @@ from pricewatch.persistence.auth_repositories import SqlAuthFailureRepository, S
 from pricewatch.persistence.idempotency_repository import SqlIdempotencyRepository
 from pricewatch.persistence.invite_repository import SqlInviteRepository
 from pricewatch.persistence.price_data_repository import SqlPriceDataRepository
+from pricewatch.persistence.review_repositories import SqlAuditRepository, SqlDecisionRepository
 from pricewatch.persistence.shopping_repositories import (
     SqlCategoryRepository,
     SqlGroupRepository,
@@ -83,6 +84,8 @@ class SqlUnitOfWork:
         self.idempotency = SqlIdempotencyRepository(self._connection)
         self.settings = SqlSettingRepository(self._connection)
         self.notifications = SqlNotificationRepository(self._connection)
+        self.decisions = SqlDecisionRepository(self._connection)
+        self.audit = SqlAuditRepository(self._connection)
         return self
 
     def commit(self) -> None:

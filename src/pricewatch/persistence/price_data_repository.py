@@ -189,5 +189,3 @@ class SqlPriceDataRepository:
         )
         return [LinkState(*row) for row in rows]
 
-    def pending_reviews(self) -> int:
-        return self.connection.execute(select(func.count()).where(observations.c.confirmation == "pending")).scalar_one()
