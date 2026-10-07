@@ -33,6 +33,7 @@ tags:
   - name: dashboard
   - name: categories
   - name: items
+  - name: purchases
   - name: runs
   - name: reviews
   - name: notifications
@@ -368,6 +369,65 @@ paths:
         "401":
           $ref: "#/components/responses/Error"
         "404":
+          $ref: "#/components/responses/Error"
+
+  /purchases:
+    get:
+      tags: [purchases]
+      summary: Покупки за период
+      description: >
+        «Потрачено» и экономия за период, разбивка по категориям (сначала большие траты) и страница списка покупок
+        (сначала новые). Экономия — лучшая цена в момент добавления товара минус цена покупки, умноженная на количество;
+        покупки без цены при добавлении входят только в «потрачено».
+      parameters:
+        - name: period
+          in: query
+          required: false
+          description: Период статистики от 00:00 по Москве; по умолчанию месяц.
+          schema:
+            allOf:
+              - $ref: "#/components/schemas/Period"
+            default: month
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Сводка периода и страница списка.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchasesOverview"
+        "401":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+
+  /archive:
+    get:
+      tags: [purchases]
+      summary: Архив
+      description: Товары, которые решили не покупать, с последней известной ценой; сначала недавно перенесённые.
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Страница архива.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ArchivedItem"
+                  next_cursor:
+                    $ref: "#/components/schemas/NextCursor"
+        "401":
+          $ref: "#/components/responses/Error"
+        "422":
           $ref: "#/components/responses/Error"
 
   /runs/current:
@@ -1128,6 +1188,97 @@ components:
           type: [string, "null"]
           format: date-time
           description: Когда товар перенесён в архив (UTC); у остальных — null.
+
+    Savings:
+      description: Экономия со знаком (минус — переплата); null — ни у одной покупки не было цены при добавлении товара.
+      oneOf:
+        - type: object
+          required: [savings_minor, savings_text]
+          properties:
+            savings_minor:
+              type: integer
+              format: int64
+            savings_text:
+              type: string
+              description: Сумма без знака; знак — в savings_minor.
+        - type: "null"
+
+    PurchasesOverview:
+      type: object
+      required: [period, count, spent_minor, spent_text, savings, categories, items, next_cursor]
+      properties:
+        period:
+          $ref: "#/components/schemas/Period"
+        count:
+          type: integer
+          minimum: 0
+        spent_minor:
+          $ref: "#/components/schemas/MoneyMinor"
+        spent_text:
+          $ref: "#/components/schemas/MoneyText"
+        savings:
+          $ref: "#/components/schemas/Savings"
+        categories:
+          type: array
+          items:
+            type: object
+            required: [category, count, spent_minor, spent_text, savings]
+            properties:
+              category:
+                type: object
+                required: [id, name]
+                properties:
+                  id:
+                    $ref: "#/components/schemas/Id"
+                  name:
+                    type: string
+              count:
+                type: integer
+                minimum: 1
+              spent_minor:
+                $ref: "#/components/schemas/MoneyMinor"
+              spent_text:
+                $ref: "#/components/schemas/MoneyText"
+              savings:
+                $ref: "#/components/schemas/Savings"
+        items:
+          type: array
+          items:
+            type: object
+            required: [purchase, category, savings]
+            properties:
+              purchase:
+                $ref: "#/components/schemas/Purchase"
+              category:
+                type: object
+                required: [id, name]
+                properties:
+                  id:
+                    $ref: "#/components/schemas/Id"
+                  name:
+                    type: string
+              savings:
+                $ref: "#/components/schemas/Savings"
+        next_cursor:
+          $ref: "#/components/schemas/NextCursor"
+
+    ArchivedItem:
+      type: object
+      required: [item, category, archived_at]
+      properties:
+        item:
+          $ref: "#/components/schemas/ItemRow"
+        category:
+          type: object
+          required: [id, name]
+          properties:
+            id:
+              $ref: "#/components/schemas/Id"
+            name:
+              type: string
+        archived_at:
+          type: string
+          format: date-time
 
     ItemState:
       type: string

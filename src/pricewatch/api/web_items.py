@@ -21,6 +21,7 @@ from starlette.responses import HTMLResponse
 from pricewatch.api.context import get_context
 from pricewatch.api.web_auth import web_user
 from pricewatch.api.web_forms import read_form
+from pricewatch.api.web_purchases import archive_html
 from pricewatch.api.web_settings_items import settings_items_page
 from pricewatch.application.category import category_chart, category_detail
 from pricewatch.application.dashboard import run_status
@@ -141,8 +142,20 @@ def return_dialog(request: Request, item_id: EntityId, session: SessionUser = De
 async def item_return(request: Request, item_id: EntityId, session: SessionUser = Depends(web_user)) -> HTMLResponse:
     form = await read_form(request)
     version = _version(form)
+    view = form.get("view", "item")
+    if view not in ("item", "archive"):
+        raise PriceWatcherError(ErrorCode.VALIDATION_ERROR, {"fields": {"view": "invalid"}})
     context = get_context(request)
-    return await _state_change(request, session, item_id, lambda: return_to_list(context.unit_of_work(), session.user, item_id, version), None)
+    if view == "item":
+        return await _state_change(request, session, item_id, lambda: return_to_list(context.unit_of_work(), session.user, item_id, version), None)
+    flash = None
+    try:
+        await run_in_threadpool(return_to_list, context.unit_of_work(), session.user, item_id, version)
+    except PriceWatcherError as error:
+        if error.code is not ErrorCode.VERSION_CONFLICT:
+            raise
+        flash = SAFE_MESSAGES[error.code]
+    return HTMLResponse(await run_in_threadpool(archive_html, request, session, flash))
 
 
 async def _state_change(request: Request, session: SessionUser, item_id: int, action: Callable[[], object], done: str | None) -> HTMLResponse:

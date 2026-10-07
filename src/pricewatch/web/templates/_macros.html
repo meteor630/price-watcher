@@ -97,3 +97,17 @@
   <a class="tabs__tab" href="/web/settings/categories" {% if current == "categories" %}aria-current="page"{% endif %}>Категории</a>
 </nav>
 {% endmacro %}
+
+{% macro purchases_tabs(current) %}
+<nav class="tabs" aria-label="Покупки и архив">
+  <a class="tabs__tab" href="/web/purchases" {% if current == "purchases" %}aria-current="page"{% endif %}>Покупки</a>
+  <a class="tabs__tab" href="/web/purchases/archive" {% if current == "archive" %}aria-current="page"{% endif %}>Архив</a>
+</nav>
+{% endmacro %}
+
+{# Экономия со знаком: зелёным — сэкономлено, красным — переплачено; без цены при добавлении — ничего. #}
+{% macro savings_badge(minor, text) %}
+{% if minor is not none %}
+{% if minor >= 0 %}<span class="delta delta--down num" data-savings>сэкономлено {{ text }}</span>{% else %}<span class="delta delta--up num" data-savings>переплачено {{ text }}</span>{% endif %}
+{% endif %}
+{% endmacro %}

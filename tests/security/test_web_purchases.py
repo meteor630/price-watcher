@@ -133,3 +133,55 @@ def test_someone_elses_item_and_csrf(client: TestClient, engine: Engine) -> None
         no_csrf = client.post(path, data={"version": str(version)} | fields, headers={"HX-Request": "true"})
         assert no_csrf.status_code == 403, path
     assert state(engine, item)[0] == "active"
+
+
+def test_purchases_page_period_switch_and_escaping(client: TestClient, engine: Engine) -> None:
+    login = account_with_list(engine, category=f"Кат {EVIL}", items=2)
+    sign_in(client, login)
+    item, version = first_item(engine, login)
+    post(client, f"/web/items/{item}/purchase", version=str(version), price="1 000", quantity="3", store_id=str(store_of(engine, item)), day=TODAY)
+
+    month = client.get("/web/purchases")
+    day = client.get("/web/purchases", params={"period": "day"}, headers={"HX-Request": "true"})
+
+    assert month.status_code == 200 and day.status_code == 200
+    assert "3 000\xa0₽" in month.text and 'data-spent' in month.text and "data-purchases-link" in month.text
+    assert 'data-segmented data-active="2"' in month.text and 'data-segmented data-active="0"' in day.text  # месяц и сутки
+    assert "1 покупка" in month.text and "сэкономлено" in month.text  # цена при добавлении 1200 ₽ > 1000 ₽
+    assert EVIL not in month.text and "&lt;img" in month.text
+    no_inline_code(month.text)
+    assert client.get("/web/purchases", params={"period": "century"}).status_code == 422
+
+
+def test_empty_purchases_and_archive(client: TestClient, engine: Engine) -> None:
+    sign_in(client, account_with_list(engine, items=0))
+
+    assert "Покупок пока нет" in client.get("/web/purchases").text
+    archive = client.get("/web/purchases/archive").text
+    assert "В архиве пусто" in archive
+    no_inline_code(archive)
+
+
+def test_archive_page_returns_item_to_list(client: TestClient, engine: Engine) -> None:
+    login = account_with_list(engine, items=2)
+    sign_in(client, login)
+    item, version = first_item(engine, login)
+    post(client, f"/web/items/{item}/archive", version=str(version))
+
+    page = client.get("/web/purchases/archive").text
+    assert f'data-item="{item}"' in page and "1 200\xa0₽" in page and EVIL not in page
+    no_inline_code(page)
+
+    assert post(client, f"/web/items/{item}/return", version=str(version + 1), view="nowhere").status_code == 422
+    stale = post(client, f"/web/items/{item}/return", version=str(version), view="archive")
+    assert stale.status_code == 200 and "Запись уже изменили" in stale.text
+    back = post(client, f"/web/items/{item}/return", version=str(version + 1), view="archive")
+
+    assert back.status_code == 200 and "В архиве пусто" in back.text
+    assert state(engine, item)[0] == "active"
+
+
+def test_purchase_pages_need_session(client: TestClient) -> None:
+    for path in ("/web/purchases", "/web/purchases/archive"):
+        response = client.get(path, follow_redirects=False)
+        assert response.status_code == 303 and response.headers["location"] == "/web/login"

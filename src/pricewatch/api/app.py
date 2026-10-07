@@ -13,11 +13,13 @@ from pricewatch.api.v1_auth import router as v1_auth_router
 from pricewatch.api.v1_categories import router as v1_categories_router
 from pricewatch.api.v1_dashboard import router as v1_dashboard_router
 from pricewatch.api.v1_items import router as v1_items_router
+from pricewatch.api.v1_purchases import router as v1_purchases_router
 from pricewatch.api.web_categories import router as web_categories_router
 from pricewatch.api.web_home import router as web_home_router
 from pricewatch.api.web_items import router as web_items_router
 from pricewatch.api.web_pages import router as web_pages_router
 from pricewatch.api.web_settings import router as web_settings_router
+from pricewatch.api.web_purchases import router as web_purchases_router
 from pricewatch.api.web_settings_items import router as web_settings_items_router
 from pricewatch.api.worker_v1 import router as worker_v1_router
 from pricewatch.config.settings import Settings
@@ -37,11 +39,13 @@ def create_app(settings: Settings, context: ApiContext | None = None) -> FastAPI
     app.include_router(v1_dashboard_router)
     app.include_router(v1_categories_router)
     app.include_router(v1_items_router)
+    app.include_router(v1_purchases_router)
     app.include_router(worker_v1_router)
     app.include_router(web_pages_router)
     app.include_router(web_home_router)
     app.include_router(web_categories_router)
     app.include_router(web_items_router)
+    app.include_router(web_purchases_router)
     app.include_router(web_settings_router)
     app.include_router(web_settings_items_router)
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

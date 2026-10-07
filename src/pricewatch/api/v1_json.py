@@ -1,12 +1,30 @@
 """Общие части ответов /api/v1: изменение, точка графика, магазин, строка товара, покупка, время в UTC."""
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 
 from pricewatch.application.price_view import ItemRowView, StoreView
 from pricewatch.application.purchases import PurchaseView
 from pricewatch.domain.charts import ChartPoint
+from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.money import Change
+
+# Курсор списка непрозрачен для клиента; внутри — смещение в отсортированном списке.
+CURSOR = re.compile(r"^o([0-9]{1,6})$")
+
+
+def offset_from_cursor(cursor: str | None) -> int:
+    if cursor is None:
+        return 0
+    found = CURSOR.fullmatch(cursor)
+    if found is None:
+        raise PriceWatcherError(ErrorCode.VALIDATION_ERROR, {"fields": {"cursor": "invalid"}})
+    return int(found.group(1))
+
+
+def next_cursor(offset: int, limit: int, total: int) -> str | None:
+    return f"o{offset + limit}" if offset + limit < total else None
 
 
 def utc_iso(moment: datetime) -> str:

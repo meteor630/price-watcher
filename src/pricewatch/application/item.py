@@ -128,7 +128,7 @@ def _detail(uow: UnitOfWork, user: User, item_id: int, now: datetime) -> ItemDet
     priced = load(uow, user.id, Period.DAY, now, now - HISTORY_WINDOW, item_ids=frozenset({item_id}))
     row = only_row(priced)
     links = uow.price_data.links(sorted({binding.link.link_id for binding in row.total_item.bindings}))
-    purchase = None if item.purchase is None else purchase_view(item, uow.price_data.stores(purchase_store_ids([item])))
+    purchase = None if item.purchase is None else purchase_view(item.id, item.name, item.purchase, uow.price_data.stores(purchase_store_ids([item.purchase])))
     return _assemble(row, priced.stores, links, category.name, group.name if group else None, item, purchase, now)
 
 

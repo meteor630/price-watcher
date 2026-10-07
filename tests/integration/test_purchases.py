@@ -10,7 +10,7 @@ from test_dashboard import DAY, NOW, World
 from pricewatch.application.category import category_detail
 from pricewatch.application.item import item_detail
 from pricewatch.application.price_view import StoreView
-from pricewatch.application.purchases import archive_item, purchase_form, purchase_item, return_to_list
+from pricewatch.application.purchases import archive_item, archive_list, purchase_form, purchase_item, purchases_overview, return_to_list
 from pricewatch.application.shopping import undo_delete
 from pricewatch.domain.days import Period, day_start
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
@@ -218,3 +218,70 @@ def test_item_card_shows_purchase_and_cheaper_now_for_14_days(engine: Engine) ->
     archived = added(world, home, "Архив")
     archive_item(uow(engine), KEY, world.user, archived, version(world, archived), NOW)
     assert item_detail(uow(engine), world.user, archived, NOW).archived_at == NOW
+
+
+def test_purchase_in_deleted_group_is_hidden_with_it(engine: Engine) -> None:
+    # Группа, удалённая вместе с товарами, скрывает и купленные: они вернутся с отменой удаления группы.
+    world = World(engine)
+    home = world.category("Дом")
+    lamps = world.one("INSERT INTO groups (user_id, category_id, name, name_normalized, position) VALUES (:u, :c, 'Лампы', 'лампы', 0) RETURNING id", u=world.user.id, c=home)
+    lamp = world.item(home, "Лампа", group=lamps)
+    world.one("UPDATE items SET created_at = :t WHERE id = :i RETURNING id", t=NOW - 10 * DAY, i=lamp)
+    buy(engine, world, lamp)
+    world.one("UPDATE groups SET deleted_at = now() WHERE id = :g RETURNING id", g=lamps)
+
+    assert category_detail(uow(engine), world.user, home, Period.DAY, NOW).purchased == []
+
+
+
+def test_overview_counts_period_from_moscow_midnight_with_signed_savings(engine: Engine) -> None:
+    world = World(engine)
+    home, office = world.category("Дом"), world.category("Офис")
+    shop = world.store("Регард")
+    saved, overpaid, no_base, old = (added(world, home, "Экономия"), added(world, office, "Переплата"), added(world, office, "Без цены"),
+                                     added(world, home, "Давно"))
+    for item, price in ((saved, 100_000), (overpaid, 50_000), (old, 10_000)):
+        world.seen(world.link(item, shop, since=NOW - 10 * DAY), NOW - 12 * DAY, price=price)
+    buy(engine, world, saved, price=90_000, quantity=2, store=shop, day=TODAY - timedelta(days=30))  # ровно начало «месяца»
+    buy(engine, world, overpaid, price=60_000)
+    buy(engine, world, no_base, price=5_000)
+    buy(engine, world, old, price=9_000, day=TODAY - timedelta(days=31))
+
+    month = purchases_overview(uow(engine), world.user, Period.MONTH, NOW)
+    day = purchases_overview(uow(engine), world.user, Period.DAY, NOW)
+    year = purchases_overview(uow(engine), world.user, Period.YEAR, NOW)
+
+    assert (month.count, month.spent_minor, month.savings_minor, month.savings_text) == (3, 245_000, 10_000, "100\xa0₽")
+    assert [entry.view.name for entry in month.entries] == ["Без цены", "Переплата", "Экономия"]
+    assert [(entry.savings_minor, entry.savings_text) for entry in month.entries] == [(None, None), (-10_000, "100\xa0₽"), (20_000, "200\xa0₽")]
+    assert [(c.name, c.count, c.spent_minor, c.savings_minor) for c in month.categories] == [("Дом", 1, 180_000, 20_000), ("Офис", 2, 65_000, -10_000)]
+    assert (day.count, day.spent_minor, day.savings_minor) == (2, 65_000, -10_000)
+    assert (year.count, year.savings_minor) == (4, 11_000)
+
+
+def test_overview_and_archive_when_empty(engine: Engine) -> None:
+    world = World(engine)
+    world.category("Дом")
+
+    overview = purchases_overview(uow(engine), world.user, Period.MONTH, NOW)
+
+    assert (overview.count, overview.spent_text, overview.savings_minor, overview.categories, overview.entries) == (0, "0\xa0₽", None, [], [])
+    assert archive_list(uow(engine), world.user, NOW) == []
+
+
+def test_archive_lists_last_known_price_newest_first(engine: Engine) -> None:
+    owner, stranger = World(engine), World(engine)
+    home = owner.category("Дом")
+    shop = owner.store("Регард")
+    first, second, kept = added(owner, home, "Первый"), added(owner, home, "Второй"), added(owner, home, "В списке")
+    owner.seen(owner.link(first, shop), NOW - 20 * DAY, price=77_700)  # давно не проверялась — цена устарела, но известна
+    archive_item(uow(engine), KEY, owner.user, first, version(owner, first), NOW - DAY)
+    archive_item(uow(engine), KEY, owner.user, second, version(owner, second), NOW)
+    stranger_item = added(stranger, stranger.category("Чужое"), "Чужой")
+    archive_item(uow(engine), KEY, stranger.user, stranger_item, version(stranger, stranger_item), NOW)
+
+    entries = archive_list(uow(engine), owner.user, NOW)
+
+    assert [(entry.row.name, entry.category_name, entry.archived_at) for entry in entries] == [("Второй", "Дом", NOW), ("Первый", "Дом", NOW - DAY)]
+    assert (entries[1].row.unit_price_text, entries[1].row.price_status.value) == ("777\xa0₽", "stale")
+    assert kept not in [entry.row.item_id for entry in entries]

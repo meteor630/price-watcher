@@ -8,12 +8,12 @@
 from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import Connection, Table, func, select, true
+from sqlalchemy import ColumnElement, Connection, Join, Table, func, select, true
 
-from pricewatch.application.ports import LinkBinding, LinkInfo, LinkState, PricedItem, StoreInfo
+from pricewatch.application.ports import LinkBinding, LinkInfo, LinkState, PricedItem, PurchasedItem, StoreInfo
 from pricewatch.domain.errors import ErrorCode
 from pricewatch.domain.pricing import Availability, Confirmation, Observation
-from pricewatch.domain.shopping import ItemState
+from pricewatch.domain.shopping import ItemState, Purchase
 from pricewatch.persistence.models import CategoryRow, CheckTaskRow, GroupRow, ItemLinkRow, ItemRow, PriceObservationRow, StoreRow, TrackedLinkRow
 
 items: Table = ItemRow.__table__
@@ -26,6 +26,21 @@ tracked_links: Table = TrackedLinkRow.__table__
 check_tasks: Table = CheckTaskRow.__table__
 
 
+
+def _visible() -> Join:
+    """Товар виден на страницах вместе со своей категорией и группой: удалённая группа скрывает и свои товары."""
+    return items.join(categories, categories.c.id == items.c.category_id).outerjoin(groups, groups.c.id == items.c.group_id)
+
+
+def _visible_to(user_id: int) -> tuple[ColumnElement[bool], ...]:
+    return (
+        items.c.user_id == user_id,
+        items.c.deleted_at.is_(None),
+        categories.c.deleted_at.is_(None),
+        items.c.group_id.is_(None) | groups.c.deleted_at.is_(None),
+    )
+
+
 class SqlPriceDataRepository:
     def __init__(self, connection: Connection) -> None:
         self.connection = connection
@@ -33,22 +48,35 @@ class SqlPriceDataRepository:
     def items(self, user_id: int) -> list[PricedItem]:
         rows = self.connection.execute(
             select(items.c.id, items.c.category_id, items.c.group_id, items.c.version, items.c.name, items.c.quantity, items.c.in_total,
-                   items.c.include_stale, items.c.state, items.c.purchased_at)
-            .select_from(items.join(categories, categories.c.id == items.c.category_id).outerjoin(groups, groups.c.id == items.c.group_id))
-            .where(
-                items.c.user_id == user_id,
-                items.c.deleted_at.is_(None),
-                categories.c.deleted_at.is_(None),
-                items.c.group_id.is_(None) | groups.c.deleted_at.is_(None),
-            )
+                   items.c.include_stale, items.c.state, items.c.purchased_at, items.c.archived_at)
+            .select_from(_visible())
+            .where(*_visible_to(user_id))
             .order_by(categories.c.position, categories.c.id, groups.c.position.nulls_first(), items.c.group_id.nulls_first(), items.c.position, items.c.id)
         )
         return [
             PricedItem(
                 row.id, row.category_id, row.group_id, row.version, row.name, row.quantity, row.in_total, row.include_stale,
-                ItemState(row.state), row.purchased_at,
+                ItemState(row.state), row.purchased_at, row.archived_at,
             )
             for row in rows
+        ]
+
+    def purchases(self, user_id: int, category_id: int | None = None) -> list[PurchasedItem]:
+        query = (
+            select(items.c.id, items.c.category_id, categories.c.name.label("category_name"), items.c.name, items.c.purchased_at,
+                   items.c.purchase_price_minor, items.c.purchase_quantity, items.c.purchase_store_id, items.c.purchase_baseline_minor)
+            .select_from(_visible())
+            .where(*_visible_to(user_id), items.c.state == ItemState.PURCHASED.value)
+            .order_by(items.c.purchased_at.desc(), items.c.id.desc())
+        )
+        if category_id is not None:
+            query = query.where(items.c.category_id == category_id)
+        return [
+            PurchasedItem(
+                row.id, row.category_id, row.category_name, row.name,
+                Purchase(row.purchased_at, row.purchase_price_minor, row.purchase_quantity, row.purchase_store_id), row.purchase_baseline_minor,
+            )
+            for row in self.connection.execute(query)
         ]
 
     def bindings(self, user_id: int) -> list[LinkBinding]:

@@ -6,7 +6,6 @@
 
 import hashlib
 import json
-import re
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -14,15 +13,13 @@ from fastapi.responses import JSONResponse
 
 from pricewatch.api.app_auth import app_user
 from pricewatch.api.context import get_context
-from pricewatch.api.v1_json import change_json, point_json, store_json, utc_iso
+from pricewatch.api.v1_json import change_json, offset_from_cursor, point_json, store_json, utc_iso
 from pricewatch.application.app_auth import DeviceUser
 from pricewatch.application.dashboard import CategoryCard, Dashboard, ItemChangeView, Panel, RunView, dashboard, panel_items
 from pricewatch.domain.days import Period
-from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 
 router = APIRouter(prefix="/api/v1")
 
-CURSOR = re.compile(r"^o([0-9]{1,6})$")
 PRIVATE = "private, no-cache"
 
 
@@ -46,7 +43,7 @@ def dashboard_items_route(
     user: DeviceUser = Depends(app_user),
 ) -> JSONResponse:
     context = get_context(request)
-    page = panel_items(context.unit_of_work(), user.user, panel, period, context.clock(), _offset(cursor), limit)
+    page = panel_items(context.unit_of_work(), user.user, panel, period, context.clock(), offset_from_cursor(cursor), limit)
     return JSONResponse(
         {
             "items": [item_change_json(item) for item in page.items],
@@ -54,15 +51,6 @@ def dashboard_items_route(
         },
         headers={"Cache-Control": PRIVATE},
     )
-
-
-def _offset(cursor: str | None) -> int:
-    if cursor is None:
-        return 0
-    found = CURSOR.fullmatch(cursor)
-    if found is None:
-        raise PriceWatcherError(ErrorCode.VALIDATION_ERROR, {"fields": {"cursor": "invalid"}})
-    return int(found.group(1))
 
 
 def dashboard_json(board: Dashboard) -> dict[str, Any]:

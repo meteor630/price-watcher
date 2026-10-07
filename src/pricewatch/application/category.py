@@ -21,7 +21,6 @@ from pricewatch.domain.days import Period, day_start, moscow_date, period_start
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.money import Change, format_rub
 from pricewatch.domain.pricing import PriceStatus
-from pricewatch.domain.shopping import ItemState
 from pricewatch.domain.totals import in_total_shown, period_minimum, total, total_change
 
 
@@ -88,9 +87,9 @@ def category_detail(uow: UnitOfWork, user: User, category_id: int, period: Perio
         category = uow.categories.get(user.id, category_id)
         groups = uow.groups.list_in_category(user.id, category_id)
         priced = load(uow, user.id, period, now, period_start(period, now))
-        bought = [item for item in uow.items.list_in_category(user.id, category_id) if item.state is ItemState.PURCHASED]
-        bought_stores = uow.price_data.stores(purchase_store_ids(bought))
-    purchased = sorted((purchase_view(item, bought_stores) for item in bought), key=lambda view: (view.purchased_at, view.item_id), reverse=True)
+        bought = uow.price_data.purchases(user.id, category_id)
+        bought_stores = uow.price_data.stores(purchase_store_ids(entry.purchase for entry in bought))
+    purchased = [purchase_view(entry.item_id, entry.name, entry.purchase, bought_stores) for entry in bought]
     rows = [row for row in priced.rows if row.item.category_id == category_id]
     blocks = []
     loose = [row for row in rows if row.item.group_id is None]

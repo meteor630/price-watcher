@@ -267,6 +267,19 @@ class PricedItem:
     include_stale: bool
     state: ItemState
     purchased_at: datetime | None
+    archived_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class PurchasedItem:
+    """Купленный товар для страниц: покупка и лучшая цена в момент добавления товара (если была)."""
+
+    item_id: int
+    category_id: int
+    category_name: str
+    name: str
+    purchase: Purchase
+    baseline_minor: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -311,6 +324,9 @@ class LinkState:
 class PriceDataRepository(Protocol):
     def items(self, user_id: int) -> list[PricedItem]:
         """Неудалённые товары в неудалённых категориях и группах, в порядке категорий и позиций."""
+        ...
+    def purchases(self, user_id: int, category_id: int | None = None) -> list[PurchasedItem]:
+        """Купленные товары, видимые на страницах (как в `items`), сначала новые; `category_id` — только этой категории."""
         ...
     def bindings(self, user_id: int) -> list[LinkBinding]:
         """Все привязки ссылок к этим товарам, в том числе закрытые: история цены не обрывается."""

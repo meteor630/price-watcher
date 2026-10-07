@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_macros.html" import purchases_tabs %}
+{% block title %}Архив{% endblock %}
+{% block content %}
+<nav class="crumbs" aria-label="Путь"><a href="/web/">Главная</a><span aria-hidden="true"> › </span><a href="/web/purchases">Покупки</a><span aria-hidden="true"> › </span><span class="crumbs__here" aria-current="page">Архив</span></nav>
+<h1 class="page-title">Архив</h1>
+<p class="summary">Товары, которые решили не покупать: не входят в итог, ссылки не проверяются, история цены сохранена.</p>
+{{ purchases_tabs("archive") }}
+
+<div id="page-rest">
+  {% if entries %}
+  <section class="section panel-box" aria-labelledby="archive-list-title">
+  <h2 id="archive-list-title" class="section__title">В архиве ({{ entries | length }})</h2>
+  <ul class="purchased__list">
+    {% for entry in entries %}
+    {% set row = entry.row %}
+    <li class="purchased__row purchased__row--wide" data-item="{{ row.item_id }}">
+      <a class="row__link purchased__name" href="/web/items/{{ row.item_id }}">{{ row.name }}</a>
+      <span class="purchased__meta">{{ entry.category_name }} · в архиве с {{ long_date(moscow_day(entry.archived_at)) }}</span>
+      <span class="purchased__sum num">{% if row.unit_price_text %}{{ row.unit_price_text }}{% else %}—{% endif %}</span>
+      <button class="btn btn--ghost btn--small purchased__action" type="button" hx-post="/web/items/{{ row.item_id }}/return"
+              hx-vals='{"version": "{{ row.version }}", "view": "archive"}' hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML"
+              hx-select-oob="#flash" hx-disabled-elt="this">Вернуть в список</button>
+    </li>
+    {% endfor %}
+  </ul>
+  </section>
+  {% else %}
+  <div class="empty">
+    <h2 class="empty__title">В архиве пусто</h2>
+    <p class="empty__text">Кнопка «В архив» на странице товара убирает его из списка, не удаляя историю.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

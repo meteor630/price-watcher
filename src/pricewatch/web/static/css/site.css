@@ -1655,6 +1655,39 @@ a.cat {
   stroke-linejoin: round;
 }
 
+/* «Покупки» в шапке: значок с подписью, на телефоне — только значок (подпись остаётся в aria-label). */
+.gear--labelled {
+  width: auto;
+  grid-auto-flow: column;
+  gap: var(--space-2);
+  padding-inline: var(--space-3);
+}
+
+.gear__text {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+}
+
+.gear--labelled {
+  text-decoration: none;
+}
+
+.tabs + .hero {
+  margin-top: var(--space-4);
+}
+
+@media (max-width: 600px) {
+  .gear--labelled {
+    width: var(--tap-min);
+    padding-inline: 0;
+  }
+
+  .gear__text {
+    display: none;
+  }
+}
+
 @media (hover: hover) {
   .gear:hover {
     color: var(--color-fg);
@@ -2249,5 +2282,100 @@ a.cat {
     grid-row: 1 / span 2;
     grid-column: 2;
     align-self: center;
+  }
+}
+
+.purchased__row--wide {
+  grid-template-columns: minmax(0, 1fr) auto auto minmax(150px, auto);
+}
+
+.purchased__savings {
+  text-align: right;
+  font-size: var(--text-sm);
+}
+
+.purchased__action {
+  justify-self: end;
+}
+
+.spend-list {
+  display: flex;
+  flex-direction: column;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.spend-list__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto minmax(150px, auto);
+  align-items: baseline;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-line);
+}
+
+.spend-list__row:first-child {
+  border-top: 0;
+}
+
+.spend-list__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spend-list__count {
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.spend-list__sum {
+  color: var(--color-fg);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+.spend-list__savings {
+  text-align: right;
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 640px) {
+  .purchased__row--wide,
+  .spend-list__row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-1) var(--space-3);
+  }
+
+  .spend-list__count {
+    grid-row: 2;
+  }
+
+  .spend-list__sum {
+    grid-column: 2;
+    grid-row: 1;
+    text-align: right;
+  }
+
+  .spend-list__savings,
+  .purchased__savings {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .purchased__row--wide .purchased__sum {
+    grid-row: 1;
+  }
+
+  .purchased__action {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .purchased__row--wide .purchased__name {
+    white-space: normal;
   }
 }
