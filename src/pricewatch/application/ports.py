@@ -695,10 +695,27 @@ class QueueRepository(Protocol):
         ...
 
 
+@dataclass(frozen=True, slots=True)
+class BellNotification:
+    notification_id: int
+    kind: str
+    payload: dict[str, object]
+    created_at: datetime
+    read: bool
+    repeat_count: int
+
+
 class NotificationRepository(Protocol):
     def notify_admins(self, kind: str, dedup_key: str, payload: dict[str, object], now: datetime) -> int:
         """Уведомление каждому действующему администратору: в колокольчик и в Telegram, если он привязан.
-        Повтор с тем же dedup_key не создаёт новых строк. Число созданных."""
+        Повтор с тем же dedup_key не создаёт новых строк, а поднимает счётчик повторов. Число затронутых строк."""
+        ...
+    def bell(self, user_id: int, offset: int, limit: int) -> list[BellNotification]:
+        """Уведомления колокольчика пользователя, сначала новые (по последнему повтору)."""
+        ...
+    def unread_count(self, user_id: int) -> int: ...
+    def mark_read(self, user_id: int, notification_ids: Sequence[int] | None, now: datetime) -> int:
+        """Отметить прочитанными свои уведомления колокольчика (None — все); чужие номера не затрагиваются."""
         ...
 
 

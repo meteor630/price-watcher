@@ -58,6 +58,10 @@ def test_upgrade_downgrade_upgrade(empty_database_url: str) -> None:
 
     command.upgrade(config, "head")
     assert tables(empty_database_url) == TABLES
+    assert revision(empty_database_url) == "0010"
+
+    command.downgrade(config, "0009")
+    assert "repeat_count" not in columns(empty_database_url, "notifications")
     assert revision(empty_database_url) == "0009"
 
     command.downgrade(config, "0008")

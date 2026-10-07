@@ -38,13 +38,22 @@ def test_unknown_variable_is_an_error() -> None:
 
 
 def test_signed_in_header_has_name_logout_and_csrf() -> None:
-    user = SimpleNamespace(user=SimpleNamespace(display_name="<b>Аня</b>"), csrf_token="ab" * 32)
+    user = SimpleNamespace(user=SimpleNamespace(display_name="<b>Аня</b>", is_admin=False), csrf_token="ab" * 32)
 
     html = render("error.html", code="NOT_FOUND", status=404, message="Нет", error_id=None, session_user=user)
 
     assert 'hx-headers=\'{"X-CSRF-Token": "' + "ab" * 32 + '"}\'' in html
     assert "&lt;b&gt;Аня&lt;/b&gt;" in html
     assert 'hx-post="/web/logout"' in html and "data-logout" in html
+    assert "/web/notifications/bell" not in html  # колокольчик — только у администратора
+
+
+def test_admin_header_loads_bell() -> None:
+    admin = SimpleNamespace(user=SimpleNamespace(display_name="Админ", is_admin=True), csrf_token="ab" * 32)
+
+    html = render("error.html", code="NOT_FOUND", status=404, message="Нет", error_id=None, session_user=admin)
+
+    assert 'hx-get="/web/notifications/bell" hx-trigger="load"' in html
 
 
 def test_anonymous_header_has_no_logout() -> None:

@@ -149,8 +149,11 @@ def test_unexpected_error_is_logged_but_not_leaked(client: TestClient, caplog: p
     assert SECRET not in response.text
     assert "Traceback" not in response.text and "RuntimeError" not in response.text
 
-    (record,) = [r for r in caplog.records if getattr(r, "error_id", None) == error["error_id"]]
+    tagged = [r for r in caplog.records if getattr(r, "error_id", None) == error["error_id"]]
+    (record,) = [r for r in tagged if r.getMessage() == "Необработанное исключение"]
     assert record.levelno == logging.ERROR
+    # Приложение собрано без базы: уведомление администраторам не создать — это тоже в журнале, с тем же номером.
+    assert [r.getMessage() for r in tagged if r is not record] == ["Уведомление об ошибке не создано: нет контекста приложения"]
     assert record.exc_info is not None
     assert record.path == "/t/boom"  # type: ignore[attr-defined]
 

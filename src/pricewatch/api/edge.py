@@ -12,12 +12,14 @@ import uuid
 from collections.abc import Mapping
 from types import MappingProxyType
 
+from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from pricewatch.api.client_ip import Network, client_ip
 from pricewatch.api.errors import error_response
 from pricewatch.api.web_errors import is_web_path, web_error_response
+from pricewatch.application.notifications import report_unexpected
 from pricewatch.domain.errors import ErrorCode
 from pricewatch.observability.ids import new_error_id, request_context
 
@@ -78,12 +80,13 @@ class EdgeMiddleware:
         with request_context(request_id):
             try:
                 await self.app(scope, receive, send_with_headers)
-            except Exception:
+            except Exception as error:
                 error_id = new_error_id()
                 logger.exception(
                     "Необработанное исключение",
                     extra={"error_id": error_id, "method": scope["method"], "path": scope["path"]},
                 )
+                await _notify_admins(scope, error_id, error)
                 if response_started:
                     raise
                 if is_web_path(scope["path"]):
@@ -103,6 +106,20 @@ class EdgeMiddleware:
                         "duration_ms": round((time.perf_counter() - started) * 1000, 1),
                     },
                 )
+
+
+async def _notify_admins(scope: Scope, error_id: str, error: Exception) -> None:
+    """Уведомление администраторам в колокольчик и Telegram. Шаблон пути, а не сам путь: повторы одного места
+    склеиваются. Не получилось (например, база недоступна) — пишем в журнал и отвечаем пользователю как обычно."""
+    context = getattr(scope["app"].state, "context", None) if "app" in scope else None
+    if context is None:
+        logger.error("Уведомление об ошибке не создано: нет контекста приложения", extra={"error_id": error_id})
+        return
+    route = getattr(scope.get("route"), "path", scope["path"])
+    try:
+        await run_in_threadpool(report_unexpected, context.unit_of_work(), error_id, scope["method"], route, type(error).__name__, context.clock())
+    except Exception:
+        logger.exception("Уведомление об ошибке не создано", extra={"error_id": error_id})
 
 
 def _request_id(scope: Scope) -> str:

@@ -1531,13 +1531,14 @@ components:
         kind:
           type: string
           x-known-values:
-            [suspicious_change, captcha, run_failed, worker_offline, bot_offline, backup_failed,
+            [store_paused, captcha, run_failed, worker_offline, bot_offline, backup_failed,
              refresh_reuse, client_error, unexpected_error, recovered]
         text:
           type: string
         created_at:
           type: string
           format: date-time
+          description: Время последнего повтора инцидента.
         read:
           type: boolean
         repeat_count:

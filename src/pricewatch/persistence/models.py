@@ -631,10 +631,13 @@ class NotificationRow(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Сколько раз повторился инцидент: повтор поднимает счётчик и снова делает уведомление непрочитанным.
+    repeat_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
 
     __table_args__ = (
         ForeignKeyConstraint(["user_id"], ["users.id"]),
         CheckConstraint("channel IN ('telegram', 'in_app')", name="channel"),
+        CheckConstraint("repeat_count >= 1", name="repeat_count"),
         CheckConstraint("kind ~ '^[a-z_]{1,60}$'", name="kind_format"),
         CheckConstraint("char_length(dedup_key) BETWEEN 1 AND 200", name="dedup_key_length"),
         CheckConstraint("attempts >= 0", name="attempts"),

@@ -1,0 +1,30 @@
+{# Колокольчик администратора: системные уведомления со счётчиком непрочитанных (SITE_DESIGN_SPEC.md, раздел 3). #}
+{% set unread = page.unread_count %}
+<details class="menu bell" id="bell" data-bell {% if open %}open{% endif %}>
+  <summary class="gear bell__button" aria-label="Уведомления{% if unread %}: непрочитанных {{ unread }}{% endif %}" title="Уведомления">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15L6 16Z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
+    {% if unread %}<span class="bell__badge num" data-unread>{{ unread if unread < 100 else "99+" }}</span>{% endif %}
+  </summary>
+  <div class="menu__list bell__panel">
+    <div class="bell__head">
+      <span class="bell__title">Уведомления</span>
+      {% if unread %}<button class="btn btn--ghost btn--small" type="button" hx-post="/web/notifications/read" hx-target="#bell" hx-swap="outerHTML">Отметить все прочитанными</button>{% endif %}
+    </div>
+    {% if page.items %}
+    <ul class="bell__list">
+      {% for item in page.items %}
+      <li class="bell__item{% if not item.read %} bell__item--unread{% endif %}" data-notification="{{ item.notification_id }}">
+        <p class="bell__text">{{ item.text }}</p>
+        <p class="bell__meta">
+          <time datetime="{{ item.created_at.isoformat() }}">{{ moscow_moment(item.created_at) }}</time>
+          {% if item.repeat_count > 1 %} · повторилось {{ count_word(item.repeat_count, "раз", "раза", "раз") }}{% endif %}
+          {% if item.web_href %} · <a href="{{ item.web_href }}">перейти</a>{% endif %}
+        </p>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="bell__empty">Уведомлений нет.</p>
+    {% endif %}
+  </div>
+</details>

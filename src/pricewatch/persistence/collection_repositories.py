@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects.postgresql import insert
 
 from pricewatch.application.ports import (
+    BellNotification,
     ClaimedTask,
     ExpiredTask,
     ItemLinkRecord,
@@ -719,10 +720,44 @@ class SqlNotificationRepository:
         ]
         if not rows:
             return 0
-        created = self.connection.execute(
-            insert(notifications).values(rows).on_conflict_do_nothing(index_elements=["user_id", "channel", "dedup_key"]).returning(notifications.c.id)
+        statement = insert(notifications).values(rows)
+        # Повтор того же инцидента — та же строка: счётчик растёт, время — последнего повтора, колокольчик снова
+        # непрочитан. Telegram-строка, уже отправленная ботом, второй раз не уходит (sent_at не сбрасывается).
+        touched = self.connection.execute(
+            statement.on_conflict_do_update(
+                index_elements=["user_id", "channel", "dedup_key"],
+                set_={
+                    "repeat_count": notifications.c.repeat_count + 1,
+                    "created_at": statement.excluded.created_at,
+                    "payload_json": statement.excluded.payload_json,
+                    "read_at": None,
+                },
+            ).returning(notifications.c.id)
         ).all()
-        return len(created)
+        return len(touched)
+
+    def bell(self, user_id: int, offset: int, limit: int) -> list[BellNotification]:
+        rows = self.connection.execute(
+            select(notifications)
+            .where(notifications.c.user_id == user_id, notifications.c.channel == "in_app")
+            .order_by(notifications.c.created_at.desc(), notifications.c.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return [BellNotification(row.id, row.kind, row.payload_json, row.created_at, row.read_at is not None, row.repeat_count) for row in rows]
+
+    def unread_count(self, user_id: int) -> int:
+        return self.connection.execute(
+            select(func.count()).where(notifications.c.user_id == user_id, notifications.c.channel == "in_app", notifications.c.read_at.is_(None))
+        ).scalar_one()
+
+    def mark_read(self, user_id: int, notification_ids: Sequence[int] | None, now: datetime) -> int:
+        statement = update(notifications).where(
+            notifications.c.user_id == user_id, notifications.c.channel == "in_app", notifications.c.read_at.is_(None)
+        )
+        if notification_ids is not None:
+            statement = statement.where(notifications.c.id.in_(list(notification_ids)))
+        return self.connection.execute(statement.values(read_at=now)).rowcount
 
 
 def _progress() -> Select:

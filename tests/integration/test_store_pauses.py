@@ -123,15 +123,15 @@ def test_exhausted_pause_notifies_active_admins(engine: Engine) -> None:
     assert payload["host"].endswith(".example")
 
 
-def test_same_notification_is_not_repeated(engine: Engine) -> None:
+def test_same_notification_is_counted_not_repeated(engine: Engine) -> None:
     admin = user(engine, "admin")
     work = SqlUnitOfWork(engine)
     with work:
-        created = [work.notifications.notify_admins("store_paused", "store_paused:1:x", {"a": 1}, NOW) for _ in range(2)]
+        for _ in range(2):
+            work.notifications.notify_admins("store_paused", "store_paused:1:x", {"a": 1}, NOW)
         work.commit()
 
-    assert created == [1, 0]
-    assert sql(engine, "SELECT count(*) FROM notifications WHERE user_id = :u", u=admin) == [(1,)]
+    assert sql(engine, "SELECT count(*), max(repeat_count) FROM notifications WHERE user_id = :u", u=admin) == [(1, 2)]
 
 
 def test_rest_lasts_until_next_slot_from_settings(engine: Engine) -> None:
