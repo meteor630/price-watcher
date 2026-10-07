@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% from "_macros.html" import settings_tabs %}
+{% block title %}Настройки — пользователи{% endblock %}
+{% block content %}
+<nav class="crumbs" aria-label="Путь"><a href="/web/">Главная</a><span aria-hidden="true"> › </span><span class="crumbs__here" aria-current="page">Настройки</span></nav>
+<h1 class="page-title">Настройки</h1>
+<p class="summary">Регистрация — только по приглашению. Заблокированный не может войти; через 7 суток его данные удаляются, но разблокировка в течение 30 суток после этого их возвращает.</p>
+{{ settings_tabs("users", true) }}
+
+<div id="page-rest">
+  {% if notice %}<p class="alert alert--ok users-notice" role="status" data-notice>{{ notice }}</p>{% endif %}
+
+  <section class="section panel-box" aria-labelledby="invites-title">
+    <h2 id="invites-title" class="section__title">Приглашения</h2>
+    <form class="invite-form" hx-post="/web/invites" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">
+      <label class="field__label" for="invite-role">Роль нового пользователя</label>
+      <select class="input input--short" id="invite-role" name="role">
+        <option value="user">Пользователь</option>
+        <option value="admin">Администратор</option>
+      </select>
+      <button class="btn btn--primary" type="submit">Создать приглашение</button>
+    </form>
+    {% if issued %}
+    <div class="invite-issued" data-issued>
+      <p class="invite-issued__title">Ссылка для регистрации{% if issued.role == "admin" %} администратора{% endif %} — показывается один раз, действует до {{ moscow_moment(issued.expires_at) }}</p>
+      <div class="invite-issued__row">
+        <label class="visually-hidden" for="invite-link">Ссылка приглашения</label>
+        <input class="input num" id="invite-link" type="text" value="{{ issued.url }}" readonly>
+        <button class="btn btn--ghost" type="button" data-copy="invite-link">Копировать</button>
+      </div>
+    </div>
+    {% endif %}
+    {% if page.invites %}
+    <form class="invite-list" hx-post="/web/invites/delete" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">
+      <h3 class="dialog__section">Неиспользованные</h3>
+      <ul class="edit-list">
+        {% for invite in page.invites %}
+        <li class="edit-row invite-row{% if invite.expires_at <= now %} invite-row--expired{% endif %}">
+          <label class="check-label">
+            <input class="check" type="checkbox" name="invite_{{ invite.invite_id }}" value="on">
+            <span>{{ "Администратор" if invite.role.value == "admin" else "Пользователь" }} · создал {{ invite.created_by_name }} {{ moscow_moment(invite.created_at) }} ·
+              {% if invite.expires_at <= now %}срок истёк{% else %}до {{ moscow_moment(invite.expires_at) }}{% endif %}</span>
+          </label>
+        </li>
+        {% endfor %}
+      </ul>
+      <p class="field__hint">Сами ссылки не хранятся — только их отпечатки, поэтому показать ссылку снова нельзя: удалите приглашение и создайте новое.</p>
+      <button class="btn btn--danger btn--small" type="submit">Удалить выбранные</button>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="section" aria-labelledby="users-title">
+    <h2 id="users-title" class="section__title">Пользователи <span class="count-pill num">{{ page.users | length }}</span></h2>
+    <ul class="edit-list">
+      {% for user in page.users %}
+      {% set me = user.user_id == session_user.user.id %}
+      <li class="edit-row{% if user.disabled_at %} store-row--off{% endif %}" data-user="{{ user.user_id }}">
+        <div class="edit-row__main">
+          <div class="edit-row__text">
+            <span class="edit-row__name">{{ user.display_name }}{% if me %} <span class="flag">это вы</span>{% endif %}</span>
+            <span class="edit-row__meta">{{ user.login }} · с {{ long_date(moscow_day(user.created_at)) }} · {% if user.last_login_at %}вход {{ moscow_moment(user.last_login_at) }}{% else %}на сайт не входил{% endif %}</span>
+            <span class="store-row__flags">
+              {% if user.role.value == "admin" %}<span class="flag flag--review">администратор</span>{% endif %}
+              {% if user.disabled_at %}<span class="flag flag--check_failed">заблокирован {{ moscow_moment(user.disabled_at) }}</span>{% else %}<span class="flag flag--bought">активен</span>{% endif %}
+            </span>
+          </div>
+          {% if not me %}
+          <div class="edit-row__actions">
+            {% if user.role.value == "admin" and not user.disabled_at %}<button class="btn btn--ghost btn--small" type="button" hx-get="/web/users/{{ user.user_id }}/demote" hx-target="#dialog" hx-swap="innerHTML">Снять права администратора</button>{% endif %}
+            {% if user.disabled_at %}
+            <button class="btn btn--ghost btn--small" type="button" hx-get="/web/users/{{ user.user_id }}/unblock" hx-target="#dialog" hx-swap="innerHTML">Разблокировать</button>
+            {% else %}
+            <button class="btn btn--danger btn--small" type="button" hx-get="/web/users/{{ user.user_id }}/block" hx-target="#dialog" hx-swap="innerHTML">Заблокировать</button>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+<div id="dialog"></div>
+{% endblock %}

@@ -63,6 +63,26 @@ class UserCredentials:
     password_hash: str
 
 
+@dataclass(frozen=True, slots=True)
+class UserOverview:
+    user_id: int
+    login: str
+    display_name: str
+    role: Role
+    created_at: datetime
+    disabled_at: datetime | None
+    last_login_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class InviteOverview:
+    invite_id: int
+    role: Role
+    created_by_name: str
+    created_at: datetime
+    expires_at: datetime
+
+
 class UserRepository(Protocol):
     """Логин уникален без учёта регистра: занятый — LOGIN_TAKEN."""
 
@@ -72,6 +92,15 @@ class UserRepository(Protocol):
         """Поиск по логину без учёта регистра, в том числе отключённого пользователя."""
         ...
     def set_password_hash(self, user_id: int, password_hash: str) -> None: ...
+    def overview(self) -> list["UserOverview"]:
+        """Все пользователи с ролью, датой регистрации, блокировки и последнего входа на сайт."""
+        ...
+    def lock_admins(self) -> list[int]:
+        """Действующие администраторы; их строки блокируются до конца транзакции (два администратора
+        не заблокируют друг друга одновременно, оставив систему без администратора)."""
+        ...
+    def set_disabled(self, user_id: int, disabled_at: datetime | None) -> None: ...
+    def set_role(self, user_id: int, role: Role) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +125,7 @@ class SessionRepository(Protocol):
         ...
     def touch(self, session_id: int, now: datetime) -> None: ...
     def revoke(self, session_id: int, now: datetime) -> None: ...
+    def revoke_all(self, user_id: int, now: datetime) -> int: ...
 
 
 class InviteRepository(Protocol):
@@ -106,6 +136,12 @@ class InviteRepository(Protocol):
         """Неиспользованное и неистёкшее приглашение, заблокированное до конца транзакции; иначе None."""
         ...
     def mark_used(self, invite_id: int, user_id: int, now: datetime) -> None: ...
+    def unused(self) -> list["InviteOverview"]:
+        """Неиспользованные приглашения, сначала новые (и с истёкшим сроком — их можно удалить)."""
+        ...
+    def delete_unused(self, invite_ids: Sequence[int]) -> list[int]:
+        """Удалить неиспользованные приглашения; номера удалённых."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,6 +165,9 @@ class DeviceRepository(Protocol):
     def get_active(self, device_id: int) -> Device | None: ...
     def touch(self, device_id: int, now: datetime) -> None: ...
     def revoke(self, device_id: int, now: datetime) -> None: ...
+    def revoke_all(self, user_id: int, now: datetime) -> int:
+        """Отозвать все устройства пользователя — вместе с их токенами."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,6 +255,10 @@ class PersonalDataRepository(Protocol):
     def purge_deleted(self, deleted_before: datetime) -> "PurgedCounts":
         """Окончательно стереть удалённые не позже `deleted_before` категории, группы, товары вместе с содержимым
         и привязками ссылок; каталог ссылок и история цен остаются."""
+        ...
+    def restore_deleted_at(self, user_id: int, deleted_at: datetime) -> int:
+        """Вернуть категории, группы и товары пользователя, удалённые ровно в этот момент (удаление после блокировки);
+        уже стёртые очисткой не вернуть. Число возвращённых записей."""
         ...
 
 
@@ -676,6 +719,9 @@ class AuditRepository(Protocol):
     def add(self, event: AuditEvent) -> None: ...
     def recent(self, actor_id: int, action: str, since: datetime) -> list[datetime]:
         """Моменты действий пользователя этого вида начиная с `since`, по возрастанию (для лимитов)."""
+        ...
+    def last(self, action: str, entity_type: str, entity_id: int) -> "AuditEvent | None":
+        """Последняя запись этого вида о записи."""
         ...
 
 

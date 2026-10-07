@@ -657,6 +657,20 @@ class SqlPersonalDataRepository:
             update(users).where(users.c.id == user_id).values(categories_order_version=users.c.categories_order_version + 1)
         )
 
+    def restore_deleted_at(self, user_id: int, deleted_at: datetime) -> int:
+        restored = 0
+        for table in (categories, groups, items):
+            restored += self.connection.execute(
+                update(table)
+                .where(table.c.user_id == user_id, table.c.deleted_at == deleted_at)
+                .values(deleted_at=None, version=table.c.version + 1, updated_at=func.now())
+            ).rowcount
+        if restored:
+            self.connection.execute(
+                update(users).where(users.c.id == user_id).values(categories_order_version=users.c.categories_order_version + 1)
+            )
+        return restored
+
     def purge_deleted(self, deleted_before: datetime) -> PurgedCounts:
         # Удалённая категория или группа прячет всё содержимое — стирается вместе с ним.
         doomed_categories = select(categories.c.id).where(categories.c.deleted_at <= deleted_before)

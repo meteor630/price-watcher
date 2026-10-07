@@ -1,0 +1,18 @@
+<dialog class="dialog" data-modal data-open aria-labelledby="user-confirm-title">
+  <form class="dialog__body" data-close-on-success hx-post="/web/users/{{ user.user_id }}/{{ action }}" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">
+    {% if action == "block" %}
+    <h2 id="user-confirm-title" class="dialog__title">Заблокировать «{{ user.display_name }}»?</h2>
+    <p class="dialog__text">Вход на сайт и в приложение закроется сразу, его товары перестанут проверяться. Через 7 суток его списки удалятся; разблокировка в течение 30 суток после этого их вернёт.{% if user.role.value == "admin" %} Если нужно только убрать права администратора — нажмите «Снять права администратора».{% endif %}</p>
+    {% elif action == "unblock" %}
+    <h2 id="user-confirm-title" class="dialog__title">Разблокировать «{{ user.display_name }}»?</h2>
+    <p class="dialog__text">Он снова сможет войти. Если его списки уже удалены после блокировки, они вернутся — если не прошло 30 суток.</p>
+    {% else %}
+    <h2 id="user-confirm-title" class="dialog__title">Снять права администратора с «{{ user.display_name }}»?</h2>
+    <p class="dialog__text">Он останется обычным пользователем со своими списками.</p>
+    {% endif %}
+    <div class="dialog__actions">
+      <button class="btn btn--ghost" type="button" data-dialog-close data-autofocus>Отмена</button>
+      <button class="btn {{ 'btn--danger' if action == 'block' else 'btn--primary' }}" type="submit">{{ {"block": "Заблокировать", "unblock": "Разблокировать", "demote": "Снять права"}[action] }}</button>
+    </div>
+  </form>
+</dialog>

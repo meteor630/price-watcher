@@ -51,6 +51,17 @@ class SqlAuditRepository:
             )
         )
 
+    def last(self, action: str, entity_type: str, entity_id: int) -> AuditEvent | None:
+        row = self.connection.execute(
+            select(audit_events)
+            .where(audit_events.c.action == action, audit_events.c.entity_type == entity_type, audit_events.c.entity_id == entity_id)
+            .order_by(audit_events.c.created_at.desc(), audit_events.c.id.desc())
+            .limit(1)
+        ).one_or_none()
+        if row is None:
+            return None
+        return AuditEvent(row.actor_id, row.action, row.entity_type, row.entity_id, row.before_json, row.after_json, row.created_at)
+
     def recent(self, actor_id: int, action: str, since: datetime) -> list[datetime]:
         rows = self.connection.execute(
             select(audit_events.c.created_at)

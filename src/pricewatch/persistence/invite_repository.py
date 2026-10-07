@@ -2,12 +2,16 @@
 
 from datetime import datetime
 
-from sqlalchemy import Connection, Row, Table, select, update
+from collections.abc import Sequence
 
+from sqlalchemy import Connection, Row, Table, delete, select, update
+
+from pricewatch.application.ports import InviteOverview
 from pricewatch.domain.accounts import Invite, Role
-from pricewatch.persistence.models import InviteRow
+from pricewatch.persistence.models import InviteRow, UserRow
 
 invites: Table = InviteRow.__table__
+users: Table = UserRow.__table__
 
 
 def _to_invite(row: Row) -> Invite:
@@ -40,3 +44,18 @@ class SqlInviteRepository:
         self.connection.execute(
             update(invites).where(invites.c.id == invite_id, invites.c.used_at.is_(None)).values(used_by=user_id, used_at=now)
         )
+
+    def unused(self) -> list[InviteOverview]:
+        rows = self.connection.execute(
+            select(invites, users.c.display_name.label("creator"))
+            .join(users, users.c.id == invites.c.created_by)
+            .where(invites.c.used_at.is_(None))
+            .order_by(invites.c.created_at.desc(), invites.c.id.desc())
+        )
+        return [InviteOverview(row.id, Role(row.role), row.creator, row.created_at, row.expires_at) for row in rows]
+
+    def delete_unused(self, invite_ids: Sequence[int]) -> list[int]:
+        deleted = self.connection.execute(
+            delete(invites).where(invites.c.id.in_(list(invite_ids)), invites.c.used_at.is_(None)).returning(invites.c.id)
+        )
+        return sorted(row.id for row in deleted)

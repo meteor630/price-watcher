@@ -3,7 +3,7 @@
 from datetime import datetime
 
 from pricewatch.application.passwords import PasswordHasher
-from pricewatch.application.ports import UnitOfWork
+from pricewatch.application.ports import AuditEvent, UnitOfWork
 from pricewatch.domain.accounts import (
     INVITE_LIFETIME,
     IssuedInvite,
@@ -36,6 +36,7 @@ def create_invite(uow: UnitOfWork, key: bytes, actor_id: int, role: Role, now: d
         if not actor.is_admin or actor.disabled:
             raise PriceWatcherError(ErrorCode.FORBIDDEN)
         invite = uow.invites.create(keyed_hash(key, Purpose.INVITE, code), role, actor.id, now, now + INVITE_LIFETIME)
+        uow.audit.add(AuditEvent(actor.id, "invite_created", "invite", invite.id, None, {"role": role.value, "expires_at": invite.expires_at.isoformat()}, now))
         uow.commit()
     return IssuedInvite(invite=invite, code=code)
 

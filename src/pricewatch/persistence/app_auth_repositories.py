@@ -67,6 +67,11 @@ class SqlDeviceRepository:
             update(devices).where(devices.c.id == device_id, devices.c.revoked_at.is_(None)).values(revoked_at=now)
         )
 
+    def revoke_all(self, user_id: int, now: datetime) -> int:
+        return self.connection.execute(
+            update(devices).where(devices.c.user_id == user_id, devices.c.revoked_at.is_(None)).values(revoked_at=now)
+        ).rowcount
+
 
 class SqlTokenRepository:
     def __init__(self, connection: Connection) -> None:

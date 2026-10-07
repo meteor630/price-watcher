@@ -220,10 +220,21 @@
     }
   }
 
+  // На узком экране вкладки прокручиваются: открытая не должна оставаться за краем.
+  function revealCurrentTab(root) {
+    root.querySelectorAll(".tabs").forEach((tabs) => {
+      const current = tabs.querySelector('[aria-current="page"]');
+      if (current && tabs.scrollWidth > tabs.clientWidth) {
+        tabs.scrollLeft = current.offsetLeft - (tabs.clientWidth - current.offsetWidth) / 2;
+      }
+    });
+  }
+
   htmx.onLoad((root) => {
     initSortables(root);
     armToasts(root);
     openDialogs(root);
+    revealCurrentTab(root);
   });
 
   document.addEventListener("htmx:afterSwap", (event) => {
@@ -243,6 +254,25 @@
     const closer = event.target.closest("[data-dialog-close]");
     if (closer) {
       closeDialog(closer.closest("dialog"));
+    }
+  });
+
+  // «Копировать»: текст из поля, на которое указывает data-copy; без доступа к буферу поле просто выделяется.
+  document.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-copy]");
+    if (!button) {
+      return;
+    }
+    const field = document.getElementById(button.dataset.copy);
+    if (!field) {
+      return;
+    }
+    field.select();
+    try {
+      await navigator.clipboard.writeText(field.value);
+      button.textContent = "Скопировано";
+    } catch (error) {
+      button.textContent = "Выделено — скопируйте вручную";
     }
   });
 })();
