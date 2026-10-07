@@ -613,6 +613,37 @@ class AuditEventRow(Base):
     )
 
 
+class ClientErrorReportRow(Base):
+    """Отчёт о неожиданной ошибке приложения iPhone/iPad. Недоверенный ввод: текст очищен от токенов и
+    параметров адресов, нигде не выводится как HTML. Хранится 90 суток."""
+
+    __tablename__ = "client_error_reports"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    error_id: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    device_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    app_version: Mapped[str] = mapped_column(Text, nullable=False)
+    os_version: Mapped[str] = mapped_column(Text, nullable=False)
+    screen: Mapped[str] = mapped_column(Text, nullable=False)
+    error_code: Mapped[str] = mapped_column(Text, nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        ForeignKeyConstraint(["user_id"], ["users.id"]),
+        ForeignKeyConstraint(["device_id"], ["devices.id"]),
+        CheckConstraint("char_length(app_version) <= 40", name="app_version_length"),
+        CheckConstraint("char_length(os_version) <= 40", name="os_version_length"),
+        CheckConstraint("char_length(screen) <= 80", name="screen_length"),
+        CheckConstraint("char_length(error_code) <= 80", name="error_code_length"),
+        CheckConstraint("char_length(message) <= 2000", name="message_length"),
+        Index("ix_client_error_reports_device_id_received_at", "device_id", "received_at"),
+        Index("ix_client_error_reports_received_at", "received_at"),
+    )
+
+
 class NotificationRow(Base):
     """Уведомление одному получателю в одном канале; одинаковые склеиваются по dedup_key.
 

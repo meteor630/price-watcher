@@ -11,6 +11,7 @@ from pathlib import Path
 
 from sqlalchemy import Engine
 
+from pricewatch.application.client_errors import purge_client_errors
 from pricewatch.application.idempotency import purge_expired
 from pricewatch.application.ports import PurgedCounts
 from pricewatch.application.retention import delete_blocked_users_data, purge_deleted
@@ -48,6 +49,9 @@ class SqlJobs:
 
     def purge_idempotency_keys(self, now: datetime) -> int:
         return purge_expired(SqlUnitOfWork(self._engine), now)
+
+    def purge_client_errors(self, now: datetime) -> int:
+        return purge_client_errors(SqlUnitOfWork(self._engine), now)
 
 
 def run_scheduler(env_file: Path = Path(".env")) -> int:

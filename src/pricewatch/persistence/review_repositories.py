@@ -1,17 +1,18 @@
-"""Решения пользователей по подозрительным наблюдениям и журнал действий."""
+"""Решения пользователей по подозрительным наблюдениям, журнал действий и отчёты об ошибках приложения."""
 
 from datetime import datetime
 
 from sqlalchemy import Connection, Table, delete, insert, select
 from sqlalchemy.exc import IntegrityError
 
-from pricewatch.application.ports import AuditEvent
+from pricewatch.application.ports import AuditEvent, ClientErrorReport
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.review import Decision
-from pricewatch.persistence.models import AuditEventRow, PriceDecisionRow
+from pricewatch.persistence.models import AuditEventRow, ClientErrorReportRow, PriceDecisionRow
 
 decisions: Table = PriceDecisionRow.__table__
 audit_events: Table = AuditEventRow.__table__
+client_errors: Table = ClientErrorReportRow.__table__
 
 
 class SqlDecisionRepository:
@@ -65,7 +66,33 @@ class SqlAuditRepository:
     def recent(self, actor_id: int, action: str, since: datetime) -> list[datetime]:
         rows = self.connection.execute(
             select(audit_events.c.created_at)
-            .where(audit_events.c.actor_id == actor_id, audit_events.c.action == action, audit_events.c.created_at >= since)
+            # Окно полуоткрытое: событие ровно `since` уже вышло из него — так совпадает с обещанным retry_after.
+            .where(audit_events.c.actor_id == actor_id, audit_events.c.action == action, audit_events.c.created_at > since)
             .order_by(audit_events.c.created_at)
         )
         return [row.created_at for row in rows]
+
+
+class SqlClientErrorRepository:
+    def __init__(self, connection: Connection) -> None:
+        self.connection = connection
+
+    def add(self, report: ClientErrorReport) -> None:
+        self.connection.execute(
+            insert(client_errors).values(
+                error_id=report.error_id, user_id=report.user_id, device_id=report.device_id, app_version=report.app_version,
+                os_version=report.os_version, screen=report.screen, error_code=report.error_code, message=report.message,
+                occurred_at=report.occurred_at, received_at=report.received_at,
+            )
+        )
+
+    def recent(self, device_id: int, since: datetime) -> list[datetime]:
+        rows = self.connection.execute(
+            select(client_errors.c.received_at)
+            .where(client_errors.c.device_id == device_id, client_errors.c.received_at > since)
+            .order_by(client_errors.c.received_at)
+        )
+        return [row.received_at for row in rows]
+
+    def purge(self, received_before: datetime) -> int:
+        return self.connection.execute(delete(client_errors).where(client_errors.c.received_at < received_before)).rowcount

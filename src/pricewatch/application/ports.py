@@ -735,7 +735,7 @@ class AuditEvent:
 class AuditRepository(Protocol):
     def add(self, event: AuditEvent) -> None: ...
     def recent(self, actor_id: int, action: str, since: datetime) -> list[datetime]:
-        """Моменты действий пользователя этого вида начиная с `since`, по возрастанию (для лимитов)."""
+        """Моменты действий пользователя этого вида позже `since`, по возрастанию (для лимитов)."""
         ...
     def last(self, action: str, entity_type: str, entity_id: int) -> "AuditEvent | None":
         """Последняя запись этого вида о записи."""
@@ -749,6 +749,30 @@ class DecisionRepository(Protocol):
     def delete(self, user_id: int, decision_id: int) -> tuple[int, Decision] | None:
         """Удалить своё решение («Отменить»): наблюдение и каким было решение; чужое или нет — None."""
         ...
+
+
+@dataclass(frozen=True, slots=True)
+class ClientErrorReport:
+    """Отчёт приложения, уже очищенный от секретов."""
+
+    error_id: str
+    user_id: int
+    device_id: int
+    app_version: str
+    os_version: str
+    screen: str
+    error_code: str
+    message: str
+    occurred_at: datetime
+    received_at: datetime
+
+
+class ClientErrorRepository(Protocol):
+    def add(self, report: ClientErrorReport) -> None: ...
+    def recent(self, device_id: int, since: datetime) -> list[datetime]:
+        """Когда устройство присылало отчёты позже `since`, по возрастанию (для лимита)."""
+        ...
+    def purge(self, received_before: datetime) -> int: ...
 
 
 class ImageStore(Protocol):
@@ -802,6 +826,7 @@ class UnitOfWork(Protocol):
     notifications: NotificationRepository
     decisions: DecisionRepository
     audit: AuditRepository
+    client_errors: ClientErrorRepository
 
     def __enter__(self) -> Self: ...
     def __exit__(

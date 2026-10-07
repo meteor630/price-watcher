@@ -80,5 +80,9 @@ def _describe(kind: str, payload: dict[str, object]) -> tuple[str, str | None]:
         return f"«{payload['store']}» на паузе до {until:%d.%m в %H:%M}: {reason}.", "/web/settings/stores"
     if kind == "unexpected_error":
         return f"Неожиданная ошибка сервера: {payload['exception']} в {payload['method']} {payload['route']}. Номер ошибки {payload['error_id']}.", None
+    if kind == "client_error":
+        text = f"Ошибка приложения {payload['app_version']} ({payload['os_version']}) на экране «{payload['screen']}»: {payload['error_code']}"
+        message = str(payload["message"])
+        return f"{text}{' — ' + message if message else ''}. Номер ошибки {payload['error_id']}.", None
     # Вид уведомления открыт: незнакомый показывается нейтрально, а не пропадает.
     return f"Системное событие «{kind}».", None

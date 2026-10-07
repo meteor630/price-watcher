@@ -148,6 +148,8 @@ def test_recheck_limit_per_hour(engine: Engine) -> None:
     error = code(lambda: recheck(uow(engine), KEY, me.user, jump, NOW))
 
     assert error == (ErrorCode.RATE_LIMITED, {"retry_after_seconds": 60})
+    # Ровно через обещанные 60 секунд самая ранняя перепроверка вышла из часового окна.
+    assert recheck(uow(engine), KEY, me.user, jump, NOW + timedelta(seconds=60)).undo_token is not None
 
 
 def test_purchased_items_have_no_cards(engine: Engine) -> None:

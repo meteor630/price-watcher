@@ -1,5 +1,6 @@
 """Цикл планировщика: каждые 30 секунд вернуть просроченные задания, удалить данные пользователей,
-заблокированных 7 суток назад, стереть удалённое 30 дней назад и ключи повтора старше суток, запустить наступившую проверку.
+заблокированных 7 суток назад, стереть удалённое 30 дней назад, ключи повтора старше суток и отчёты об ошибках
+приложения старше 90 суток, запустить наступившую проверку.
 
 - Наступивший слот — последний из промежутка с прошлого удачного обхода; после старта промежуток
   начинается с 00:00 текущих суток по Москве: один пропущенный запуск за сутки выполняется.
@@ -31,6 +32,7 @@ class Jobs(Protocol):
     def delete_blocked_users_data(self, now: datetime) -> int: ...
     def purge_deleted(self, now: datetime) -> PurgedCounts: ...
     def purge_idempotency_keys(self, now: datetime) -> int: ...
+    def purge_client_errors(self, now: datetime) -> int: ...
 
 
 class Scheduler:
@@ -78,6 +80,9 @@ class Scheduler:
                 "Удалённое стёрто окончательно", extra={"categories": purged.categories, "groups": purged.groups, "items": purged.items}
             )
         self._jobs.purge_idempotency_keys(now)
+        reports = self._jobs.purge_client_errors(now)
+        if reports:
+            logger.info("Отчёты об ошибках приложения старше 90 суток стёрты", extra={"reports": reports})
         after = self._after or day_start(moscow_date(now))
         slot = due_slot(self._jobs.schedule_times(), after, now)
         if slot is not None:

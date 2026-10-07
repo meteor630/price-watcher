@@ -25,6 +25,7 @@ class FakeJobs:
         self.purged = PurgedCounts()
         self.purged_at: list[datetime] = []
         self.keys_purged_at: list[datetime] = []
+        self.reports_purged_at: list[datetime] = []
         self.fail: Exception | None = None
 
     def schedule_times(self) -> tuple[time, ...]:
@@ -50,6 +51,10 @@ class FakeJobs:
 
     def purge_idempotency_keys(self, now: datetime) -> int:
         self.keys_purged_at.append(now)
+        return 0
+
+    def purge_client_errors(self, now: datetime) -> int:
+        self.reports_purged_at.append(now)
         return 0
 
 
@@ -182,3 +187,4 @@ def test_old_idempotency_keys_are_purged_every_tick() -> None:
     Scheduler(jobs, clock=Clock(msk(8))).tick()
 
     assert jobs.keys_purged_at == [msk(8)]
+    assert jobs.reports_purged_at == [msk(8)]
