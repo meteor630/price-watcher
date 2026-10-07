@@ -4,7 +4,10 @@ from decimal import Decimal
 
 import pytest
 
-from pricewatch.domain.money import Change, Direction, format_change, format_percent, format_rub, percent_tenths, price_change
+from pricewatch.domain.errors import ErrorCode, PriceWatcherError
+from pricewatch.domain.money import (
+    Change, Direction, format_change, format_percent, format_rub, input_rub, parse_rub, percent_tenths, price_change,
+)
 
 NNBSP = " "
 NBSP = " "
@@ -120,3 +123,33 @@ def test_format_percent_rejects_negative() -> None:
 def test_money_rejects_non_integer_amounts(call, bad: object) -> None:  # type: ignore[no-untyped-def]
     with pytest.raises(TypeError):
         call(bad)
+
+
+@pytest.mark.parametrize(
+    ("text", "minor"),
+    [
+        ("12990", 1_299_000),
+        ("12 990,50 ₽", 1_299_050),
+        ("12\u202f990,5", 1_299_050),
+        ("0,01", 1),
+        ("  7.05 ", 705),
+        ("999999999999,99", 99_999_999_999_999),
+    ],
+)
+def test_parse_rub_accepts_human_input(text: str, minor: int) -> None:
+    assert parse_rub(text, "price") == minor
+
+
+@pytest.mark.parametrize("text", ["", "₽", "-5", "1,234", "1e3", "12,5,0", "1000000000000", "１２", "12 990.50.1", "NaN"])
+def test_parse_rub_refuses_everything_else(text: str) -> None:
+    with pytest.raises(PriceWatcherError) as caught:
+        parse_rub(text, "price")
+
+    assert caught.value.code is ErrorCode.VALIDATION_ERROR
+    assert caught.value.details == {"fields": {"price": "invalid"}}
+
+
+@pytest.mark.parametrize(("minor", "text"), [(1_299_000, "12990"), (1_299_050, "12990,50"), (5, "0,05")])
+def test_input_rub_round_trips(minor: int, text: str) -> None:
+    assert input_rub(minor) == text
+    assert parse_rub(input_rub(minor), "price") == minor

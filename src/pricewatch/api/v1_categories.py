@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pricewatch.api.app_auth import app_user
 from pricewatch.api.context import get_context
 from pricewatch.api.idempotency import idempotent
-from pricewatch.api.v1_json import change_json, item_row_json, point_json
+from pricewatch.api.v1_json import change_json, item_row_json, point_json, purchase_json
 from pricewatch.application.app_auth import DeviceUser
 from pricewatch.application.category import CategoryDetail, category_chart, category_detail
 from pricewatch.application.shopping import reorder_categories, reorder_group_items
@@ -95,4 +95,5 @@ def category_json(detail: CategoryDetail) -> dict[str, Any]:
             {"id": block.group_id, "name": block.name, "version": block.version, "items": [item_row_json(row) for row in block.items]}
             for block in detail.groups
         ],
+        "purchased": [purchase_json(view) for view in detail.purchased],
     }

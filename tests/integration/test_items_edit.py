@@ -164,3 +164,17 @@ def test_reorder_items_in_group_and_ungrouped(engine: Engine) -> None:
     reorder_items(uow(engine), world.user, home, None, [second, first], version)
 
     assert rows(engine, world, home) == [(None, ["Второй", "Первый"])]
+
+
+def test_reorder_counts_only_items_in_list(engine: Engine) -> None:
+    # Купленный и архивный товары не видны в настройках — порядок «в списке» передаётся без них.
+    world = World(engine)
+    home = world.category("Дом")
+    first, second = world.item(home, "Первый"), world.item(home, "Второй")
+    world.item(home, "Купленный", state="purchased")
+    world.item(home, "Архивный", state="archived")
+    version = world.one("SELECT version FROM categories WHERE id = :c", c=home)
+
+    reorder_items(uow(engine), world.user, home, None, [second, first], version)
+
+    assert rows(engine, world, home) == [(None, ["Второй", "Первый"])]

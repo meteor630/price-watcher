@@ -3,6 +3,7 @@
 import inspect
 import uuid
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import Engine, text
@@ -10,6 +11,7 @@ from sqlalchemy import Engine, text
 from pricewatch.application import ports
 from pricewatch.application.ports import ItemChanges, NewItem
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
+from pricewatch.domain.shopping import Purchase
 from pricewatch.persistence.database import create_db_engine
 from pricewatch.persistence.shopping_repositories import (
     OrderState,
@@ -564,6 +566,9 @@ FOREIGN_CALLS: dict[str, Callable[[SqlUnitOfWork, int, dict[str, int]], object]]
     "items.reorder_grouped": lambda w, u, r: w.items.reorder(u, r["category"], r["group"], [r["item"]], 1),
     "items.move_category_items": lambda w, u, r: w.items.move_category_items(u, r["category"], r["category"]),
     "items.ungroup_items": lambda w, u, r: w.items.ungroup_items(u, r["group"]),
+    "items.purchase": lambda w, u, r: w.items.purchase(u, r["item"], 1, Purchase(datetime(2026, 10, 6, tzinfo=UTC), 100, 1, None), None),
+    "items.archive": lambda w, u, r: w.items.archive(u, r["item"], 1, datetime(2026, 10, 6, tzinfo=UTC)),
+    "items.return_to_list": lambda w, u, r: w.items.return_to_list(u, r["item"], 1),
 }
 
 

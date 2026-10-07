@@ -22,7 +22,7 @@ from typing import Protocol, Self
 
 from pricewatch.domain.accounts import Device, Invite, Role, User, WebSession
 from pricewatch.domain.pricing import Observation
-from pricewatch.domain.shopping import Category, Group, Item, ItemState
+from pricewatch.domain.shopping import Category, Group, Item, ItemState, Purchase
 
 
 class Unchanged:
@@ -195,6 +195,13 @@ class ItemRepository(Protocol):
         ...
     def ungroup_items(self, user_id: int, group_id: int) -> int:
         """Товары группы — в «без группы» той же категории, в конец списка; число перенесённых."""
+        ...
+    def purchase(self, user_id: int, item_id: int, version: int, purchase: Purchase, baseline_minor: int | None) -> Item:
+        """Товар «в списке» — купленный; `baseline_minor` — лучшая цена в момент добавления товара."""
+        ...
+    def archive(self, user_id: int, item_id: int, version: int, now: datetime) -> Item: ...
+    def return_to_list(self, user_id: int, item_id: int, version: int) -> Item:
+        """Купленный или архивный товар — снова «в списке» на прежнем месте; данные покупки стираются."""
         ...
 
 

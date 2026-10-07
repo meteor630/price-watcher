@@ -1,0 +1,36 @@
+<dialog class="dialog" data-modal data-open aria-labelledby="purchase-title">
+  <form class="dialog__body form" data-close-on-success hx-post="/web/items/{{ form.item_id }}/purchase"
+        hx-select="#hero-figures" hx-target="#hero-figures" hx-swap="outerHTML" hx-select-oob="#page-rest,#flash">
+    <h2 id="purchase-title" class="dialog__title">Куплено: «{{ form.name }}»</h2>
+    <p class="dialog__text">Товар уйдёт из списка и итога, история цены сохранится. Ещё 14 дней цена проверяется — если подешевеет, на карточке будет видно.</p>
+    <input type="hidden" name="version" value="{{ form.version }}">
+    <div class="form__row">
+      <div class="field">
+        <label class="field__label" for="purchase-price">Цена за штуку, ₽</label>
+        <input class="input num" id="purchase-price" name="price" type="text" inputmode="decimal" autocomplete="off" maxlength="20" required
+               value="{{ form.price_input }}" placeholder="12 990,50" data-autofocus>
+      </div>
+      <div class="field field--narrow">
+        <label class="field__label" for="purchase-quantity">Количество</label>
+        <input class="input" id="purchase-quantity" name="quantity" type="number" min="1" max="999" required value="{{ form.quantity }}">
+      </div>
+    </div>
+    <div class="form__row">
+      <div class="field">
+        <label class="field__label" for="purchase-store">Магазин</label>
+        <select class="input" id="purchase-store" name="store_id">
+          <option value="">Не указан</option>
+          {% for store in form.stores %}<option value="{{ store.store_id }}" {% if store.store_id == form.store_id %}selected{% endif %}>{{ store.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label class="field__label" for="purchase-day">Дата покупки</label>
+        <input class="input" id="purchase-day" name="day" type="date" min="2000-01-01" max="{{ form.today.isoformat() }}" required value="{{ form.today.isoformat() }}">
+      </div>
+    </div>
+    <div class="dialog__actions">
+      <button class="btn btn--ghost" type="button" data-dialog-close>Отмена</button>
+      <button class="btn btn--primary" type="submit">Сохранить</button>
+    </div>
+  </form>
+</dialog>

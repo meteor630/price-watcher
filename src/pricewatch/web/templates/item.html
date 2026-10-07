@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import price_flags, quantity_stepper, total_toggle %}
-{% block title %}{{ detail.name }}{% endblock %}
+{% block title %}{{ detail.name }}<div id="dialog"></div>
+{% endblock %}
 {% block content %}
 <nav class="crumbs" aria-label="Путь">
   <a href="/web/">Главная</a><span aria-hidden="true"> › </span><a href="/web/categories/{{ detail.category_id }}">{{ detail.category_name }}</a>
@@ -57,9 +58,29 @@
         </ul>
       </details>
       {% endif %}
+      <button class="btn btn--primary btn--small" type="button" hx-get="/web/items/{{ detail.item_id }}/purchase" hx-target="#dialog" hx-swap="innerHTML">Куплено</button>
+      <button class="btn btn--ghost btn--small" type="button" hx-post="/web/items/{{ detail.item_id }}/archive" hx-vals='{"version": "{{ detail.version }}"}'
+              hx-select="#hero-figures" hx-target="#hero-figures" hx-swap="outerHTML" hx-select-oob="#page-rest,#flash" hx-disabled-elt="this">В архив</button>
+    </div>
+    {% elif detail.purchase %}
+    <div class="purchase-box" data-purchase>
+      <p class="purchase-box__title"><span class="flag flag--bought">куплен</span> {{ long_date(detail.purchase.purchased_on) }}{% if detail.purchase.store %} · <span class="store-dot store-dot--{{ detail.purchase.store.color_token }}" aria-hidden="true"></span>{{ detail.purchase.store.name }}{% endif %}</p>
+      <p class="purchase-box__sum num">{% if detail.purchase.quantity > 1 %}{{ detail.purchase.quantity }} × {{ detail.purchase.price_text }} = {% endif %}{{ detail.purchase.total_text }}</p>
+      {% if detail.cheaper_now_text %}<p class="purchase-box__cheaper" data-cheaper-now>Сейчас дешевле на <span class="num">{{ detail.cheaper_now_text }}</span> за штуку</p>{% endif %}
+      <div class="item-hero__controls">
+        <a class="btn btn--ghost btn--small" href="/web/settings/items?edit={{ detail.item_id }}">Изменить</a>
+        <button class="btn btn--ghost btn--small" type="button" hx-get="/web/items/{{ detail.item_id }}/return" hx-target="#dialog" hx-swap="innerHTML">Вернуть в список</button>
+      </div>
     </div>
     {% else %}
-    <p class="flag">{{ "куплен" if detail.state.value == "purchased" else "в архиве" }}</p>
+    <div class="purchase-box" data-archived>
+      <p class="purchase-box__title"><span class="flag">в архиве</span>{% if detail.archived_at %} с {{ long_date(moscow_day(detail.archived_at)) }}{% endif %}</p>
+      <p class="muted">Товар не входит в итог, ссылки не проверяются. История цены сохранена.</p>
+      <div class="item-hero__controls">
+        <button class="btn btn--ghost btn--small" type="button" hx-post="/web/items/{{ detail.item_id }}/return" hx-vals='{"version": "{{ detail.version }}"}'
+                hx-select="#hero-figures" hx-target="#hero-figures" hx-swap="outerHTML" hx-select-oob="#page-rest,#flash" hx-disabled-elt="this">Вернуть в список</button>
+      </div>
+    </div>
     {% endif %}
   </div>
 </section>
@@ -105,4 +126,5 @@
     {% else %}<p class="muted">Изменений пока не было.</p>{% endif %}
   </section>
 </div>
+<div id="dialog"></div>
 {% endblock %}

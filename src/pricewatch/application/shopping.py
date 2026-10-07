@@ -25,7 +25,7 @@ from pricewatch.application.ports import UNCHANGED, ItemChanges, LinkResolver, L
 from pricewatch.domain.accounts import User
 from pricewatch.domain.errors import SAFE_MESSAGES, ErrorCode, PriceWatcherError
 from pricewatch.domain.money import format_rub
-from pricewatch.domain.shopping import REGION_CODE, Category, Group, Item
+from pricewatch.domain.shopping import REGION_CODE, Category, Group, Item, ItemState
 from pricewatch.domain.undo import UndoKind, issue_undo, read_undo
 
 
@@ -93,8 +93,11 @@ def reorder_groups(uow: UnitOfWork, user: User, category_id: int, ids: Sequence[
     return version
 
 
+UNDONE_STATES = {UndoKind.PURCHASE: ItemState.PURCHASED, UndoKind.ARCHIVE: ItemState.ARCHIVED}
+
+
 def undo_delete(uow: UnitOfWork, key: bytes, user: User, token: str, now: datetime) -> tuple[UndoKind, int]:
-    """Вернуть удалённое по токену; просроченный, чужой и подделанный токены — NOT_FOUND."""
+    """Вернуть удалённое (или купленный и архивный товар — в список) по токену; просроченный, чужой и подделанный токены — NOT_FOUND."""
     kind, entity_id = read_undo(key, user.id, token, now)
     with uow:
         if kind is UndoKind.CATEGORY:
@@ -103,8 +106,15 @@ def undo_delete(uow: UnitOfWork, key: bytes, user: User, token: str, now: dateti
             uow.groups.restore(user.id, entity_id)
         elif kind is UndoKind.ITEM:
             uow.items.restore(user.id, entity_id)
-        elif not uow.item_links.reopen(user.id, entity_id):
-            raise PriceWatcherError(ErrorCode.NOT_FOUND, {"undo": "replaced"})
+        elif kind is UndoKind.LINK:
+            if not uow.item_links.reopen(user.id, entity_id):
+                raise PriceWatcherError(ErrorCode.NOT_FOUND, {"undo": "replaced"})
+        else:
+            item = uow.items.get(user.id, entity_id)
+            # Товар уже вернули в список или перевели дальше — отменять нечего.
+            if item.state is not UNDONE_STATES[kind]:
+                raise PriceWatcherError(ErrorCode.NOT_FOUND, {"undo": "changed"})
+            uow.items.return_to_list(user.id, entity_id, item.version)
         uow.commit()
     return kind, entity_id
 

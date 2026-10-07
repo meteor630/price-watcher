@@ -2,6 +2,7 @@
 
 - Категория: итог и изменение за период, товары «в списке» блоками — сначала без группы, затем группы
   в их порядке, пустые группы тоже видны; у блока своя сумма по правилам итога.
+- Внизу категории — купленные товары («Куплено»), сначала новые; в итог не входят.
 - График категории — «сколько стоил бы нынешний список» по дням (domain.charts.sum_chart).
 - Группа: у товара цены всех магазинов, привязанных сейчас, лучшая отмечена; «минимум периода» —
   самая низкая подтверждённая цена за штуку за период с датой и магазином (domain.totals.period_minimum).
@@ -13,12 +14,14 @@ from datetime import date, datetime
 
 from pricewatch.application.ports import StoreInfo, UnitOfWork
 from pricewatch.application.price_view import ItemRowView, PricedRow, StoreView, item_row, load, price_text
+from pricewatch.application.purchases import PurchaseView, purchase_store_ids, purchase_view
 from pricewatch.domain.accounts import User
 from pricewatch.domain.charts import ChartPoint, ChartRange, chart_days, sum_chart
 from pricewatch.domain.days import Period, day_start, moscow_date, period_start
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.money import Change, format_rub
 from pricewatch.domain.pricing import PriceStatus
+from pricewatch.domain.shopping import ItemState
 from pricewatch.domain.totals import in_total_shown, period_minimum, total, total_change
 
 
@@ -44,6 +47,8 @@ class CategoryDetail:
     in_total_count: int
     watching_count: int
     groups: list[GroupBlock]
+    # Купленные товары категории, сначала новые; в итог не входят.
+    purchased: list[PurchaseView]
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +88,9 @@ def category_detail(uow: UnitOfWork, user: User, category_id: int, period: Perio
         category = uow.categories.get(user.id, category_id)
         groups = uow.groups.list_in_category(user.id, category_id)
         priced = load(uow, user.id, period, now, period_start(period, now))
+        bought = [item for item in uow.items.list_in_category(user.id, category_id) if item.state is ItemState.PURCHASED]
+        bought_stores = uow.price_data.stores(purchase_store_ids(bought))
+    purchased = sorted((purchase_view(item, bought_stores) for item in bought), key=lambda view: (view.purchased_at, view.item_id), reverse=True)
     rows = [row for row in priced.rows if row.item.category_id == category_id]
     blocks = []
     loose = [row for row in rows if row.item.group_id is None]
@@ -103,6 +111,7 @@ def category_detail(uow: UnitOfWork, user: User, category_id: int, period: Perio
         in_total_count=sum(1 for row in rows if in_total_shown(row.total_item, row.now)),
         watching_count=sum(1 for row in rows if not in_total_shown(row.total_item, row.now)),
         groups=blocks,
+        purchased=purchased,
     )
 
 

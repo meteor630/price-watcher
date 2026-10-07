@@ -19,7 +19,7 @@ from pricewatch.domain.days import Period, period_start
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.names import check_quantity
 from pricewatch.domain.pricing import STALE_AFTER, ItemPrice
-from pricewatch.domain.shopping import ItemState
+from pricewatch.domain.shopping import ItemState, Purchase
 from pricewatch.domain.totals import TotalItem, item_price_at
 
 TRACK_AFTER_PURCHASE = timedelta(days=14)
@@ -34,14 +34,6 @@ TRANSITIONS = frozenset(
         (ItemState.ARCHIVED, ItemState.ACTIVE),
     }
 )
-
-
-@dataclass(frozen=True, slots=True)
-class Purchase:
-    purchased_at: datetime
-    price_minor: int
-    quantity: int
-    store_id: int | None
 
 
 @dataclass(frozen=True, slots=True)

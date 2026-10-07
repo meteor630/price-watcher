@@ -1,6 +1,7 @@
 """pricewatch.domain.shopping: записи списка покупок неизменяемы."""
 
 import dataclasses
+from datetime import UTC, datetime
 
 import pytest
 
@@ -14,7 +15,8 @@ from pricewatch.domain.shopping import Category, Group, Item, ItemState
         Group(id=1, user_id=1, category_id=1, name="Г", position=0, version=1),
         Item(
             id=1, user_id=1, category_id=1, group_id=None, name="Т", full_name=None,
-            quantity=1, in_total=True, position=0, version=1,
+            quantity=1, in_total=True, position=0, version=1, state=ItemState.ACTIVE,
+            created_at=datetime(2026, 10, 7, tzinfo=UTC), purchase=None, archived_at=None,
         ),
     ],
 )

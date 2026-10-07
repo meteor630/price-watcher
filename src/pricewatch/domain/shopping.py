@@ -4,7 +4,7 @@
 """
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from enum import StrEnum
 
 # Мягко удалённое стирается окончательно через 30 дней (DEVELOPMENT_ARCHITECTURE.md, раздел 5).
@@ -19,6 +19,16 @@ class ItemState(StrEnum):
     ACTIVE = "active"
     PURCHASED = "purchased"
     ARCHIVED = "archived"
+
+
+@dataclass(frozen=True, slots=True)
+class Purchase:
+    """Покупка товара: момент, цена за штуку, количество и магазин (может быть не указан)."""
+
+    purchased_at: datetime
+    price_minor: int
+    quantity: int
+    store_id: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,3 +62,9 @@ class Item:
     in_total: bool
     position: int
     version: int
+    state: ItemState
+    created_at: datetime
+    # Есть только у купленного товара.
+    purchase: Purchase | None
+    # Есть только у архивного товара.
+    archived_at: datetime | None

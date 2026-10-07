@@ -10,6 +10,7 @@ from datetime import datetime
 
 from pricewatch.application.ports import PricedItem, StoreInfo, UnitOfWork
 from pricewatch.domain.days import Period, period_start
+from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.money import Change, format_rub, price_change
 from pricewatch.domain.pricing import ItemPrice, LinkInput, LinkPrice, PriceStatus
 from pricewatch.domain.shopping import ItemState
@@ -92,6 +93,13 @@ def load(
             change = price_change(before_price.price_minor, now_price.price_minor)
         rows.append(PricedRow(item, total_item, now_price, before_price, change))
     return PricedList(rows, stores)
+
+
+def only_row(priced: PricedList) -> PricedRow:
+    """Строка единственного товара из `load(..., item_ids=...)`; товар в удалённой группе скрыт вместе с ней — NOT_FOUND."""
+    if not priced.rows:
+        raise PriceWatcherError(ErrorCode.NOT_FOUND)
+    return priced.rows[0]
 
 
 def store_view(stores: dict[int, StoreInfo], link: LinkPrice | None) -> StoreView | None:

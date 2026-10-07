@@ -34,6 +34,8 @@ def web_error_response(
         headers["Retry-After"] = str(retry_after)
     if htmx:
         fragment = render("fragments/flash.html", code=code.value, message=message, error_id=error_id)
-        return HTMLResponse(fragment, status_code=status, headers=headers | {"HX-Retarget": "#flash", "HX-Reswap": "innerHTML"})
+        # HX-Reselect заменяет hx-select вызвавшего элемента: иначе htmx искал бы в сообщении его блок страницы.
+        swap = {"HX-Retarget": "#flash", "HX-Reswap": "innerHTML", "HX-Reselect": "[data-error-code]"}
+        return HTMLResponse(fragment, status_code=status, headers=headers | swap)
     page = render("error.html", code=code.value, status=status, message=message, error_id=error_id)
     return HTMLResponse(page, status_code=status, headers=headers)

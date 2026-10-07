@@ -4,6 +4,8 @@
   после неудачной проверки. Фото — сохранённое на своём домене, ссылок на сервисы магазинов нет.
 - История — события всех ссылок товара за год (в том числе заменённых), сначала новые, не больше 30.
 - График — цена за штуку по одному магазину; количество на него не влияет. Магазин не из ссылок товара — NOT_FOUND.
+- Купленный товар: цена, количество, день и магазин покупки; 14 суток после покупки — «сейчас дешевле на …»
+  (разница за штуку с актуальной ценой). Архивный — момент переноса в архив.
 - Изменение количества и отметки «в итоге» — с версией записи (чужая правка — VERSION_CONFLICT).
   Отметка у товара с неактуальной ценой включает и «устаревшую цену в итоге»: последняя цена снова учитывается,
   предупреждение остаётся. Снятая отметка снимает и этот режим.
@@ -13,14 +15,17 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from pricewatch.application.ports import UNCHANGED, ItemChanges, LinkInfo, StoreInfo, Unchanged, UnitOfWork
-from pricewatch.application.price_view import PricedList, PricedRow, StoreView, item_row, load, price_text
+from pricewatch.application.price_view import PricedRow, StoreView, item_row, load, only_row, price_text
+from pricewatch.application.purchases import PurchaseView, purchase_store_ids, purchase_view
 from pricewatch.domain.accounts import User
 from pricewatch.domain.charts import ChartPoint, ChartRange, chart_days, store_chart
 from pricewatch.domain.days import Period, day_start
 from pricewatch.domain.errors import SAFE_MESSAGES, ErrorCode, PriceWatcherError
 from pricewatch.domain.history import EventKind, link_history
+from pricewatch.domain.money import format_rub
 from pricewatch.domain.pricing import PriceStatus
-from pricewatch.domain.shopping import ItemState
+from pricewatch.domain.purchases import cheaper_now
+from pricewatch.domain.shopping import Item, ItemState
 
 HISTORY_WINDOW = timedelta(days=365)
 HISTORY_LIMIT = 30
@@ -76,6 +81,11 @@ class ItemDetail:
     history: list[Event]
     # Магазины, по которым есть график: ссылки товара, в том числе прежние.
     chart_stores: list[StoreView]
+    purchase: PurchaseView | None
+    # На сколько за штуку товар сейчас дешевле цены покупки (только 14 суток после покупки).
+    cheaper_now_minor: int | None
+    cheaper_now_text: str | None
+    archived_at: datetime | None
 
 
 def item_detail(uow: UnitOfWork, user: User, item_id: int, now: datetime) -> ItemDetail:
@@ -88,7 +98,7 @@ def item_chart(uow: UnitOfWork, user: User, item_id: int, store_id: int, chart_r
     with uow:
         uow.items.get(user.id, item_id)
         priced = load(uow, user.id, Period.DAY, now, day_start(first_day), item_ids=frozenset({item_id}))
-    total_item = _only_row(priced).total_item
+    total_item = only_row(priced).total_item
     if all(binding.link.store_id != store_id for binding in total_item.bindings):
         raise PriceWatcherError(ErrorCode.NOT_FOUND)
     return store_chart(total_item, store_id, chart_range, now)
@@ -105,7 +115,7 @@ def update_item_settings(
         uow.items.get(user.id, item_id)
         if in_total is not UNCHANGED:
             priced = load(uow, user.id, Period.DAY, now, now, item_ids=frozenset({item_id}))
-            include_stale = bool(in_total) and _only_row(priced).now.status is PriceStatus.STALE
+            include_stale = bool(in_total) and only_row(priced).now.status is PriceStatus.STALE
         uow.items.update(user.id, item_id, version, ItemChanges(quantity=quantity, in_total=in_total, include_stale=include_stale))
         uow.commit()
         return _detail(uow, user, item_id, now)
@@ -116,16 +126,10 @@ def _detail(uow: UnitOfWork, user: User, item_id: int, now: datetime) -> ItemDet
     category = uow.categories.get(user.id, item.category_id)
     group = uow.groups.get(user.id, item.group_id) if item.group_id is not None else None
     priced = load(uow, user.id, Period.DAY, now, now - HISTORY_WINDOW, item_ids=frozenset({item_id}))
-    row = _only_row(priced)
+    row = only_row(priced)
     links = uow.price_data.links(sorted({binding.link.link_id for binding in row.total_item.bindings}))
-    return _assemble(row, priced.stores, links, category.name, group.name if group else None, item.full_name, now)
-
-
-def _only_row(priced: PricedList) -> PricedRow:
-    """Товар в удалённой группе скрыт вместе с ней — для страниц его нет."""
-    if not priced.rows:
-        raise PriceWatcherError(ErrorCode.NOT_FOUND)
-    return priced.rows[0]
+    purchase = None if item.purchase is None else purchase_view(item, uow.price_data.stores(purchase_store_ids([item])))
+    return _assemble(row, priced.stores, links, category.name, group.name if group else None, item, purchase, now)
 
 
 def _store(stores: dict[int, StoreInfo], store_id: int) -> StoreView:
@@ -134,7 +138,7 @@ def _store(stores: dict[int, StoreInfo], store_id: int) -> StoreView:
 
 def _assemble(
     row: PricedRow, stores: dict[int, StoreInfo], links: dict[int, LinkInfo], category_name: str, group_name: str | None,
-    full_name: str | None, now: datetime,
+    item: Item, purchase: PurchaseView | None, now: datetime,
 ) -> ItemDetail:
     view = item_row(row, stores)
     price = row.now
@@ -168,11 +172,12 @@ def _assemble(
     photo = next((links[link_id].image_path for link_id in ([best_id] if best_id else []) + sorted(links) if links[link_id].image_path), None)
     failure = price.best.failure if price.best is not None else None
     chart_stores = {binding.link.store_id: _store(stores, binding.link.store_id) for binding in row.total_item.bindings}
+    cheaper = None if item.purchase is None else cheaper_now(item.purchase, price, now)
     return ItemDetail(
         item_id=view.item_id,
         version=view.version,
         name=view.name,
-        full_name=full_name,
+        full_name=item.full_name,
         state=row.item.state,
         category_id=row.item.category_id,
         category_name=category_name,
@@ -193,4 +198,8 @@ def _assemble(
         offers=offers,
         history=events[:HISTORY_LIMIT],
         chart_stores=list(chart_stores.values()),
+        purchase=purchase,
+        cheaper_now_minor=cheaper,
+        cheaper_now_text=None if cheaper is None else format_rub(cheaper),
+        archived_at=item.archived_at,
     )

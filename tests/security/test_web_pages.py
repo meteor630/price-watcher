@@ -270,6 +270,17 @@ def test_logout_needs_csrf_then_revokes_session(client: TestClient, engine: Engi
 # --- ошибки сайта ---
 
 
+def test_htmx_error_replaces_callers_select_with_message(client: TestClient, engine: Engine) -> None:
+    # Ошибка уходит в #flash, а hx-select вызвавшего элемента (#page-rest, #hero-figures) в ней ничего не находит —
+    # без своего выбора сообщение оказалось бы пустым. HX-Reselect выбирает само сообщение.
+    sign_in(client, account(engine))
+
+    refused = client.post("/web/logout", headers={"HX-Request": "true", "Origin": ORIGIN})
+
+    assert refused.headers["HX-Reselect"] == "[data-error-code]"
+    assert refused.text.startswith('<p class="alert alert--error" role="alert" data-error-code="CSRF_FAILED">')
+
+
 def test_unknown_site_page_is_html_404(client: TestClient) -> None:
     response = client.get("/web/no-such-page")
 

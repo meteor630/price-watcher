@@ -134,3 +134,23 @@ def test_someone_elses_item_is_not_found(client: TestClient, engine: Engine) -> 
 
     assert [response.status_code for response in responses] == [404, 404, 404]
     assert first_item(engine, owner)[1] == version
+
+
+def test_purchased_item_and_category_block_match_contract(client: TestClient, engine: Engine) -> None:
+    user = user_with_list(engine, items=2)
+    headers = bearer(client, engine, user)
+    item, _, store = first_item(engine, user)
+    run_sql(engine, "UPDATE items SET state = 'purchased', purchased_at = now(), purchase_price_minor = 99950, purchase_quantity = 2, "
+                    "purchase_store_id = :s WHERE id = :i RETURNING id", s=store, i=item)
+    category = run_sql(engine, "SELECT category_id FROM items WHERE id = :i", i=item)
+
+    detail = client.get(f"/api/v1/items/{item}", headers=headers).json()
+    listing = client.get(f"/api/v1/categories/{category}", headers=headers).json()
+
+    schema("ItemDetail").validate(detail)
+    schema("CategoryDetail").validate(listing)
+    assert detail["state"] == "purchased" and detail["archived_at"] is None
+    assert (detail["purchase"]["price_minor"], detail["purchase"]["quantity"], detail["purchase"]["total_minor"]) == (99950, 2, 199900)
+    assert detail["purchase"]["store"]["id"] == store
+    assert [entry["item_id"] for entry in listing["purchased"]] == [item]
+    assert item not in [row["id"] for group in listing["groups"] for row in group["items"]]

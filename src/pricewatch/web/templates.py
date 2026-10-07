@@ -12,7 +12,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from pricewatch.web.charts import chart, plot
-from pricewatch.domain.days import Period
+from pricewatch.domain.days import Period, moscow_date
 from pricewatch.web.formats import (
     ARROWS, CHART_RANGE_NAMES, LINK_STATUS_LABELS, PERIOD_NAMES, PERIOD_SINCE, STATUS_LABELS, count_word, long_date, moscow_moment, period_index, run_line, swapped_order,
 )
@@ -49,6 +49,7 @@ environment.globals.update(
     link_status_labels=LINK_STATUS_LABELS,
     long_date=long_date,
     moscow_moment=moscow_moment,
+    moscow_day=moscow_date,
     period_day=Period.DAY,
     swapped_order=swapped_order,
     count_word=count_word,

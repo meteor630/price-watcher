@@ -318,4 +318,30 @@ def test_purchase_date_only_for_purchased_item(db: Connection) -> None:
     refused(db, "UPDATE items SET purchased_at = :t WHERE id = :id", t=NOW, id=item_id)
     refused(db, "UPDATE items SET state = 'purchased' WHERE id = :id", id=item_id)
     refused(db, "UPDATE items SET state = 'lost' WHERE id = :id", id=item_id)
-    db.execute(text("UPDATE items SET state = 'purchased', purchased_at = :t WHERE id = :id"), {"t": NOW, "id": item_id})
+    refused(db, "UPDATE items SET state = 'purchased', purchased_at = :t WHERE id = :id", t=NOW, id=item_id)
+    db.execute(
+        text("UPDATE items SET state = 'purchased', purchased_at = :t, purchase_price_minor = 1, purchase_quantity = 1 WHERE id = :id"),
+        {"t": NOW, "id": item_id},
+    )
+
+
+def test_purchase_fields_only_with_purchase(db: Connection) -> None:
+    _, item_id = user_with_item(db)
+    bought = "state = 'purchased', purchased_at = :t, purchase_quantity = 1"
+
+    refused(db, "UPDATE items SET purchase_price_minor = 100 WHERE id = :id", id=item_id)
+    refused(db, "UPDATE items SET purchase_baseline_minor = 100 WHERE id = :id", id=item_id)
+    refused(db, f"UPDATE items SET {bought}, purchase_price_minor = 0 WHERE id = :id", t=NOW, id=item_id)
+    refused(db, f"UPDATE items SET {bought}, purchase_price_minor = 1000000000001 WHERE id = :id", t=NOW, id=item_id)
+    refused(db, f"UPDATE items SET {bought}, purchase_price_minor = 1, purchase_baseline_minor = 0 WHERE id = :id", t=NOW, id=item_id)
+    refused(db, "UPDATE items SET state = 'purchased', purchased_at = :t, purchase_price_minor = 1, purchase_quantity = 1000 WHERE id = :id", t=NOW, id=item_id)
+    refused(db, f"UPDATE items SET {bought}, purchase_price_minor = 1, purchase_store_id = -1 WHERE id = :id", t=NOW, id=item_id)
+    db.execute(text(f"UPDATE items SET {bought}, purchase_price_minor = 1000000000000 WHERE id = :id"), {"t": NOW, "id": item_id})
+
+
+def test_archive_date_only_for_archived_item(db: Connection) -> None:
+    _, item_id = user_with_item(db)
+
+    refused(db, "UPDATE items SET archived_at = :t WHERE id = :id", t=NOW, id=item_id)
+    refused(db, "UPDATE items SET state = 'archived' WHERE id = :id", id=item_id)
+    db.execute(text("UPDATE items SET state = 'archived', archived_at = :t WHERE id = :id"), {"t": NOW, "id": item_id})

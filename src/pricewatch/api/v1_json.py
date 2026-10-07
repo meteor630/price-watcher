@@ -1,9 +1,10 @@
-"""Общие части ответов /api/v1: изменение, точка графика, магазин, строка товара, время в UTC."""
+"""Общие части ответов /api/v1: изменение, точка графика, магазин, строка товара, покупка, время в UTC."""
 
 from datetime import UTC, datetime
 from typing import Any
 
 from pricewatch.application.price_view import ItemRowView, StoreView
+from pricewatch.application.purchases import PurchaseView
 from pricewatch.domain.charts import ChartPoint
 from pricewatch.domain.money import Change
 
@@ -25,6 +26,22 @@ def point_json(point: ChartPoint) -> dict[str, Any]:
 
 def store_json(store: StoreView | None) -> dict[str, Any] | None:
     return None if store is None else {"id": store.store_id, "name": store.name, "color_token": store.color_token}
+
+
+def purchase_json(view: PurchaseView | None) -> dict[str, Any] | None:
+    if view is None:
+        return None
+    return {
+        "item_id": view.item_id,
+        "name": view.name,
+        "purchased_at": utc_iso(view.purchased_at),
+        "price_minor": view.price_minor,
+        "price_text": view.price_text,
+        "quantity": view.quantity,
+        "total_minor": view.total_minor,
+        "total_text": view.total_text,
+        "store": store_json(view.store),
+    }
 
 
 def item_row_json(row: ItemRowView) -> dict[str, Any]:

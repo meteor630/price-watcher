@@ -20,6 +20,9 @@ class UndoKind(StrEnum):
     GROUP = "group"
     ITEM = "item"
     LINK = "link"
+    # Отмена покупки и архива возвращает товар в список.
+    PURCHASE = "purchase"
+    ARCHIVE = "archive"
 
 
 def issue_undo(key: bytes, user_id: int, kind: UndoKind, entity_id: int, now: datetime) -> str:

@@ -2119,3 +2119,135 @@ a.cat {
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   }
 }
+
+/* ---------- покупка и архив ---------- */
+
+.flag--bought {
+  color: var(--color-down);
+  background: var(--color-down-bg);
+}
+
+.purchase-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-2);
+}
+
+.purchase-box__title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  color: var(--color-muted);
+}
+
+.purchase-box__sum {
+  color: var(--color-fg);
+  font-family: var(--font-display);
+  font-weight: var(--weight-bold);
+  font-size: var(--text-xl);
+  letter-spacing: -0.02em;
+}
+
+.purchase-box__cheaper {
+  color: var(--color-down);
+  font-weight: var(--weight-semibold);
+}
+
+.purchase-box .item-hero__controls {
+  margin-top: var(--space-2);
+}
+
+.purchased {
+  padding-block: var(--space-3);
+}
+
+.purchased__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 44px;
+  align-content: center;
+  flex-wrap: wrap;
+  cursor: pointer;
+  list-style: none;
+}
+
+.purchased__head::-webkit-details-marker {
+  display: none;
+}
+
+.purchased__head .section__title::after {
+  content: " ▾";
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+
+.purchased[open] .purchased__head .section__title::after {
+  content: " ▴";
+}
+
+.purchased__list {
+  display: flex;
+  flex-direction: column;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.purchased__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--color-line);
+}
+
+.purchased__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.purchased__meta {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 var(--space-1);
+  color: var(--color-muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+.purchased__sum {
+  color: var(--color-fg);
+  font-weight: var(--weight-semibold);
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .purchased__row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-1) var(--space-3);
+  }
+
+  .purchased__meta {
+    grid-row: 2;
+    white-space: normal;
+  }
+
+  .purchased__sum {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+    align-self: center;
+  }
+}

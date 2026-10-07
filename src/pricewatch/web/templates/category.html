@@ -70,6 +70,21 @@
     </div>
     {% endif %}
   </section>
+
+  {% if detail.purchased %}
+  <details class="section panel-box purchased" data-purchased>
+    <summary class="purchased__head"><h2 class="section__title">Куплено ({{ detail.purchased | length }})</h2><span class="muted">в итог не входит</span></summary>
+    <ul class="purchased__list">
+      {% for entry in detail.purchased %}
+      <li class="purchased__row">
+        <a class="row__link purchased__name" href="/web/items/{{ entry.item_id }}">{{ entry.name }}</a>
+        <span class="purchased__meta">{{ long_date(entry.purchased_on) }}{% if entry.store %} · <span class="store-dot store-dot--{{ entry.store.color_token }}" aria-hidden="true"></span>{{ entry.store.name }}{% endif %}</span>
+        <span class="purchased__sum num">{% if entry.quantity > 1 %}{{ entry.quantity }} × {{ entry.price_text }} = {% endif %}{{ entry.total_text }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
 </div>
 
 <section class="section panel-box" aria-labelledby="chart-title">

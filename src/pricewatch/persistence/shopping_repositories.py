@@ -25,7 +25,8 @@ from pricewatch.domain.names import (
     clean_name,
     name_key,
 )
-from pricewatch.domain.shopping import Category, Group, Item
+from pricewatch.domain.purchases import change_state
+from pricewatch.domain.shopping import Category, Group, Item, ItemState, Purchase
 from pricewatch.persistence.models import (
     CATEGORY_NAME_INDEX,
     GROUP_NAME_INDEX,
@@ -117,6 +118,12 @@ def _to_item(row: Row) -> Item:
         in_total=row.in_total,
         position=row.position,
         version=row.version,
+        state=ItemState(row.state),
+        created_at=row.created_at,
+        purchase=None if row.purchase_price_minor is None else Purchase(
+            purchased_at=row.purchased_at, price_minor=row.purchase_price_minor, quantity=row.purchase_quantity, store_id=row.purchase_store_id
+        ),
+        archived_at=row.archived_at,
     )
 
 
@@ -535,6 +542,45 @@ class SqlItemRepository:
         ).one()
         return _to_item(restored)
 
+    def purchase(self, user_id: int, item_id: int, version: int, purchase: Purchase, baseline_minor: int | None) -> Item:
+        return self._change_state(user_id, item_id, version, ItemState.PURCHASED, {
+            "purchased_at": purchase.purchased_at,
+            "purchase_price_minor": purchase.price_minor,
+            "purchase_quantity": purchase.quantity,
+            "purchase_store_id": purchase.store_id,
+            "purchase_baseline_minor": baseline_minor,
+        })
+
+    def archive(self, user_id: int, item_id: int, version: int, now: datetime) -> Item:
+        return self._change_state(user_id, item_id, version, ItemState.ARCHIVED, {"archived_at": now})
+
+    def return_to_list(self, user_id: int, item_id: int, version: int) -> Item:
+        return self._change_state(user_id, item_id, version, ItemState.ACTIVE, {
+            "purchased_at": None,
+            "purchase_price_minor": None,
+            "purchase_quantity": None,
+            "purchase_store_id": None,
+            "purchase_baseline_minor": None,
+            "archived_at": None,
+        })
+
+    def _change_state(self, user_id: int, item_id: int, version: int, target: ItemState, values: dict[str, object]) -> Item:
+        """Переход по правилам domain.purchases; состав «в списке» родителя меняется — его версия поднимается."""
+        current = self.get(user_id, item_id)
+        if current.version != version:
+            raise _conflict(current)
+        change_state(current.state, target)
+        self.parents.bump_item_parent(user_id, current.category_id, current.group_id)
+        row = self.connection.execute(
+            update(items)
+            .where(items.c.id == item_id, items.c.user_id == user_id, items.c.deleted_at.is_(None), items.c.version == version)
+            .values(**values, state=target.value, version=items.c.version + 1, updated_at=func.now())
+            .returning(items)
+        ).one_or_none()
+        if row is None:
+            raise _conflict(self.get(user_id, item_id))
+        return _to_item(row)
+
     def reorder(
         self, user_id: int, category_id: int, group_id: int | None, ids: Sequence[int], parent_version: int
     ) -> int:
@@ -547,7 +593,8 @@ class SqlItemRepository:
             new_version = self.parents.bump(groups, user_id, group_id, expected=parent_version)
             if new_version is None:
                 raise _conflict(SqlGroupRepository(self.connection).get(user_id, group_id))
-        members = [item.id for item in self.list_in_category(user_id, category_id) if item.group_id == group_id]
+        # Порядок задаётся для товаров «в списке»: купленные и архивные в настройках не видны.
+        members = [item.id for item in self.list_in_category(user_id, category_id) if item.group_id == group_id and item.state is ItemState.ACTIVE]
         _check_order(ids, members)
         _set_positions(self.connection, items, ids)
         return new_version

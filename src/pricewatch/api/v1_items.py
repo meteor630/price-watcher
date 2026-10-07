@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pricewatch.api.app_auth import app_user
 from pricewatch.api.context import get_context
 from pricewatch.api.idempotency import idempotent
-from pricewatch.api.v1_json import point_json, store_json, utc_iso
+from pricewatch.api.v1_json import point_json, purchase_json, store_json, utc_iso
 from pricewatch.application.app_auth import DeviceUser
 from pricewatch.application.item import ItemDetail, item_chart, item_detail, update_item_settings
 from pricewatch.application.ports import UNCHANGED
@@ -118,4 +118,9 @@ def item_json(detail: ItemDetail) -> dict[str, Any]:
         "history": [
             {"at": utc_iso(event.at), "store": store_json(event.store), "kind": event.kind.value, "text": event.text} for event in detail.history
         ],
+        "state": detail.state.value,
+        "purchase": purchase_json(detail.purchase),
+        "cheaper_now_minor": detail.cheaper_now_minor,
+        "cheaper_now_text": detail.cheaper_now_text,
+        "archived_at": None if detail.archived_at is None else utc_iso(detail.archived_at),
     }

@@ -146,6 +146,12 @@ class ItemRow(Base):
     # Жизненный цикл (раздел 6): очередь проверяет товары в списке и купленные меньше 14 суток назад.
     state: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
     purchased_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Покупка: цена за штуку, количество, магазин (может быть не указан) и лучшая цена в момент добавления товара.
+    purchase_price_minor: Mapped[int | None] = mapped_column(BigInteger)
+    purchase_quantity: Mapped[int | None] = mapped_column(Integer)
+    purchase_store_id: Mapped[int | None] = mapped_column(BigInteger)
+    purchase_baseline_minor: Mapped[int | None] = mapped_column(BigInteger)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     version: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="1")
     created_at: Mapped[datetime] = _created_at()
@@ -165,6 +171,19 @@ class ItemRow(Base):
         CheckConstraint("version >= 1", name="version"),
         CheckConstraint("state IN ('active', 'purchased', 'archived')", name="state"),
         CheckConstraint("(state = 'purchased') = (purchased_at IS NOT NULL)", name="purchased_at_with_state"),
+        CheckConstraint(
+            "(state = 'purchased') = (purchase_price_minor IS NOT NULL AND purchase_quantity IS NOT NULL)", name="purchase_with_state"
+        ),
+        CheckConstraint(
+            "state = 'purchased' OR (purchase_price_minor IS NULL AND purchase_quantity IS NULL "
+            "AND purchase_store_id IS NULL AND purchase_baseline_minor IS NULL)",
+            name="purchase_only_when_purchased",
+        ),
+        CheckConstraint("purchase_price_minor BETWEEN 1 AND 1000000000000", name="purchase_price"),
+        CheckConstraint("purchase_quantity BETWEEN 1 AND 999", name="purchase_quantity"),
+        CheckConstraint("purchase_baseline_minor > 0", name="purchase_baseline"),
+        CheckConstraint("(state = 'archived') = (archived_at IS NOT NULL)", name="archived_at_with_state"),
+        ForeignKeyConstraint(["purchase_store_id"], ["stores.id"]),
         # Цель составного ключа привязок ссылок: товар вместе с владельцем.
         UniqueConstraint("id", "user_id"),
         Index("ix_items_category_id_group_id_position", "category_id", "group_id", "position"),

@@ -66,8 +66,10 @@ class World:
              group: int | None = None) -> int:
         self.positions += 1
         return self.one(
-            "INSERT INTO items (user_id, category_id, group_id, name, quantity, in_total, include_stale, state, purchased_at, position) "
-            "VALUES (:u, :c, :g, :n, :q, :t, :s, :st, CASE WHEN :st = 'purchased' THEN :now END, :p) RETURNING id",
+            "INSERT INTO items (user_id, category_id, group_id, name, quantity, in_total, include_stale, state, purchased_at, "
+            "purchase_price_minor, purchase_quantity, archived_at, position) "
+            "VALUES (:u, :c, :g, :n, :q, :t, :s, :st, CASE WHEN :st = 'purchased' THEN :now END, CASE WHEN :st = 'purchased' THEN 100000 END, "
+            "CASE WHEN :st = 'purchased' THEN 1 END, CASE WHEN :st = 'archived' THEN :now END, :p) RETURNING id",
             u=self.user.id, c=category, g=group, n=name, q=quantity, t=in_total, s=include_stale, st=state, now=NOW - DAY, p=self.positions,
         )
 

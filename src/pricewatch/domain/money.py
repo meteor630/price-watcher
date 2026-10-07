@@ -7,12 +7,18 @@
 половины округляются вверх; считается целочисленно, без float.
 """
 
+import re
 from dataclasses import dataclass
 from enum import StrEnum
+
+from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 
 GROUP_SEPARATOR = " "  # узкий неразрывный пробел между разрядами
 CURRENCY_SEPARATOR = " "  # неразрывный пробел перед «₽»
 MINUS = "−"
+# Сумма, введённая человеком: рубли и до двух знаков копеек через запятую или точку.
+INPUT_PATTERN = re.compile(r"([0-9]{1,12})(?:[.,]([0-9]{1,2}))?")
+INPUT_SPACES = (" ", "\u00a0", "\u202f", "₽")
 
 
 class Direction(StrEnum):
@@ -40,6 +46,25 @@ def format_rub(amount_minor: int) -> str:
         text += f",{kopecks:02d}"
     sign = MINUS if amount_minor < 0 else ""
     return f"{sign}{text}{CURRENCY_SEPARATOR}₽"
+
+
+def parse_rub(text: str, field: str) -> int:
+    """Копейки из введённой суммы («12 990», «12990,5», «12 990,50 ₽»); иначе VALIDATION_ERROR по полю `field`."""
+    cleaned = text.strip()
+    for symbol in INPUT_SPACES:
+        cleaned = cleaned.replace(symbol, "")
+    match = INPUT_PATTERN.fullmatch(cleaned)
+    if match is None:
+        raise PriceWatcherError(ErrorCode.VALIDATION_ERROR, {"fields": {field: "invalid"}})
+    rubles, kopecks = match.groups()
+    return int(rubles) * 100 + int((kopecks or "0").ljust(2, "0"))
+
+
+def input_rub(amount_minor: int) -> str:
+    """Сумма для поля ввода: без разрядов и знака валюты, копейки через запятую только ненулевые."""
+    _require_minor(amount_minor)
+    rubles, kopecks = divmod(amount_minor, 100)
+    return f"{rubles},{kopecks:02d}" if kopecks else str(rubles)
 
 
 def format_change(change_minor: int) -> str:

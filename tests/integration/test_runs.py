@@ -71,8 +71,9 @@ def item(engine: Engine, user_id: int, state: str = "active", purchased_at: date
     )[0][0]
     return sql(
         engine,
-        "INSERT INTO items (user_id, category_id, name, position, state, purchased_at, deleted_at) "
-        "VALUES (:u, :c, 'Лампа', 0, :s, :p, CASE WHEN :d THEN now() END) RETURNING id",
+        "INSERT INTO items (user_id, category_id, name, position, state, purchased_at, purchase_price_minor, purchase_quantity, archived_at, deleted_at) "
+        "VALUES (:u, :c, 'Лампа', 0, :s, :p, CASE WHEN :s = 'purchased' THEN 100000 END, CASE WHEN :s = 'purchased' THEN 1 END, "
+        "CASE WHEN :s = 'archived' THEN now() END, CASE WHEN :d THEN now() END) RETURNING id",
         u=user_id, c=category, s=state, p=purchased_at, d=deleted,
     )[0][0]
 

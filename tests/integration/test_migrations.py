@@ -58,6 +58,12 @@ def test_upgrade_downgrade_upgrade(empty_database_url: str) -> None:
 
     command.upgrade(config, "head")
     assert tables(empty_database_url) == TABLES
+    assert revision(empty_database_url) == "0007"
+
+    command.downgrade(config, "0006")
+    assert {"purchase_price_minor", "purchase_quantity", "purchase_store_id", "purchase_baseline_minor", "archived_at"}.isdisjoint(
+        columns(empty_database_url, "items")
+    )
     assert revision(empty_database_url) == "0006"
 
     command.downgrade(config, "0005")

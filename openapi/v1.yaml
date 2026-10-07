@@ -986,6 +986,11 @@ components:
                 type: array
                 items:
                   $ref: "#/components/schemas/ItemRow"
+        purchased:
+          type: array
+          description: Купленные товары категории, сначала новые; в итог не входят.
+          items:
+            $ref: "#/components/schemas/Purchase"
 
     ItemRow:
       type: object
@@ -1106,6 +1111,60 @@ components:
           description: Последние события, сначала новые.
           items:
             $ref: "#/components/schemas/HistoryEvent"
+        state:
+          $ref: "#/components/schemas/ItemState"
+        purchase:
+          oneOf:
+            - $ref: "#/components/schemas/Purchase"
+            - type: "null"
+        cheaper_now_minor:
+          description: На сколько за штуку товар сейчас дешевле цены покупки; только 14 суток после покупки и если дешевле.
+          oneOf:
+            - $ref: "#/components/schemas/MoneyMinor"
+            - type: "null"
+        cheaper_now_text:
+          type: [string, "null"]
+        archived_at:
+          type: [string, "null"]
+          format: date-time
+          description: Когда товар перенесён в архив (UTC); у остальных — null.
+
+    ItemState:
+      type: string
+      description: Жизненный цикл товара — в списке, куплен, в архиве.
+      x-known-values:
+        - active
+        - purchased
+        - archived
+
+    Purchase:
+      type: object
+      description: Покупка товара. Цена за штуку и сумма с учётом количества.
+      required: [item_id, name, purchased_at, price_minor, price_text, quantity, total_minor, total_text, store]
+      properties:
+        item_id:
+          $ref: "#/components/schemas/Id"
+        name:
+          type: string
+        purchased_at:
+          type: string
+          format: date-time
+          description: 00:00 по Москве дня покупки, в UTC.
+        price_minor:
+          $ref: "#/components/schemas/MoneyMinor"
+        price_text:
+          $ref: "#/components/schemas/MoneyText"
+        quantity:
+          $ref: "#/components/schemas/Quantity"
+        total_minor:
+          $ref: "#/components/schemas/MoneyMinor"
+        total_text:
+          $ref: "#/components/schemas/MoneyText"
+        store:
+          description: Магазин покупки; null — не указан.
+          oneOf:
+            - $ref: "#/components/schemas/Store"
+            - type: "null"
 
     StoreOffer:
       type: object
