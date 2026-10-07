@@ -162,7 +162,7 @@ def settings_items_page(
     context = get_context(request)
     overview = items_overview(context.unit_of_work(), session.user, category, context.clock())
     return render(
-        "settings_items.html", session_user=session, header_run=run_status(context.unit_of_work(), session.user), overview=overview,
+        "settings_items.html", session_user=session, header_run=run_status(context.unit_of_work(), session.user, context.clock()), overview=overview,
         flash_message=flash, form=dialog, results=link_results or [], toast=toast, undo_token=undo_token,
     )
 

@@ -3,6 +3,8 @@
 Общая часть главной, категории и группы. Товары берутся «в списке» (`active`); цена сейчас
 и в начале периода считается по правилам domain.totals, изменение — по цене за штуку, если она
 учтена в обоих моментах. Наблюдения читаются только с нужного окна (PriceDataRepository.observations).
+Срок актуальности цены — настройка администратора `stale_after_days` (по умолчанию 7 суток); она попадает
+в каждый товар расчёта, поэтому итоги, графики и пометки считаются по одному сроку.
 """
 
 from dataclasses import dataclass
@@ -12,9 +14,12 @@ from pricewatch.application.ports import PricedItem, StoreInfo, UnitOfWork
 from pricewatch.domain.days import Period, period_start
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.money import Change, format_rub, price_change
-from pricewatch.domain.pricing import ItemPrice, LinkInput, LinkPrice, PriceStatus
+from pricewatch.domain.pricing import ItemPrice, LinkInput, LinkPrice, PriceStatus, stale_after_setting
 from pricewatch.domain.shopping import ItemState
 from pricewatch.domain.totals import BEFORE, Binding, TotalItem, in_total_shown, item_price_at
+
+
+STALE_AFTER_SETTING = "stale_after_days"
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +76,7 @@ def load(
     Без `item_ids` — товары «в списке»; с ними — только эти товары в любом состоянии (карточка товара).
     """
     before_moment = period_start(period, now) - BEFORE
+    stale_after = stale_after_setting(uow.settings.get(STALE_AFTER_SETTING))
     if item_ids is None:
         items = [item for item in uow.price_data.items(user_id) if item.state is ItemState.ACTIVE]
     else:
@@ -85,7 +91,7 @@ def load(
         by_item.setdefault(binding.item_id, []).append(Binding(link, binding.valid_from, binding.valid_to))
     rows = []
     for item in items:
-        total_item = TotalItem(item.item_id, item.state, item.quantity, item.in_total, item.include_stale, by_item.get(item.item_id, []))
+        total_item = TotalItem(item.item_id, item.state, item.quantity, item.in_total, item.include_stale, by_item.get(item.item_id, []), stale_after)
         now_price = item_price_at(total_item, now)
         before_price = item_price_at(total_item, before_moment)
         change = None

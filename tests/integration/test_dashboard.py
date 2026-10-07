@@ -220,11 +220,47 @@ def test_disabled_store_and_pending_review(engine: Engine) -> None:
 def test_run_status_for_admin_and_user(engine: Engine) -> None:
     admin, user = World(engine, Role.ADMIN), World(engine)
     admin.one("INSERT INTO parse_runs (kind, slot_key, status, total, done, started_at, created_at) VALUES ('scheduled', '2026-10-06T15:00', 'running', 10, 4, :t, :t) RETURNING id", t=NOW - timedelta(minutes=5))
+    worker(admin, NOW - timedelta(minutes=1))
 
     seen_by_admin, seen_by_user = admin.board().run, user.board().run
 
     assert (seen_by_admin.status, seen_by_admin.total, seen_by_admin.done, seen_by_admin.can_start, seen_by_admin.can_stop) == ("running", 10, 4, False, True)
+    assert seen_by_admin.elapsed == timedelta(minutes=5)
     assert (seen_by_user.status, seen_by_user.can_start, seen_by_user.can_stop) == ("running", False, False)
+
+
+def worker(world: World, seen: datetime | None, disabled: bool = False) -> int:
+    return world.one(
+        "INSERT INTO workers (name, token_hash, last_seen_at, disabled_at) VALUES ('w' || md5(random()::text), md5(random()::text) || md5(random()::text), :s, "
+        "CASE WHEN :d THEN now() END) RETURNING id", s=seen, d=disabled,
+    )
+
+
+@pytest.mark.parametrize(
+    ("silent", "status"),
+    [(timedelta(seconds=119), "running"), (timedelta(minutes=2), "worker_offline"), (None, "worker_offline")],
+)
+def test_run_without_worker_for_two_minutes_is_worker_offline(engine: Engine, silent: timedelta | None, status: str) -> None:
+    admin = World(engine, Role.ADMIN)
+    admin.one("INSERT INTO parse_runs (kind, status, total, started_at, created_at, requested_by) VALUES ('manual', 'running', 3, :t, :t, :u) RETURNING id",
+              t=NOW - timedelta(minutes=10), u=admin.user.id)
+    worker(admin, NOW - timedelta(seconds=5), disabled=True)  # отключённый worker не считается
+    if silent is not None:
+        worker(admin, NOW - silent)
+
+    run = admin.board().run
+
+    assert (run.status, run.can_stop) == (status, True)
+
+
+def test_finished_run_is_not_worker_offline(engine: Engine) -> None:
+    admin = World(engine, Role.ADMIN)
+    admin.one("INSERT INTO parse_runs (kind, status, total, done, started_at, finished_at, created_at, requested_by) "
+              "VALUES ('manual', 'finished', 3, 3, :s, :f, :s, :u) RETURNING id", s=NOW - timedelta(hours=2), f=NOW - timedelta(hours=1), u=admin.user.id)
+
+    run = admin.board().run
+
+    assert (run.status, run.can_start, run.elapsed) == ("finished", True, timedelta(hours=1))
 
 
 def test_change_over_week_compares_with_start_of_week(engine: Engine) -> None:

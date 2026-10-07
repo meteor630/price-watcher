@@ -20,7 +20,10 @@ HEADER = "idempotency-key"
 KEY_MIN, KEY_MAX = 8, 64
 
 
-def idempotent(request: Request, user_id: int, body: dict[str, Any], run: Callable[[], dict[str, Any]]) -> JSONResponse:
+def idempotent(
+    request: Request, user_id: int, body: dict[str, Any], run: Callable[[], dict[str, Any]], status: int = 200
+) -> JSONResponse:
+    """`status` — код успешного ответа (202 у принятых к выполнению); повтор получает тот же код и тело."""
     key = request.headers.get(HEADER, "")
     if not KEY_MIN <= len(key) <= KEY_MAX or not key.isprintable():
         raise PriceWatcherError(ErrorCode.VALIDATION_ERROR, {"fields": {"Idempotency-Key": "required"}})
@@ -35,5 +38,5 @@ def idempotent(request: Request, user_id: int, body: dict[str, Any], run: Callab
     except BaseException:
         abandon(context.unit_of_work(), user_id, key)
         raise
-    finish(context.unit_of_work(), user_id, key, 200, result)
-    return JSONResponse(result)
+    finish(context.unit_of_work(), user_id, key, status, result)
+    return JSONResponse(result, status_code=status)

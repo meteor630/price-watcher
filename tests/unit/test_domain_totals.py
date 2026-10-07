@@ -37,8 +37,8 @@ def bound(*observations: Observation, link_id: int = 1, store_id: int = 1, enabl
 
 
 def item(*bindings: Binding, item_id: int = 1, quantity: int = 1, in_total: bool = True, include_stale: bool = False,
-         state: ItemState = ItemState.ACTIVE) -> TotalItem:
-    return TotalItem(item_id, state, quantity, in_total, include_stale, bindings)
+         state: ItemState = ItemState.ACTIVE, stale_after: timedelta = STALE_AFTER) -> TotalItem:
+    return TotalItem(item_id, state, quantity, in_total, include_stale, bindings, stale_after)
 
 
 # --- итог ---
@@ -177,9 +177,10 @@ def test_item_that_lost_price_is_left_out_of_change() -> None:
 @pytest.mark.parametrize(("period", "days"), [(Period.WEEK, 7), (Period.MONTH, 30), (Period.YEAR, 365)])
 def test_longer_periods_compare_with_midnight_n_days_ago(period: Period, days: int) -> None:
     start = TODAY - timedelta(days=days)
-    tv = item(bound(seen(start - timedelta(hours=1), 200_000), seen(start + timedelta(hours=1), 1), seen(NOW - timedelta(hours=1), 150_000)))
+    tv = item(bound(seen(start - timedelta(hours=1), 200_000), seen(start + timedelta(hours=1), 1), seen(NOW - timedelta(hours=1), 150_000)),
+              stale_after=timedelta(days=400))
 
-    change = total_change([tv], period, NOW, stale_after=timedelta(days=400))
+    change = total_change([tv], period, NOW)
 
     assert change is not None and change.change_minor == -50_000
 
@@ -308,3 +309,12 @@ def test_price_exactly_seven_days_before_midnight_still_counts_for_day_change() 
     change = total_change([tv], Period.DAY, NOW)
 
     assert change is not None and change.change_minor == -10_000
+
+
+def test_stale_after_comes_from_the_item() -> None:
+    # Срок актуальности задаёт администратор: та же цена 3 суток назад актуальна при 7 сутках и устарела при 3.
+    observed = bound(seen(NOW - timedelta(days=3), 100_000))
+
+    assert total([item(observed)], NOW) == 100_000
+    assert total([item(observed, stale_after=timedelta(days=3))], NOW) == 0
+    assert item_price_at(item(observed, stale_after=timedelta(days=3)), NOW).status is PriceStatus.STALE

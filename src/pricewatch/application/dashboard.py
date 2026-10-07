@@ -12,11 +12,12 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from enum import StrEnum
 
 from pricewatch.application.ports import StoreInfo, UnitOfWork
 from pricewatch.application.price_view import PricedRow, StoreView, load, price_text, store_view
+from pricewatch.application.worker_protocol import LEASE
 from pricewatch.domain.accounts import User
 from pricewatch.domain.charts import ChartPoint, ChartRange, chart_days, sum_chart
 from pricewatch.domain.days import Period, day_start, moscow_date
@@ -28,6 +29,8 @@ from pricewatch.domain.totals import in_total_shown, total, total_change
 SPARKLINE_RANGE = ChartRange.MONTH
 PANEL_LIMIT_MAX = 100
 ACTIVE_RUN = frozenset({"queued", "running", "stopping"})
+# Worker молчит дольше аренды задания — его задания уже возвращаются в очередь, проверка стоит.
+WORKER_SILENT_AFTER = LEASE
 
 
 class Panel(StrEnum):
@@ -79,6 +82,8 @@ class RunView:
     finished_at: datetime | None
     can_start: bool
     can_stop: bool
+    # Сколько шла или идёт проверка; None — проверок не было.
+    elapsed: timedelta | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,7 +125,7 @@ def dashboard(uow: UnitOfWork, user: User, period: Period, now: datetime) -> Das
         categories = uow.categories.list_active(user.id)
         order_version = uow.categories.order_version(user.id)
         rows, stores = _rows(uow, user.id, period, now)
-        run = _run_view(uow, user)
+        run = _run_view(uow, user, now)
         reviews = uow.price_data.pending_reviews() if user.is_admin else None
     totals = [row.total_item for row in rows]
     cards = []
@@ -216,22 +221,29 @@ def _top_mover(rows: Sequence[PricedRow]) -> TopMover | None:
     return TopMover(best.item.item_id, best.item.name, change.percent_text, change.direction)
 
 
-def run_status(uow: UnitOfWork, user: User) -> RunView:
-    """Статус последней проверки для шапки любой страницы."""
+def run_status(uow: UnitOfWork, user: User, now: datetime) -> RunView:
+    """Статус последней проверки для шапки любой страницы и блока запуска на главной."""
     with uow:
-        return _run_view(uow, user)
+        return _run_view(uow, user, now)
 
 
-def _run_view(uow: UnitOfWork, user: User) -> RunView:
+def _run_view(uow: UnitOfWork, user: User, now: datetime) -> RunView:
+    """Идущая проверка, к которой worker не обращался дольше аренды, показывается как worker_offline."""
     latest = uow.queue.latest_run()
     if latest is None:
-        return RunView(None, None, "idle", 0, 0, 0, None, None, can_start=user.is_admin, can_stop=False)
+        return RunView(None, None, "idle", 0, 0, 0, None, None, can_start=user.is_admin, can_stop=False, elapsed=None)
     progress = latest.progress
     active = progress.status in ACTIVE_RUN
+    status = progress.status
+    if progress.status in {"queued", "running"}:
+        seen = uow.workers.last_seen()
+        if seen is None or now - seen >= WORKER_SILENT_AFTER:
+            status = "worker_offline"
     return RunView(
-        progress.run_id, progress.kind, progress.status, progress.total, progress.done, progress.failed,
+        progress.run_id, progress.kind, status, progress.total, progress.done, progress.failed,
         latest.started_at, latest.finished_at,
         can_start=user.is_admin and not active,
         can_stop=user.is_admin and progress.status in {"queued", "running"},
+        elapsed=None if latest.started_at is None else (latest.finished_at or now) - latest.started_at,
     )
 

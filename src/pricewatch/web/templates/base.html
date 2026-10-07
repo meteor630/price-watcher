@@ -26,10 +26,7 @@
       </a>
       {% if session_user is defined and session_user %}
       <div class="top__meta">
-        {% if header_run is defined and header_run %}
-        {% set line, tone = run_line(header_run.status, header_run.done, header_run.failed, header_run.total, header_run.finished_at) %}
-        <p class="run-status" data-run-status="{{ header_run.status }}"><span class="dot dot--{{ tone }}" aria-hidden="true"></span><span class="run-status__text">{{ line }}</span></p>
-        {% endif %}
+        {% if header_run is defined and header_run %}{% set run = header_run %}{% include "fragments/run_status.html" %}{% endif %}
         <a class="gear gear--labelled" href="/web/purchases" aria-label="Покупки" title="Покупки" data-purchases-link>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5.5 8h13l-1.2 12H6.7L5.5 8Z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/></svg>
           <span class="gear__text">Покупки</span>

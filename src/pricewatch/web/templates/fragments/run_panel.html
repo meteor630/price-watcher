@@ -1,0 +1,38 @@
+{# Блок «Проверка цен» администратора на главной. Пока проверка идёт — опрос раз в 5 секунд; вместе с блоком обновляется статус в шапке. #}
+{% set busy = run.status in active_run_statuses %}
+<section class="panel-box run-panel" id="run-panel" aria-labelledby="run-panel-title" data-run-panel="{{ run.status }}"
+         {% if busy %}hx-get="/web/runs/panel" hx-trigger="every 5s" hx-swap="outerHTML"{% endif %}>
+  <div class="run-panel__head">
+    <h2 id="run-panel-title" class="section__title">Проверка цен</h2>
+    <div class="run-panel__actions">
+      {% if run.can_start %}
+      <button class="btn btn--primary" type="button" hx-post="/web/runs" hx-target="#run-panel" hx-swap="outerHTML" hx-disabled-elt="this">Запустить проверку</button>
+      {% endif %}
+      {% if run.can_stop %}
+      <button class="btn btn--ghost" type="button" hx-post="/web/runs/{{ run.run_id }}/stop" hx-target="#run-panel" hx-swap="outerHTML" hx-disabled-elt="this">Остановить</button>
+      {% endif %}
+    </div>
+  </div>
+  {% if run.run_id is none %}
+  <p class="muted">Проверок ещё не было. Плановая проверка запустится сама по расписанию.</p>
+  {% elif busy %}
+  <p class="run-panel__line num" role="status">
+    {% if run.status == "stopping" %}Остановка: доделываются начатые проверки, {{ run.done + run.failed }} из {{ run.total }}
+    {% else %}Идёт {{ "плановая" if run.kind == "scheduled" else "ручная" }} проверка: {{ run.done + run.failed }} из {{ run.total }}{% endif %}
+  </p>
+  <progress class="run-panel__bar" max="{{ [run.total, 1] | max }}" value="{{ run.done + run.failed }}" aria-label="Проверено {{ run.done + run.failed }} из {{ run.total }}"></progress>
+  <p class="run-panel__meta">
+    {% if run.failed %}<span class="flag flag--check_failed">ошибок {{ run.failed }}</span>{% endif %}
+    {% if run.elapsed is not none %}<span>идёт {{ duration_text(run.elapsed) }}</span>{% endif %}
+  </p>
+  {% if run.status == "worker_offline" %}
+  <p class="alert alert--warn">Worker не на связи больше 2 минут — задания ждут. Проверьте компьютер, на котором он запущен.</p>
+  {% endif %}
+  {% else %}
+  <p class="run-panel__line">
+    {% if run.status == "finished" and run.finished_at %}Последняя проверка {{ moscow_moment(run.finished_at) }}: проверено {{ run.done }} из {{ run.total }}{% if run.failed %}, ошибок {{ run.failed }}{% endif %}{% if run.elapsed is not none %}, заняла {{ duration_text(run.elapsed) }}{% endif %}.
+    {% else %}Последняя проверка не удалась.{% endif %}
+  </p>
+  {% endif %}
+  {% if message is defined and message %}<p class="alert alert--error" role="alert" data-error-code="RUN_IN_PROGRESS">{{ message }}</p>{% endif %}
+</section>

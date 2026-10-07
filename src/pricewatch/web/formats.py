@@ -1,6 +1,6 @@
 """Подписи для показа на сайте: даты по-русски, периоды, статус проверки. Деньги форматирует domain.money."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from pricewatch.domain.days import MOSCOW, Period
 
@@ -45,10 +45,27 @@ def moscow_moment(moment: datetime) -> str:
     return f"{local:%d.%m} в {local:%H:%M}"
 
 
+# Проверка ещё идёт: статус в шапке и блок запуска опрашивают сервер, пока она не закончится.
+ACTIVE_RUN_STATUSES = frozenset({"queued", "running", "stopping", "worker_offline"})
+
+
+def duration_text(elapsed: timedelta) -> str:
+    """«меньше минуты», «12 мин», «1 ч 5 мин», «3 ч»."""
+    minutes = int(elapsed.total_seconds() // 60)
+    if minutes < 1:
+        return "меньше минуты"
+    hours, rest = divmod(minutes, 60)
+    if not hours:
+        return f"{rest} мин"
+    return f"{hours} ч {rest} мин" if rest else f"{hours} ч"
+
+
 def run_line(status: str, done: int, failed: int, total: int, finished_at: datetime | None) -> tuple[str, str]:
     """Текст статуса проверки в шапке и вид точки: ok, busy, bad."""
     if status in ("queued", "running"):
         return f"Идёт проверка: {done + failed} из {total}", "busy"
+    if status == "worker_offline":
+        return f"Worker не на связи: {done + failed} из {total}", "bad"
     if status == "stopping":
         return f"Проверка останавливается: {done + failed} из {total}", "busy"
     if status == "failed":

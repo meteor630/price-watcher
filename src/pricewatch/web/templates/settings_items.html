@@ -5,7 +5,7 @@
 <nav class="crumbs" aria-label="Путь"><a href="/web/">Главная</a><span aria-hidden="true"> › </span><span class="crumbs__here" aria-current="page">Настройки</span></nav>
 <h1 class="page-title">Настройки</h1>
 <p class="summary">Стрелки меняют порядок товаров внутри их группы. Удалённое можно вернуть кнопкой «Отменить».</p>
-{{ settings_tabs("items") }}
+{{ settings_tabs("items", session_user.user.is_admin) }}
 
 <div id="page-rest">
   <nav class="chips chips--filter" aria-label="Фильтр по категории">

@@ -504,6 +504,9 @@ class WorkerRepository(Protocol):
         """Новый токен ротации; нет такого worker — NOT_FOUND."""
         ...
     def touch(self, worker_id: int, now: datetime) -> None: ...
+    def last_seen(self) -> datetime | None:
+        """Когда действующий (не отключённый) worker последний раз обращался к серверу; None — ни разу."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -618,9 +621,21 @@ class ImageStore(Protocol):
         ...
 
 
+@dataclass(frozen=True, slots=True)
+class StoredSetting:
+    value: object
+    version: int
+
+
 class SettingRepository(Protocol):
     def get(self, key: str) -> object | None:
         """Значение настройки (JSON) или None, если её не задавали."""
+        ...
+    def read(self, key: str) -> StoredSetting | None:
+        """Значение с версией записи; None — настройку не задавали."""
+        ...
+    def write(self, key: str, value: object, version: int, actor_id: int, now: datetime) -> int:
+        """Записать по версии (0 — настройки ещё нет) и вернуть новую версию; чужая правка — VERSION_CONFLICT."""
         ...
 
 

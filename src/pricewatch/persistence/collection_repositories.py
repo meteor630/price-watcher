@@ -25,6 +25,7 @@ from pricewatch.application.ports import (
     RunProgress,
     StorePause,
     StoreRecord,
+    StoredSetting,
     WorkerAuth,
 )
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
@@ -596,6 +597,9 @@ class SqlWorkerRepository:
     def touch(self, worker_id: int, now: datetime) -> None:
         self.connection.execute(update(workers).where(workers.c.id == worker_id).values(last_seen_at=now))
 
+    def last_seen(self) -> datetime | None:
+        return self.connection.execute(select(func.max(workers.c.last_seen_at)).where(workers.c.disabled_at.is_(None))).scalar_one()
+
 
 class SqlSettingRepository:
     def __init__(self, connection: Connection) -> None:
@@ -603,6 +607,25 @@ class SqlSettingRepository:
 
     def get(self, key: str) -> object | None:
         return self.connection.execute(select(settings.c.value_json).where(settings.c.key == key)).scalar_one_or_none()
+
+    def read(self, key: str) -> StoredSetting | None:
+        row = self.connection.execute(select(settings.c.value_json, settings.c.version).where(settings.c.key == key)).one_or_none()
+        return None if row is None else StoredSetting(row.value_json, row.version)
+
+    def write(self, key: str, value: object, version: int, actor_id: int, now: datetime) -> int:
+        if version == 0:
+            written = self.connection.execute(
+                insert(settings).values(key=key, value_json=value, updated_by=actor_id, updated_at=now)
+                .on_conflict_do_nothing(index_elements=["key"]).returning(settings.c.version)
+            ).scalar_one_or_none()
+        else:
+            written = self.connection.execute(
+                update(settings).where(settings.c.key == key, settings.c.version == version)
+                .values(value_json=value, version=settings.c.version + 1, updated_by=actor_id, updated_at=now).returning(settings.c.version)
+            ).scalar_one_or_none()
+        if written is None:
+            raise PriceWatcherError(ErrorCode.VERSION_CONFLICT)
+        return written
 
 
 class SqlNotificationRepository:

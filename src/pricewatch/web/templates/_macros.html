@@ -91,10 +91,11 @@
 </span>
 {% endmacro %}
 
-{% macro settings_tabs(current) %}
+{% macro settings_tabs(current, admin) %}
 <nav class="tabs" aria-label="Разделы настроек">
   <a class="tabs__tab" href="/web/settings/items" {% if current == "items" %}aria-current="page"{% endif %}>Товары</a>
   <a class="tabs__tab" href="/web/settings/categories" {% if current == "categories" %}aria-current="page"{% endif %}>Категории</a>
+  {% if admin %}<a class="tabs__tab" href="/web/settings/check" {% if current == "check" %}aria-current="page"{% endif %}>Проверка</a>{% endif %}
 </nav>
 {% endmacro %}
 

@@ -29,7 +29,7 @@ def category_page(request: Request, category_id: EntityId, period: Period = Peri
     now = context.clock()
     detail = category_detail(context.unit_of_work(), session.user, category_id, period, now)
     points = category_chart(context.unit_of_work(), session.user, category_id, ChartRange.MONTH, now)
-    run = run_status(context.unit_of_work(), session.user)
+    run = run_status(context.unit_of_work(), session.user, context.clock())
     return HTMLResponse(render("category.html", session_user=session, header_run=run, detail=detail, points=points, chart_range=ChartRange.MONTH))
 
 
@@ -46,5 +46,5 @@ def category_chart_fragment(
 def group_page(request: Request, group_id: EntityId, period: Period = Period.DAY, session: SessionUser = Depends(web_user)) -> HTMLResponse:
     context = get_context(request)
     detail = group_detail(context.unit_of_work(), session.user, group_id, period, context.clock())
-    return HTMLResponse(render("group.html", session_user=session, header_run=run_status(context.unit_of_work(), session.user), detail=detail))
+    return HTMLResponse(render("group.html", session_user=session, header_run=run_status(context.unit_of_work(), session.user, context.clock()), detail=detail))
 

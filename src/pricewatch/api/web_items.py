@@ -229,7 +229,7 @@ def _item_page(request: Request, session: SessionUser, item_id: int, flash: str 
     store_id = detail.best_store.store_id if detail.best_store else (detail.chart_stores[0].store_id if detail.chart_stores else None)
     points = [] if store_id is None else item_chart(context.unit_of_work(), session.user, item_id, store_id, ChartRange.MONTH, now)
     return render(
-        "item.html", session_user=session, header_run=run_status(context.unit_of_work(), session.user), detail=detail,
+        "item.html", session_user=session, header_run=run_status(context.unit_of_work(), session.user, context.clock()), detail=detail,
         store_id=store_id, chart_range=ChartRange.MONTH, points=points, flash_message=flash, toast=toast, undo_token=undo_token,
     )
 
@@ -240,6 +240,6 @@ def _category_page(request: Request, session: SessionUser, category_id: int, per
     detail = category_detail(context.unit_of_work(), session.user, category_id, period, now)
     points = category_chart(context.unit_of_work(), session.user, category_id, ChartRange.MONTH, now)
     return render(
-        "category.html", session_user=session, header_run=run_status(context.unit_of_work(), session.user), detail=detail,
+        "category.html", session_user=session, header_run=run_status(context.unit_of_work(), session.user, context.clock()), detail=detail,
         points=points, chart_range=ChartRange.MONTH, flash_message=flash,
     )

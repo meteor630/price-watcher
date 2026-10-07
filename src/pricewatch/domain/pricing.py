@@ -20,6 +20,8 @@ from enum import StrEnum
 from pricewatch.domain.errors import ErrorCode
 
 STALE_AFTER = timedelta(days=7)
+# Срок актуальности в настройках администратора (stale_after_days), сутки.
+STALE_AFTER_DAYS_MIN, STALE_AFTER_DAYS_MAX = 1, 30
 
 
 class PriceStatus(StrEnum):
@@ -126,6 +128,15 @@ class ItemPrice:
     participates: bool
     under_review: bool
     links: tuple[LinkPrice, ...]
+
+
+def stale_after_setting(raw: object) -> timedelta:
+    """Срок актуальности из настройки `stale_after_days`; не задана — 7 суток. Неверное значение — ошибка, а не замена."""
+    if raw is None:
+        return STALE_AFTER
+    if isinstance(raw, bool) or not isinstance(raw, int) or not STALE_AFTER_DAYS_MIN <= raw <= STALE_AFTER_DAYS_MAX:
+        raise ValueError(f"срок актуальности цены — целое число суток от {STALE_AFTER_DAYS_MIN} до {STALE_AFTER_DAYS_MAX}")
+    return timedelta(days=raw)
 
 
 def link_price(link: LinkInput, now: datetime, stale_after: timedelta = STALE_AFTER) -> LinkPrice:

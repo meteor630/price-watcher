@@ -229,7 +229,7 @@ def _settings_page(request: Request, session: SessionUser, flash: str | None = N
     context = get_context(request)
     overview = categories_overview(context.unit_of_work(), session.user, context.clock())
     return render(
-        "settings_categories.html", session_user=session, header_run=run_status(context.unit_of_work(), session.user),
+        "settings_categories.html", session_user=session, header_run=run_status(context.unit_of_work(), session.user, context.clock()),
         overview=overview, flash_message=flash, toast=deleted, undo_token=undo_token,
     )
 

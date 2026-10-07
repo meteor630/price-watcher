@@ -41,7 +41,7 @@ class ExpiredLeases:
 
 def start_manual_run(uow: UnitOfWork, actor_id: int, now: datetime) -> RunProgress:
     with uow:
-        _require_admin(uow, actor_id)
+        require_admin(uow, actor_id)
         run_id = uow.queue.start_run("manual", None, actor_id, now)
         if run_id is None:
             raise _in_progress(uow.queue.active_run())
@@ -67,7 +67,7 @@ def start_scheduled_run(uow: UnitOfWork, slot_key: str, now: datetime) -> Schedu
 
 def stop_run(uow: UnitOfWork, actor_id: int, run_id: int, now: datetime) -> RunProgress:
     with uow:
-        _require_admin(uow, actor_id)
+        require_admin(uow, actor_id)
         progress = uow.queue.stop_run(run_id, now)
         if progress is None:
             raise PriceWatcherError(ErrorCode.NOT_FOUND)
@@ -111,7 +111,8 @@ def configured_times(uow: UnitOfWork) -> tuple[time, ...]:
     return DEFAULT_TIMES if raw is None else parse_times(raw)
 
 
-def _require_admin(uow: UnitOfWork, actor_id: int) -> None:
+def require_admin(uow: UnitOfWork, actor_id: int) -> None:
+    """Действие доступно только действующему администратору (роль и блокировка — из базы, не из сессии)."""
     actor = uow.users.get(actor_id)
     if not actor.is_admin or actor.disabled:
         raise PriceWatcherError(ErrorCode.FORBIDDEN)

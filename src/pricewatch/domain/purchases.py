@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from pricewatch.domain.days import Period, period_start
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.names import check_quantity
-from pricewatch.domain.pricing import STALE_AFTER, ItemPrice
+from pricewatch.domain.pricing import ItemPrice
 from pricewatch.domain.shopping import ItemState, Purchase
 from pricewatch.domain.totals import TotalItem, item_price_at
 
@@ -96,7 +96,7 @@ def cheaper_now(purchase: Purchase, current: ItemPrice, now: datetime) -> int | 
     return difference if difference > 0 else None
 
 
-def baseline_price(item: TotalItem, added_at: datetime, until: datetime, stale_after: timedelta = STALE_AFTER) -> int | None:
+def baseline_price(item: TotalItem, added_at: datetime, until: datetime) -> int | None:
     """Лучшая цена в момент добавления: первая актуальная цена товара начиная с `added_at`.
 
     Ссылка общая, поэтому её цена может быть известна уже в момент добавления; иначе берётся
@@ -112,7 +112,7 @@ def baseline_price(item: TotalItem, added_at: datetime, until: datetime, stale_a
         }
     )
     for moment in moments:
-        price = item_price_at(item, moment, stale_after)
+        price = item_price_at(item, moment)
         if price.participates:
             return price.price_minor
     return None

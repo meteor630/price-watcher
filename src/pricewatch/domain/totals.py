@@ -48,6 +48,8 @@ class TotalItem:
     in_total: bool
     include_stale: bool
     bindings: Sequence[Binding]
+    # Срок актуальности цены из настроек администратора (stale_after_days); по умолчанию 7 суток.
+    stale_after: timedelta = STALE_AFTER
 
     def __post_init__(self) -> None:
         check_quantity(self.quantity)
@@ -60,8 +62,8 @@ class PeriodMinimum:
     store_id: int
 
 
-def item_price_at(item: TotalItem, moment: datetime, stale_after: timedelta = STALE_AFTER) -> ItemPrice:
-    return item_price([binding.link for binding in item.bindings if binding.active_at(moment)], moment, stale_after)
+def item_price_at(item: TotalItem, moment: datetime) -> ItemPrice:
+    return item_price([binding.link for binding in item.bindings if binding.active_at(moment)], moment, item.stale_after)
 
 
 def in_total_shown(item: TotalItem, price: ItemPrice) -> bool:
@@ -80,24 +82,22 @@ def counted_unit_price(item: TotalItem, price: ItemPrice) -> int | None:
     return None
 
 
-def total(items: Sequence[TotalItem], now: datetime, stale_after: timedelta = STALE_AFTER) -> int:
+def total(items: Sequence[TotalItem], now: datetime) -> int:
     """Сумма «цена за штуку × количество» по товарам, которые идут в итог."""
     return sum(
         unit * item.quantity
         for item in items
-        if (unit := counted_unit_price(item, item_price_at(item, now, stale_after))) is not None
+        if (unit := counted_unit_price(item, item_price_at(item, now))) is not None
     )
 
 
-def total_change(
-    items: Sequence[TotalItem], period: Period, now: datetime, stale_after: timedelta = STALE_AFTER
-) -> Change | None:
+def total_change(items: Sequence[TotalItem], period: Period, now: datetime) -> Change | None:
     """Изменение итога с начала периода только из-за цен; `None`, если сравнить не с чем."""
     before_moment = period_start(period, now) - BEFORE
     before_sum = after_sum = 0
     for item in items:
-        after = counted_unit_price(item, item_price_at(item, now, stale_after))
-        before = counted_unit_price(item, item_price_at(item, before_moment, stale_after))
+        after = counted_unit_price(item, item_price_at(item, now))
+        before = counted_unit_price(item, item_price_at(item, before_moment))
         if after is not None and before is not None:
             before_sum += before * item.quantity
             after_sum += after * item.quantity

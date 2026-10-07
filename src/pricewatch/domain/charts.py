@@ -20,7 +20,7 @@ from enum import StrEnum
 
 from pricewatch.domain.days import date_label, day_start, moscow_date
 from pricewatch.domain.money import format_rub
-from pricewatch.domain.pricing import STALE_AFTER, LinkInput, PriceStatus, link_price
+from pricewatch.domain.pricing import LinkInput, PriceStatus, link_price
 from pricewatch.domain.totals import BEFORE, TotalItem, counted_unit_price, item_price_at
 
 
@@ -54,25 +54,21 @@ def chart_days(chart_range: ChartRange, now: datetime) -> list[tuple[date, datet
     return [(day, now if day == today else day_start(day + timedelta(days=1)) - BEFORE) for day in days]
 
 
-def store_chart(
-    item: TotalItem, store_id: int, chart_range: ChartRange, now: datetime, stale_after: timedelta = STALE_AFTER
-) -> list[ChartPoint]:
+def store_chart(item: TotalItem, store_id: int, chart_range: ChartRange, now: datetime) -> list[ChartPoint]:
     points = []
     for day, moment in chart_days(chart_range, now):
         link = next((b.link for b in item.bindings if b.link.store_id == store_id and b.active_at(moment)), None)
-        points.append(_store_point(day, link, moment, stale_after))
+        points.append(_store_point(day, link, moment, item.stale_after))
     return _or_empty(points)
 
 
-def sum_chart(
-    items: Sequence[TotalItem], chart_range: ChartRange, now: datetime, stale_after: timedelta = STALE_AFTER
-) -> list[ChartPoint]:
+def sum_chart(items: Sequence[TotalItem], chart_range: ChartRange, now: datetime) -> list[ChartPoint]:
     points = []
     for day, moment in chart_days(chart_range, now):
         value = 0
         counted = stale = False
         for item in items:
-            price = item_price_at(item, moment, stale_after)
+            price = item_price_at(item, moment)
             unit = counted_unit_price(item, price)
             if unit is not None:
                 value += unit * item.quantity

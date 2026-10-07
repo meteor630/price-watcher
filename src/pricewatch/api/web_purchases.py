@@ -22,7 +22,7 @@ router = APIRouter()
 def purchases_page(request: Request, period: Period = Period.MONTH, session: SessionUser = Depends(web_user)) -> HTMLResponse:
     context = get_context(request)
     overview = purchases_overview(context.unit_of_work(), session.user, period, context.clock())
-    return HTMLResponse(render("purchases.html", session_user=session, header_run=run_status(context.unit_of_work(), session.user), overview=overview))
+    return HTMLResponse(render("purchases.html", session_user=session, header_run=run_status(context.unit_of_work(), session.user, context.clock()), overview=overview))
 
 
 @router.get("/web/purchases/archive")
@@ -33,4 +33,4 @@ def archive_page(request: Request, session: SessionUser = Depends(web_user)) -> 
 def archive_html(request: Request, session: SessionUser, flash: str | None) -> str:
     context = get_context(request)
     entries = archive_list(context.unit_of_work(), session.user, context.clock())
-    return render("archive.html", session_user=session, header_run=run_status(context.unit_of_work(), session.user), entries=entries, flash_message=flash)
+    return render("archive.html", session_user=session, header_run=run_status(context.unit_of_work(), session.user, context.clock()), entries=entries, flash_message=flash)

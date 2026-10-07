@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import settings_tabs %}
+{% block title %}Настройки — проверка{% endblock %}
+{% macro time_field(index, label, hint) %}
+{% set name = "check_time_" ~ index %}
+<div class="field">
+  <label class="field__label" for="check-time-{{ index }}">{{ label }}</label>
+  <input class="input input--time num" id="check-time-{{ index }}" name="{{ name }}" type="time" value="{{ values[name] }}"
+         {% if index == 1 %}required{% endif %} {% if errors.get(name) %}aria-invalid="true" aria-describedby="check-time-{{ index }}-error"{% else %}aria-describedby="check-time-{{ index }}-hint"{% endif %}>
+  {% if errors.get(name) %}<p class="field__error" id="check-time-{{ index }}-error">{{ errors[name] }}</p>{% else %}<p class="field__hint" id="check-time-{{ index }}-hint">{{ hint }}</p>{% endif %}
+</div>
+{% endmacro %}
+{% block content %}
+<nav class="crumbs" aria-label="Путь"><a href="/web/">Главная</a><span aria-hidden="true"> › </span><span class="crumbs__here" aria-current="page">Настройки</span></nav>
+<h1 class="page-title">Настройки</h1>
+<p class="summary">Расписание плановой проверки цен и срок, после которого цена считается неактуальной. Действует для всех пользователей.</p>
+{{ settings_tabs("check", true) }}
+
+<div id="page-rest">
+  {% if saved %}<p class="alert alert--ok check-saved" role="status" data-saved>Сохранено. Следующая плановая проверка — {{ moscow_moment(current.next_run_at) }}.</p>{% endif %}
+  <form class="panel-box form check-form" hx-post="/web/settings/check" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash" novalidate>
+    <input type="hidden" name="times_version" value="{{ current.times_version }}">
+    <input type="hidden" name="stale_version" value="{{ current.stale_version }}">
+    <section class="check-form__group" aria-labelledby="schedule-title">
+      <h2 id="schedule-title" class="section__title">Расписание</h2>
+      <p class="field__hint">Время по Москве. Следующая плановая проверка — {{ moscow_moment(current.next_run_at) }}.</p>
+      <div class="form__row">
+        {{ time_field(1, "Ежедневная проверка", "Обязательно.") }}
+        {{ time_field(2, "Дополнительная", "Необязательно — оставьте пустым.") }}
+        {{ time_field(3, "Ещё одна", "Необязательно — оставьте пустым.") }}
+      </div>
+    </section>
+    <section class="check-form__group" aria-labelledby="prices-title">
+      <h2 id="prices-title" class="section__title">Цены</h2>
+      <div class="field">
+        <label class="field__label" for="stale-days">Срок актуальности цены, суток</label>
+        <input class="input input--short num" id="stale-days" name="stale_after_days" type="number" inputmode="numeric" min="{{ stale_min }}" max="{{ stale_max }}" required
+               value="{{ values['stale_after_days'] }}" {% if errors.get('stale_after_days') %}aria-invalid="true" aria-describedby="stale-days-error"{% else %}aria-describedby="stale-days-hint"{% endif %}>
+        {% if errors.get("stale_after_days") %}<p class="field__error" id="stale-days-error">{{ errors["stale_after_days"] }}</p>
+        {% else %}<p class="field__hint" id="stale-days-hint">От {{ stale_min }} до {{ stale_max }}. Цена старше этого срока не входит в итог и помечается «не актуальна».</p>{% endif %}
+      </div>
+    </section>
+    <div class="check-form__actions">
+      <button class="btn btn--primary" type="submit">Сохранить</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

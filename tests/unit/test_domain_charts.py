@@ -5,7 +5,7 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 
 from pricewatch.domain.charts import ChartPoint, ChartRange, PointStatus, chart_days, store_chart, sum_chart
-from pricewatch.domain.pricing import STALE_AFTER, Availability, Confirmation, LinkInput, Observation
+from pricewatch.domain.pricing import Availability, Confirmation, LinkInput, Observation
 from pricewatch.domain.shopping import ItemState
 from pricewatch.domain.totals import Binding, TotalItem
 
@@ -201,7 +201,7 @@ def test_naive_now_rejected() -> None:
 
 def test_stale_boundary_on_chart_matches_seven_days() -> None:
     # Цена снята 29 сентября в 12:00: на конец 5 октября ей 6,5 суток, 6 октября в 12:00 — ровно 7.
-    points = store_chart(item(bound(seen(day_at(7), 100_000))), 1, ChartRange.WEEK, NOW, stale_after=STALE_AFTER)
+    points = store_chart(item(bound(seen(day_at(7), 100_000))), 1, ChartRange.WEEK, NOW)
 
     assert [p.status for p in points[-2:]] == [PointStatus.OK, PointStatus.STALE]
     assert points[0].status is PointStatus.OK

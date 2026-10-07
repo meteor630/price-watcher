@@ -14,6 +14,7 @@ from pricewatch.domain.pricing import (
     PriceStatus,
     item_price,
     link_price,
+    stale_after_setting,
 )
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
@@ -321,3 +322,14 @@ def test_link_keeps_observations_sorted_and_immutable() -> None:
     source.clear()
 
     assert stored == (early, late)
+
+
+@pytest.mark.parametrize(("raw", "days"), [(None, 7), (1, 1), (30, 30), (14, 14)])
+def test_stale_after_setting(raw: object, days: int) -> None:
+    assert stale_after_setting(raw) == timedelta(days=days)
+
+
+@pytest.mark.parametrize("raw", [0, 31, -1, True, "7", 7.0, [7]])
+def test_bad_stale_after_setting_is_an_error(raw: object) -> None:
+    with pytest.raises(ValueError):
+        stale_after_setting(raw)

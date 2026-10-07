@@ -32,7 +32,7 @@
     </p>
 
     {% if detail.price_status.value == "stale" %}
-    <p class="alert alert--warn">Цена не актуальна — магазин не отвечает больше 7 суток. Обновите или замените ссылку.
+    <p class="alert alert--warn">Цена не актуальна — магазин не отвечает больше {% if detail.stale_after_days > 1 %}{{ detail.stale_after_days }} {% endif %}суток. Обновите или замените ссылку.
       {% if detail.in_total %}Последняя цена учитывается в итоге.{% endif %}</p>
     {% elif detail.price_status.value == "no_links" %}
     <p class="alert alert--warn">Нет ссылок на магазины — добавьте ссылку, чтобы следить за ценой. История и графики сохранены.</p>

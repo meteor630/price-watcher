@@ -86,6 +86,8 @@ class ItemDetail:
     cheaper_now_minor: int | None
     cheaper_now_text: str | None
     archived_at: datetime | None
+    # Срок актуальности цены из настроек — для пояснения «не обновлялась больше N суток».
+    stale_after_days: int
 
 
 def item_detail(uow: UnitOfWork, user: User, item_id: int, now: datetime) -> ItemDetail:
@@ -202,4 +204,5 @@ def _assemble(
         cheaper_now_minor=cheaper,
         cheaper_now_text=None if cheaper is None else format_rub(cheaper),
         archived_at=item.archived_at,
+        stale_after_days=row.total_item.stale_after.days,
     )
