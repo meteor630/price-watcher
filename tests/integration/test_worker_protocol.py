@@ -351,3 +351,20 @@ def test_title_change_waits_for_decision_and_does_not_close_itself(engine: Engin
     assert query(engine, "SELECT confirmation FROM price_observations WHERE tracked_link_id = :l ORDER BY checked_at", l=added.tracked_link_id) == [
         ("confirmed",), ("pending",), ("confirmed",)
     ]
+
+
+def test_threshold_from_settings_applies_to_new_results(engine: Engine) -> None:
+    worker_id = worker(engine)
+    drain(engine, worker_id)
+    host = f"shop-{uuid.uuid4().hex[:8]}.example"
+    add(engine, host, "lamp")
+    task = claim_task(uow(engine), worker_id, NOW)
+    submit_result(uow(engine), worker_id, task.task_id, OK, NOW)  # type: ignore[union-attr]
+    with engine.begin() as db:
+        db.execute(text("INSERT INTO settings (key, value_json) VALUES ('price_jump_max_percent', '50')"))
+    try:
+        plus_40 = WorkerResult("ok", 140_000, None, "in_stock", "Лампа настольная", "site_data")
+        assert check(engine, worker_id, host, "lamp", plus_40, NOW + timedelta(hours=1)) == "confirmed"  # при 30 % было бы «ждёт решения»
+    finally:
+        with engine.begin() as db:
+            db.execute(text("DELETE FROM settings WHERE key = 'price_jump_max_percent'"))

@@ -10,17 +10,27 @@
   {% if errors.get(name) %}<p class="field__error" id="check-time-{{ index }}-error">{{ errors[name] }}</p>{% else %}<p class="field__hint" id="check-time-{{ index }}-hint">{{ hint }}</p>{% endif %}
 </div>
 {% endmacro %}
+{% macro number_field(name, label, hint) %}
+{% set low, high = ranges[name] %}
+{% set id = name | replace("_", "-") %}
+<div class="field">
+  <label class="field__label" for="{{ id }}">{{ label }}</label>
+  <input class="input input--short num" id="{{ id }}" name="{{ name }}" type="number" inputmode="numeric" min="{{ low }}" max="{{ high }}" required
+         value="{{ values[name] }}" {% if errors.get(name) %}aria-invalid="true" aria-describedby="{{ id }}-error"{% else %}aria-describedby="{{ id }}-hint"{% endif %}>
+  {% if errors.get(name) %}<p class="field__error" id="{{ id }}-error">{{ errors[name] }}</p>
+  {% else %}<p class="field__hint" id="{{ id }}-hint">От {{ low }} до {{ high }}. {{ hint }}</p>{% endif %}
+</div>
+{% endmacro %}
 {% block content %}
 <nav class="crumbs" aria-label="Путь"><a href="/web/">Главная</a><span aria-hidden="true"> › </span><span class="crumbs__here" aria-current="page">Настройки</span></nav>
 <h1 class="page-title">Настройки</h1>
-<p class="summary">Расписание плановой проверки цен и срок, после которого цена считается неактуальной. Действует для всех пользователей.</p>
+<p class="summary">Расписание плановой проверки, срок, после которого цена считается неактуальной, и пороги подозрительных изменений. Действует для всех пользователей.</p>
 {{ settings_tabs("check", true) }}
 
 <div id="page-rest">
   {% if saved %}<p class="alert alert--ok check-saved" role="status" data-saved>Сохранено. Следующая плановая проверка — {{ moscow_moment(current.next_run_at) }}.</p>{% endif %}
   <form class="panel-box form check-form" hx-post="/web/settings/check" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash" novalidate>
-    <input type="hidden" name="times_version" value="{{ current.times_version }}">
-    <input type="hidden" name="stale_version" value="{{ current.stale_version }}">
+    {% for key, version in current.versions.items() %}<input type="hidden" name="version_{{ key }}" value="{{ version }}">{% endfor %}
     <section class="check-form__group" aria-labelledby="schedule-title">
       <h2 id="schedule-title" class="section__title">Расписание</h2>
       <p class="field__hint">Время по Москве. Следующая плановая проверка — {{ moscow_moment(current.next_run_at) }}.</p>
@@ -32,12 +42,14 @@
     </section>
     <section class="check-form__group" aria-labelledby="prices-title">
       <h2 id="prices-title" class="section__title">Цены</h2>
-      <div class="field">
-        <label class="field__label" for="stale-days">Срок актуальности цены, суток</label>
-        <input class="input input--short num" id="stale-days" name="stale_after_days" type="number" inputmode="numeric" min="{{ stale_min }}" max="{{ stale_max }}" required
-               value="{{ values['stale_after_days'] }}" {% if errors.get('stale_after_days') %}aria-invalid="true" aria-describedby="stale-days-error"{% else %}aria-describedby="stale-days-hint"{% endif %}>
-        {% if errors.get("stale_after_days") %}<p class="field__error" id="stale-days-error">{{ errors["stale_after_days"] }}</p>
-        {% else %}<p class="field__hint" id="stale-days-hint">От {{ stale_min }} до {{ stale_max }}. Цена старше этого срока не входит в итог и помечается «не актуальна».</p>{% endif %}
+      {{ number_field("stale_after_days", "Срок актуальности цены, суток", "Цена старше этого срока не входит в итог и помечается «не актуальна».") }}
+    </section>
+    <section class="check-form__group" aria-labelledby="reviews-title">
+      <h2 id="reviews-title" class="section__title">Подозрительные изменения</h2>
+      <p class="field__hint">Такие результаты не идут в цену, пока пользователь не решит по своим товарам. Новый порог сразу применяется к нерешённым.</p>
+      <div class="form__row">
+        {{ number_field("title_similarity_percent", "Схожесть названия, %", "Ниже — «название изменилось».") }}
+        {{ number_field("price_jump_percent", "Скачок цены, %", "Больше — «скачок цены».") }}
       </div>
     </section>
     <div class="check-form__actions">

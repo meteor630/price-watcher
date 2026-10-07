@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import Engine, text
 from test_dashboard import DAY, NOW, World
 
-from pricewatch.application.check_settings import check_settings, save_check_settings
+from pricewatch.application.check_settings import CheckForm, check_settings, save_check_settings
 from pricewatch.application.item import item_detail
 from pricewatch.application.runs import schedule_times
 from pricewatch.domain.accounts import Role
@@ -33,11 +33,18 @@ def uow(engine: Engine) -> SqlUnitOfWork:
     return SqlUnitOfWork(engine)
 
 
-def save(engine: Engine, world: World, times: list[str], days: str = "7", versions: tuple[int, int] | None = None):  # type: ignore[no-untyped-def]
-    current = check_settings(uow(engine), world.user, NOW) if versions is None else None
-    times_version, stale_version = versions or (current.times_version, current.stale_version)  # type: ignore[union-attr]
-    return save_check_settings(uow(engine), world.user, times=times, stale_after_days=days, times_version=times_version,
-                               stale_version=stale_version, now=NOW)
+KEYS = ("check_times", "stale_after_days", "title_similarity_min_percent", "price_jump_max_percent")
+
+
+def save(engine: Engine, world: World, times: list[str], days: str = "7", versions: tuple[int, int] | None = None,  # type: ignore[no-untyped-def]
+         title: str = "85", jump: str = "30"):
+    """`versions` — (версия расписания, версия остальных настроек); None — текущие."""
+    if versions is None:
+        stored = check_settings(uow(engine), world.user, NOW).versions
+    else:
+        stored = {key: versions[0] if key == "check_times" else versions[1] for key in KEYS}
+    form = CheckForm(times=times, numbers={"stale_after_days": days, "title_similarity_percent": title, "price_jump_percent": jump}, versions=stored)
+    return save_check_settings(uow(engine), world.user, form, NOW)
 
 
 def error(action) -> tuple[ErrorCode, object]:  # type: ignore[no-untyped-def]
@@ -51,7 +58,8 @@ def test_defaults_until_admin_saves(engine: Engine) -> None:
 
     current = check_settings(uow(engine), admin.user, NOW)
 
-    assert (current.times, current.times_version, current.stale_after_days, current.stale_version) == ((time(9, 0),), 0, 7, 0)
+    assert (current.times, current.stale_after_days, current.title_similarity_percent, current.price_jump_percent) == ((time(9, 0),), 7, 85, 30)
+    assert current.versions == dict.fromkeys(KEYS, 0)
     assert current.next_run_at == datetime(2026, 10, 7, 6, 0, tzinfo=UTC)  # NOW — 15:00 по Москве, следующая — завтра в 09:00
 
 
@@ -61,9 +69,9 @@ def test_save_sorts_skips_empty_and_reaches_scheduler(engine: Engine) -> None:
     saved = save(engine, admin, ["21:30", "", "08:00"], days="3")
     again = save(engine, admin, ["21:30", "08:00", "13:15"], days="30")
 
-    assert (saved.times, saved.times_version, saved.stale_after_days, saved.stale_version) == ((time(8, 0), time(21, 30)), 1, 3, 1)
+    assert (saved.times, saved.versions["check_times"], saved.stale_after_days, saved.versions["stale_after_days"]) == ((time(8, 0), time(21, 30)), 1, 3, 1)
     assert saved.next_run_at == datetime(2026, 10, 6, 18, 30, tzinfo=UTC)
-    assert (again.times_version, again.stale_version, again.stale_after_days) == (2, 2, 30)
+    assert (again.versions["check_times"], again.versions["stale_after_days"], again.stale_after_days) == (2, 2, 30)
     assert schedule_times(uow(engine)) == (time(8, 0), time(13, 15), time(21, 30))
 
 
@@ -78,7 +86,7 @@ def test_field_errors_are_collected_and_nothing_is_written(engine: Engine) -> No
     )
     for days in ("abc", "-1", "٣", "", "7.5"):
         assert error(lambda: save(engine, admin, ["10:00", "", ""], days=days))[1] == {"fields": {"stale_after_days": "out_of_range"}}
-    assert check_settings(uow(engine), admin.user, NOW).times_version == 0
+    assert check_settings(uow(engine), admin.user, NOW).versions == dict.fromkeys(KEYS, 0)
 
 
 def test_someone_elses_save_is_a_conflict(engine: Engine) -> None:
@@ -122,5 +130,32 @@ def test_change_is_written_to_audit(engine: Engine) -> None:
     with engine.connect() as db:
         rows = db.execute(text("SELECT actor_id, action, before_json, after_json FROM audit_events")).all()
     assert [tuple(row) for row in rows] == [
-        (admin.user.id, "check_settings_changed", {"check_times": ["09:00"], "stale_after_days": 7}, {"check_times": ["10:00"], "stale_after_days": 5})
+        (admin.user.id, "check_settings_changed",
+         {"check_times": ["09:00"], "stale_after_days": 7, "title_similarity_min_percent": 85, "price_jump_max_percent": 30},
+         {"check_times": ["10:00"], "stale_after_days": 5, "title_similarity_min_percent": 85, "price_jump_max_percent": 30})
     ]
+
+
+def test_thresholds_are_validated_and_saved(engine: Engine) -> None:
+    admin = World(engine, Role.ADMIN)
+
+    assert error(lambda: save(engine, admin, ["10:00", "", ""], title="49", jump="201")) == (
+        ErrorCode.VALIDATION_ERROR, {"fields": {"title_similarity_percent": "out_of_range", "price_jump_percent": "out_of_range"}}
+    )
+    saved = save(engine, admin, ["10:00", "", ""], title="99", jump="5")
+
+    assert (saved.title_similarity_percent, saved.price_jump_percent) == (99, 5)
+
+
+def test_new_threshold_applies_to_undecided_for_users(engine: Engine) -> None:
+    # Скачок +40 %: при пороге 30 % ждёт решения, при 50 % — засчитан сам; принятые и отклонённые не трогаются.
+    admin = World(engine, Role.ADMIN)
+    store = admin.store()
+    link = admin.link(admin.item(admin.category("Дом"), "Лампа"), store)
+    admin.seen(link, NOW - 3 * DAY, 1000_00)
+    admin.seen(link, NOW - DAY, 1400_00, confirmation="pending")
+    assert admin.board().total_minor == 1000_00 and admin.board().reviews_pending == 1
+
+    save(engine, admin, ["09:00", "", ""], jump="50")
+
+    assert admin.board().total_minor == 1400_00 and admin.board().reviews_pending == 0

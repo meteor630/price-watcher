@@ -15,7 +15,8 @@ PAGE = "/web/settings/check"
 @pytest.fixture(autouse=True)
 def default_settings(engine: Engine) -> Iterator[None]:
     # База общая на весь прогон: настройки проверки одного теста не должны менять итоги в других.
-    reset = "WITH d AS (DELETE FROM settings WHERE key IN ('check_times', 'stale_after_days') RETURNING 1) SELECT count(*) FROM d"
+    reset = ("WITH d AS (DELETE FROM settings WHERE key IN ('check_times', 'stale_after_days', 'title_similarity_min_percent', "
+             "'price_jump_max_percent') RETURNING 1) SELECT count(*) FROM d")
     sql(engine, reset)
     yield
     sql(engine, reset)
@@ -28,7 +29,9 @@ def admin(engine: Engine) -> str:
 
 
 def form(**changes: str) -> dict[str, str]:
-    return {"check_time_1": "09:00", "check_time_2": "", "check_time_3": "", "stale_after_days": "7", "times_version": "0", "stale_version": "0"} | changes
+    versions = {f"version_{key}": "0" for key in ("check_times", "stale_after_days", "title_similarity_min_percent", "price_jump_max_percent")}
+    numbers = {"stale_after_days": "7", "title_similarity_percent": "85", "price_jump_percent": "30"}
+    return {"check_time_1": "09:00", "check_time_2": "", "check_time_3": ""} | numbers | versions | changes
 
 
 def test_only_admin_sees_and_saves(client: TestClient, engine: Engine) -> None:
@@ -62,20 +65,20 @@ def test_save_and_conflict(client: TestClient, engine: Engine) -> None:
 def test_field_errors_keep_entered_values_escaped(client: TestClient, engine: Engine) -> None:
     sign_in(client, admin(engine))
 
-    response = client.post(PAGE, data=form(check_time_1="", check_time_2=EVIL, stale_after_days="0"), headers=htmx(client))
+    response = client.post(PAGE, data=form(check_time_1="", check_time_2=EVIL, stale_after_days="0", price_jump_percent="500"), headers=htmx(client))
 
     assert response.status_code == 200
-    assert response.text.count('aria-invalid="true"') == 3
+    assert response.text.count('aria-invalid="true"') == 4 and "Целое число от 5 до 200." in response.text
     assert "Укажите время ежедневной проверки." in response.text and "Время — ЧЧ:ММ" in response.text and "Целое число от 1 до 30." in response.text
     assert EVIL not in response.text and "&lt;img" in response.text
     no_inline_code(response.text)
-    assert sql(engine, "SELECT count(*) FROM settings WHERE key IN ('check_times', 'stale_after_days')") == 0
+    assert sql(engine, "SELECT count(*) FROM settings WHERE key IN ('check_times', 'stale_after_days', 'title_similarity_min_percent', 'price_jump_max_percent')") == 0
 
 
 def test_forged_version_csrf_and_session(client: TestClient, engine: Engine) -> None:
     sign_in(client, admin(engine))
 
-    assert client.post(PAGE, data=form(times_version="x"), headers=htmx(client)).status_code == 422
+    assert client.post(PAGE, data=form(version_check_times="x"), headers=htmx(client)).status_code == 422
     assert client.post(PAGE, data=form(), headers={"HX-Request": "true"}).status_code == 403
     client.cookies.clear()
     assert client.get(PAGE, follow_redirects=False).headers["location"] == "/web/login"

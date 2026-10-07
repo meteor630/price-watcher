@@ -16,12 +16,14 @@ from pricewatch.domain.days import Period, period_start
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.money import Change, format_rub, price_change
 from pricewatch.domain.pricing import ItemPrice, LinkInput, LinkPrice, Observation, PriceStatus, stale_after_setting
-from pricewatch.domain.review import UserContext, resolve_for_user
+from pricewatch.domain.review import Thresholds, UserContext, resolve_for_user, thresholds_setting
 from pricewatch.domain.shopping import ItemState
 from pricewatch.domain.totals import BEFORE, Binding, TotalItem, in_total_shown, item_price_at
 
 
 STALE_AFTER_SETTING = "stale_after_days"
+TITLE_SIMILARITY_SETTING = "title_similarity_min_percent"
+PRICE_JUMP_SETTING = "price_jump_max_percent"
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +113,13 @@ def _as_seen_by_user(
     """История каждой ссылки так, как её видит пользователь: подозрительное засчитано по его решениям (domain.review)."""
     checked = uow.price_data.observations(link_ids, since)
     contexts = user_contexts(uow, user_id, link_ids, bindings)
-    return {link_id: resolve_for_user(checked[link_id], contexts[link_id]) for link_id in link_ids}
+    thresholds = review_thresholds(uow)
+    return {link_id: resolve_for_user(checked[link_id], contexts[link_id], thresholds) for link_id in link_ids}
+
+
+def review_thresholds(uow: UnitOfWork) -> Thresholds:
+    """Пороги подозрительных изменений из настроек администратора — общие для приёма результата и расчёта по пользователю."""
+    return thresholds_setting(uow.settings.get(TITLE_SIMILARITY_SETTING), uow.settings.get(PRICE_JUMP_SETTING))
 
 
 def user_contexts(uow: UnitOfWork, user_id: int, link_ids: list[int], bindings: list[LinkBinding]) -> dict[int, UserContext]:

@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from pricewatch.application.ports import AuditEvent, ClaimedTask, ImageStore, LeasedTask, NewObservation, UnitOfWork
+from pricewatch.application.price_view import review_thresholds
 from pricewatch.application.runs import configured_times
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.names import clean_name
@@ -124,9 +125,7 @@ def attach_image(uow: UnitOfWork, images: ImageStore, worker_id: int, task_id: i
         uow.commit()
 
 
-def submit_result(
-    uow: UnitOfWork, worker_id: int, task_id: int, result: WorkerResult, now: datetime, thresholds: Thresholds = Thresholds()
-) -> None:
+def submit_result(uow: UnitOfWork, worker_id: int, task_id: int, result: WorkerResult, now: datetime) -> None:
     checked = _validated(result)
     with uow:
         if uow.observations.exists_for_task(task_id):
@@ -145,7 +144,7 @@ def submit_result(
             uow.stores.clear_pause(task.store_id)
         confirmation = Confirmation.CONFIRMED
         if checked.status == "ok":
-            confirmation = _review(uow, task.tracked_link_id, checked, thresholds, now)
+            confirmation = _review(uow, task.tracked_link_id, checked, review_thresholds(uow), now)
             uow.stores.learn(task.store_id, checked.fetch_method, checked.site_name)
             if confirmation is Confirmation.CONFIRMED:
                 # Цена снова актуальна: особый режим «устаревшая цена в итоге» снимается (раздел 6).

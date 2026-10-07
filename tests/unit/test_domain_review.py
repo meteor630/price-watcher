@@ -17,6 +17,7 @@ from pricewatch.domain.review import (
     price_jumped,
     resolve_for_user,
     review,
+    thresholds_setting,
     title_changed,
 )
 
@@ -280,3 +281,23 @@ def test_open_review_closed_by_later_counted_price_and_title_change_shown() -> N
 
     assert open_review(returned, UserContext(TITLE, T0, {})) is None
     assert found is not None and (found.kinds, found.before_title, found.after_title) == ({ReviewKind.TITLE_CHANGED}, TITLE, "Холодильник")
+
+
+@pytest.mark.parametrize(("title", "price", "expected"), [(None, None, (85, 30)), (50, 5, (50, 5)), (99, 200, (99, 200)), (90, None, (90, 30))])
+def test_thresholds_setting(title: object, price: object, expected: tuple[int, int]) -> None:
+    thresholds = thresholds_setting(title, price)
+
+    assert (thresholds.title_similarity_min_percent, thresholds.price_jump_max_percent) == expected
+
+
+@pytest.mark.parametrize(("title", "price"), [(49, None), (100, None), (None, 4), (None, 201), (True, None), ("85", None), (None, 30.0)])
+def test_bad_thresholds_setting_is_an_error(title: object, price: object) -> None:
+    with pytest.raises(ValueError):
+        thresholds_setting(title, price)
+
+
+def test_user_view_uses_given_thresholds() -> None:
+    history = [obs(1, 1, 30_000), obs(2, 2, 37_000, PENDING)]  # +23,3 %
+
+    assert [o.confirmation.value for o in resolve_for_user(history, UserContext(TITLE, T0, {}), Thresholds(85, 20))] == ["confirmed", "pending"]
+    assert [o.confirmation.value for o in resolve_for_user(history, UserContext(TITLE, T0, {}), Thresholds(85, 25))] == ["confirmed", "confirmed"]

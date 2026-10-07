@@ -3,7 +3,10 @@
 - Время ежедневной проверки и до двух дополнительных, по Москве («ЧЧ:ММ», без повторов): настройка `check_times`,
   планировщик подхватывает её на следующем обходе.
 - Срок актуальности цены в сутках (1–30): настройка `stale_after_days`, сразу действует на итоги, графики и пометки.
-- Сохранение — по версиям обеих настроек (чужая правка — VERSION_CONFLICT); ошибки — по полям; изменение пишется в журнал (audit_events).
+- Пороги подозрительных изменений: схожесть названия 50–99 % и скачок цены 5–200 % (решение владельца 07.10.2026).
+  Действуют и при приёме результата worker, и в расчёте цены каждого пользователя: его нерешённые наблюдения
+  пересчитываются по новому порогу, принятые и отклонённые остаются как решены.
+- Сохранение — по версиям всех настроек (чужая правка — VERSION_CONFLICT); ошибки — по полям; изменение пишется в журнал (audit_events).
 """
 
 import re
@@ -12,25 +15,43 @@ from dataclasses import dataclass
 from datetime import datetime, time
 
 from pricewatch.application.ports import AuditEvent, UnitOfWork
-from pricewatch.application.price_view import STALE_AFTER_SETTING
+from pricewatch.application.price_view import PRICE_JUMP_SETTING, STALE_AFTER_SETTING, TITLE_SIMILARITY_SETTING, review_thresholds
 from pricewatch.application.runs import CHECK_TIMES_SETTING, configured_times, require_admin
 from pricewatch.domain.accounts import User
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.pricing import STALE_AFTER_DAYS_MAX, STALE_AFTER_DAYS_MIN, stale_after_setting
+from pricewatch.domain.review import PRICE_JUMP_RANGE, TITLE_SIMILARITY_RANGE
 from pricewatch.domain.schedule import TIME_FORMAT, TIMES_MAX, next_slot_at
 
-DAYS_FORMAT = re.compile(r"[0-9]{1,3}")
+SETTING_KEYS = (CHECK_TIMES_SETTING, STALE_AFTER_SETTING, TITLE_SIMILARITY_SETTING, PRICE_JUMP_SETTING)
+NUMBER_FORMAT = re.compile(r"[0-9]{1,3}")
+# Поле формы → (настройка, допустимый диапазон).
+NUMBER_FIELDS = {
+    "stale_after_days": (STALE_AFTER_SETTING, (STALE_AFTER_DAYS_MIN, STALE_AFTER_DAYS_MAX)),
+    "title_similarity_percent": (TITLE_SIMILARITY_SETTING, TITLE_SIMILARITY_RANGE),
+    "price_jump_percent": (PRICE_JUMP_SETTING, PRICE_JUMP_RANGE),
+}
 
 
 @dataclass(frozen=True, slots=True)
 class CheckSettings:
-    """Текущие значения: `times` — по возрастанию; версии 0 — настройку ещё не задавали (действуют значения по умолчанию)."""
+    """Текущие значения: `times` — по возрастанию; версия 0 — настройку ещё не задавали (действует значение по умолчанию)."""
 
     times: tuple[time, ...]
-    times_version: int
     stale_after_days: int
-    stale_version: int
+    title_similarity_percent: int
+    price_jump_percent: int
+    versions: dict[str, int]
     next_run_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class CheckForm:
+    """Введённое в форму как есть: `times` — поля времени по порядку, числа — строками, версии — по ключам настроек."""
+
+    times: Sequence[str]
+    numbers: dict[str, str]
+    versions: dict[str, int]
 
 
 def check_settings(uow: UnitOfWork, user: User, now: datetime) -> CheckSettings:
@@ -39,16 +60,14 @@ def check_settings(uow: UnitOfWork, user: User, now: datetime) -> CheckSettings:
         return _current(uow, now)
 
 
-def save_check_settings(
-    uow: UnitOfWork, user: User, *, times: Sequence[str], stale_after_days: str, times_version: int, stale_version: int, now: datetime
-) -> CheckSettings:
-    """`times` — поля формы по порядку: первое обязательно, пустые дополнительные пропускаются."""
-    values, days = _validated(times, stale_after_days)
+def save_check_settings(uow: UnitOfWork, user: User, form: CheckForm, now: datetime) -> CheckSettings:
+    """Первое время обязательно, пустые дополнительные пропускаются; все ошибки — разом, по полям."""
+    values = _validated(form)
     with uow:
         require_admin(uow, user.id)
         before = _current(uow, now)
-        uow.settings.write(CHECK_TIMES_SETTING, values, times_version, user.id, now)
-        uow.settings.write(STALE_AFTER_SETTING, days, stale_version, user.id, now)
+        for key in SETTING_KEYS:
+            uow.settings.write(key, values[key], form.versions[key], user.id, now)
         saved = _current(uow, now)
         uow.audit.add(AuditEvent(user.id, "check_settings_changed", "settings", None, _audit(before), _audit(saved), now))
         uow.commit()
@@ -56,30 +75,36 @@ def save_check_settings(
 
 
 def _current(uow: UnitOfWork, now: datetime) -> CheckSettings:
-    times_setting = uow.settings.read(CHECK_TIMES_SETTING)
-    stale_setting = uow.settings.read(STALE_AFTER_SETTING)
+    stored = {key: uow.settings.read(key) for key in SETTING_KEYS}
     times = configured_times(uow)
-    stale = stale_after_setting(None if stale_setting is None else stale_setting.value)
+    stale = stored[STALE_AFTER_SETTING]
+    thresholds = review_thresholds(uow)
     return CheckSettings(
         times=times,
-        times_version=0 if times_setting is None else times_setting.version,
-        stale_after_days=stale.days,
-        stale_version=0 if stale_setting is None else stale_setting.version,
+        stale_after_days=stale_after_setting(None if stale is None else stale.value).days,
+        title_similarity_percent=thresholds.title_similarity_min_percent,
+        price_jump_percent=thresholds.price_jump_max_percent,
+        versions={key: 0 if setting is None else setting.version for key, setting in stored.items()},
         next_run_at=next_slot_at(times, now),
     )
 
 
 def _audit(settings: CheckSettings) -> dict[str, object]:
-    return {"check_times": [at.strftime("%H:%M") for at in settings.times], "stale_after_days": settings.stale_after_days}
+    return {
+        CHECK_TIMES_SETTING: [at.strftime("%H:%M") for at in settings.times],
+        STALE_AFTER_SETTING: settings.stale_after_days,
+        TITLE_SIMILARITY_SETTING: settings.title_similarity_percent,
+        PRICE_JUMP_SETTING: settings.price_jump_percent,
+    }
 
 
-def _validated(times: Sequence[str], stale_after_days: str) -> tuple[list[str], int]:
-    """Значения для записи или VALIDATION_ERROR со всеми ошибками по полям (check_time_1…3, stale_after_days)."""
+def _validated(form: CheckForm) -> dict[str, object]:
+    """Значения для записи по ключам настроек или VALIDATION_ERROR со всеми ошибками по полям."""
+    if len(form.times) != TIMES_MAX or set(form.versions) != set(SETTING_KEYS) or set(form.numbers) != set(NUMBER_FIELDS):
+        raise ValueError("форма передаёт все поля настроек проверки")
     fields: dict[str, str] = {}
-    values: list[str] = []
-    if len(times) != TIMES_MAX:
-        raise ValueError(f"форма передаёт ровно {TIMES_MAX} поля времени")
-    for index, raw in enumerate(times, start=1):
+    times: list[str] = []
+    for index, raw in enumerate(form.times, start=1):
         value = raw.strip()
         name = f"check_time_{index}"
         if not value:
@@ -88,14 +113,17 @@ def _validated(times: Sequence[str], stale_after_days: str) -> tuple[list[str], 
             continue
         if not value.isascii() or TIME_FORMAT.match(value) is None:
             fields[name] = "invalid"
-        elif value in values:
+        elif value in times:
             fields[name] = "duplicate"
         else:
-            values.append(value)
-    raw_days = stale_after_days.strip()
-    days = int(raw_days) if DAYS_FORMAT.fullmatch(raw_days) else 0
-    if not STALE_AFTER_DAYS_MIN <= days <= STALE_AFTER_DAYS_MAX:
-        fields["stale_after_days"] = "out_of_range"
+            times.append(value)
+    values: dict[str, object] = {CHECK_TIMES_SETTING: sorted(times)}
+    for name, (key, (low, high)) in NUMBER_FIELDS.items():
+        raw = form.numbers[name].strip()
+        number = int(raw) if NUMBER_FORMAT.fullmatch(raw) else low - 1
+        if not low <= number <= high:
+            fields[name] = "out_of_range"
+        values[key] = number
     if fields:
         raise PriceWatcherError(ErrorCode.VALIDATION_ERROR, {"fields": fields})
-    return sorted(values), days
+    return values

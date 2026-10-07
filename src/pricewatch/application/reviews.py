@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from pricewatch.application.ports import AuditEvent, LinkBinding, UnitOfWork
-from pricewatch.application.price_view import StoreView, user_contexts
+from pricewatch.application.price_view import StoreView, review_thresholds, user_contexts
 from pricewatch.domain.accounts import User
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.money import Change, format_rub, price_change
@@ -72,7 +72,8 @@ def cards_in(uow: UnitOfWork, user: User, now: datetime) -> list[ReviewCard]:
         return []
     checked = uow.price_data.observations(link_ids, now)
     contexts = user_contexts(uow, user.id, link_ids, uow.price_data.bindings(user.id))
-    found = {link_id: review for link_id in link_ids if (review := open_review(checked[link_id], contexts[link_id])) is not None}
+    thresholds = review_thresholds(uow)
+    found = {link_id: review for link_id in link_ids if (review := open_review(checked[link_id], contexts[link_id], thresholds)) is not None}
     if not found:
         return []
     stores = uow.price_data.stores(sorted({watched[link_id][0].store_id for link_id in found}))

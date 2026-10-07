@@ -33,6 +33,9 @@ from pricewatch.domain.pricing import Confirmation, Observation
 
 TITLE_SIMILARITY_MIN_PERCENT = 85
 PRICE_JUMP_MAX_PERCENT = 30
+# Допустимые значения в настройках администратора (решение владельца 07.10.2026).
+TITLE_SIMILARITY_RANGE = (50, 99)
+PRICE_JUMP_RANGE = (5, 200)
 
 
 class Decision(StrEnum):
@@ -60,6 +63,23 @@ class Thresholds:
             raise ValueError("порог схожести названий — от 1 до 100 %")
         if self.price_jump_max_percent < 1:
             raise ValueError("порог скачка цены — не меньше 1 %")
+
+
+def thresholds_setting(title_raw: object, price_raw: object) -> Thresholds:
+    """Пороги из настроек `title_similarity_min_percent` и `price_jump_max_percent`; не заданы — 85 и 30 %.
+    Неверное значение — ошибка, а не тихая замена."""
+    return Thresholds(
+        _percent(title_raw, TITLE_SIMILARITY_MIN_PERCENT, TITLE_SIMILARITY_RANGE),
+        _percent(price_raw, PRICE_JUMP_MAX_PERCENT, PRICE_JUMP_RANGE),
+    )
+
+
+def _percent(raw: object, default: int, allowed: tuple[int, int]) -> int:
+    if raw is None:
+        return default
+    if isinstance(raw, bool) or not isinstance(raw, int) or not allowed[0] <= raw <= allowed[1]:
+        raise ValueError(f"порог — целое число процентов от {allowed[0]} до {allowed[1]}")
+    return raw
 
 
 @dataclass(frozen=True, slots=True)
