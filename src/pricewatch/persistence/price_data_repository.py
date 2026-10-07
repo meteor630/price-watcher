@@ -10,11 +10,14 @@ from datetime import datetime
 
 from sqlalchemy import ColumnElement, Connection, Join, Table, func, select, true
 
-from pricewatch.application.ports import LinkBinding, LinkInfo, LinkState, PricedItem, PurchasedItem, StoreInfo
+from pricewatch.application.ports import LinkBinding, LinkInfo, LinkState, PricedItem, PurchasedItem, ReviewState, StoreInfo
 from pricewatch.domain.errors import ErrorCode
 from pricewatch.domain.pricing import Availability, Confirmation, Observation
+from pricewatch.domain.review import Checked, Decision
 from pricewatch.domain.shopping import ItemState, Purchase
-from pricewatch.persistence.models import CategoryRow, CheckTaskRow, GroupRow, ItemLinkRow, ItemRow, PriceObservationRow, StoreRow, TrackedLinkRow
+from pricewatch.persistence.models import (
+    CategoryRow, CheckTaskRow, GroupRow, ItemLinkRow, ItemRow, PriceDecisionRow, PriceObservationRow, StoreRow, TrackedLinkRow,
+)
 
 items: Table = ItemRow.__table__
 categories: Table = CategoryRow.__table__
@@ -24,6 +27,7 @@ stores: Table = StoreRow.__table__
 observations: Table = PriceObservationRow.__table__
 tracked_links: Table = TrackedLinkRow.__table__
 check_tasks: Table = CheckTaskRow.__table__
+decisions: Table = PriceDecisionRow.__table__
 
 
 
@@ -103,7 +107,7 @@ class SqlPriceDataRepository:
         )
         return {row.id: LinkInfo(row.normalized_url, row.image_path) for row in rows}
 
-    def observations(self, tracked_link_ids: Sequence[int], since: datetime) -> dict[int, list[Observation]]:
+    def observations(self, tracked_link_ids: Sequence[int], since: datetime) -> dict[int, list[Checked]]:
         if not tracked_link_ids:
             return {}
         ids = list(tracked_link_ids)
@@ -125,19 +129,39 @@ class SqlPriceDataRepository:
             .where(observations.c.tracked_link_id.in_(ids), observations.c.checked_at >= start)
             .order_by(observations.c.tracked_link_id, observations.c.checked_at, observations.c.id)
         )
-        found: dict[int, list[Observation]] = {link_id: [] for link_id in ids}
+        found: dict[int, list[Checked]] = {link_id: [] for link_id in ids}
         for row in rows:
-            found[row.tracked_link_id].append(
-                Observation(
-                    checked_at=row.checked_at,
-                    failure=None if row.status == "ok" else ErrorCode(row.status),
-                    price_minor=row.price_minor,
-                    card_price_minor=row.card_price_minor,
-                    availability=Availability(row.availability),
-                    confirmation=Confirmation(row.confirmation),
-                )
+            observation = Observation(
+                checked_at=row.checked_at,
+                failure=None if row.status == "ok" else ErrorCode(row.status),
+                price_minor=row.price_minor,
+                card_price_minor=row.card_price_minor,
+                availability=Availability(row.availability),
+                confirmation=Confirmation(row.confirmation),
             )
+            found[row.tracked_link_id].append(Checked(row.id, row.title, observation))
         return found
+
+    def review_states(self, user_id: int, tracked_link_ids: Sequence[int]) -> dict[int, ReviewState]:
+        ids = list(tracked_link_ids)
+        if not ids:
+            return {}
+        decided = (
+            select(observations.c.tracked_link_id, observations.c.id, observations.c.title, observations.c.checked_at, decisions.c.decision)
+            .select_from(decisions.join(observations, observations.c.id == decisions.c.observation_id))
+            .where(decisions.c.user_id == user_id, observations.c.tracked_link_id.in_(ids))
+            .order_by(observations.c.tracked_link_id, observations.c.checked_at, observations.c.id)
+        )
+        rows = self.connection.execute(select(tracked_links.c.id, tracked_links.c.baseline_title).where(tracked_links.c.id.in_(ids)))
+        baselines = {row.id: row.baseline_title for row in rows}
+        states = {link_id: ReviewState(baselines.get(link_id), {}) for link_id in ids}
+        for row in self.connection.execute(decided):
+            state = states[row.tracked_link_id]
+            state.decisions[row.id] = Decision(row.decision)
+            if row.decision == Decision.ACCEPT.value and row.title is not None:
+                # По времени проверки: последнее принятое название — эталон пользователя.
+                states[row.tracked_link_id] = ReviewState(row.title, state.decisions)
+        return states
 
     def link_states(self, user_id: int, item_id: int) -> list[LinkState]:
         last = (

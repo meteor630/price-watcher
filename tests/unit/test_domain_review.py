@@ -1,15 +1,20 @@
 """pricewatch.domain.review: смена названия, скачок цены, вердикт и автоматическое закрытие."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from pricewatch.domain.errors import ErrorCode
 from pricewatch.domain.pricing import Availability, Confirmation, Observation
 from pricewatch.domain.review import (
+    Checked,
+    Decision,
     ReviewKind,
     Thresholds,
+    UserContext,
     closes_price_review,
     price_jumped,
+    resolve_for_user,
     review,
     title_changed,
 )
@@ -169,3 +174,87 @@ def test_out_of_stock_does_not_close_price_review() -> None:
 def test_invalid_thresholds_rejected(title: object, price: object, error: type[Exception]) -> None:
     with pytest.raises(error):
         Thresholds(title, price)  # type: ignore[arg-type]
+
+
+# --- решения пользователя: что засчитано именно ему ---
+
+T0 = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
+TITLE = "Монитор LG 27GR93U"
+
+
+def obs(observation_id: int, hours: int, price: int | None, confirmation: Confirmation = Confirmation.CONFIRMED, title: str | None = TITLE,
+        failure: ErrorCode | None = None) -> Checked:
+    availability = Availability.OUT_OF_STOCK if price is None and failure is None else Availability.IN_STOCK
+    observation = Observation(T0 + timedelta(hours=hours), failure, price, None, availability, confirmation)
+    return Checked(observation_id, title, observation)
+
+
+def seen_as(checked: list[Checked], decisions: dict[int, Decision] | None = None, since: datetime = T0, title: str | None = TITLE) -> list[str]:
+    resolved = resolve_for_user(checked, UserContext(title, since, decisions or {}))
+    return [observation.confirmation.value for observation in resolved]
+
+
+PENDING, REJECTED = Confirmation.PENDING, Confirmation.REJECTED
+
+
+def test_confirmed_counts_for_everyone_and_jump_waits() -> None:
+    history = [obs(1, 1, 30_000), obs(2, 2, 45_000, PENDING)]
+
+    assert seen_as(history) == ["confirmed", "pending"]
+
+
+def test_accept_counts_and_next_close_price_counts_by_itself() -> None:
+    # Пример 1 из плана: принял 45 000 ₽ — следующий 45 200 ₽ засчитан сам; у другого пользователя ждёт решения.
+    history = [obs(1, 1, 30_000), obs(2, 2, 45_000, PENDING), obs(3, 26, 45_200, PENDING)]
+
+    assert seen_as(history, {2: Decision.ACCEPT}) == ["confirmed", "confirmed", "confirmed"]
+    assert seen_as(history) == ["confirmed", "pending", "pending"]
+
+
+def test_reject_keeps_old_price_and_new_jumps_still_wait() -> None:
+    history = [obs(1, 1, 30_000), obs(2, 2, 45_000, PENDING), obs(3, 26, 45_200, PENDING), obs(4, 50, 30_500)]
+
+    assert seen_as(history, {2: Decision.REJECT}) == ["confirmed", "rejected", "pending", "confirmed"]
+
+
+def test_decision_on_latest_closes_earlier_undecided() -> None:
+    history = [obs(1, 1, 30_000), obs(2, 2, 45_000, PENDING), obs(3, 26, 46_000, PENDING), obs(4, 27, 60_000, PENDING)]
+
+    assert seen_as(history, {3: Decision.ACCEPT}) == ["confirmed", "rejected", "confirmed", "pending"]  # 60 000 от 46 000 — +30,4 %
+    assert seen_as(history, {4: Decision.REJECT}) == ["confirmed", "rejected", "rejected", "rejected"]
+
+
+def test_before_watching_counts_by_itself() -> None:
+    # Пример 2: ссылку добавили, когда скачок уже был, — спрашивать про прошлое не нужно.
+    history = [obs(1, 1, 30_000), obs(2, 2, 45_000, PENDING), obs(3, 30, 45_100, PENDING), obs(4, 31, 90_000, PENDING)]
+
+    assert seen_as(history, since=T0 + timedelta(hours=10)) == ["confirmed", "confirmed", "confirmed", "pending"]
+
+
+def test_auto_closed_is_not_counted_unless_accepted() -> None:
+    history = [obs(1, 1, 30_000), obs(2, 2, 45_000, REJECTED), obs(3, 3, 30_100)]
+
+    assert seen_as(history) == ["confirmed", "rejected", "confirmed"]
+    assert seen_as(history, since=T0 + timedelta(hours=10)) == ["confirmed", "rejected", "confirmed"]
+    assert seen_as(history, {2: Decision.ACCEPT}) == ["confirmed", "confirmed", "confirmed"]
+
+
+def test_accepted_title_becomes_users_baseline() -> None:
+    renamed = "Холодильник Атлант ХМ-4021"
+    history = [obs(1, 1, 30_000), obs(2, 2, 30_000, PENDING, title=renamed), obs(3, 26, 30_100, PENDING, title=renamed)]
+
+    assert seen_as(history) == ["confirmed", "pending", "pending"]
+    assert seen_as(history, {2: Decision.ACCEPT}) == ["confirmed", "confirmed", "confirmed"]
+    assert seen_as(history, title=renamed) == ["confirmed", "confirmed", "confirmed"]  # эталон пользователя — уже новое название
+
+
+def test_out_of_stock_and_failures_pass_through() -> None:
+    history = [obs(1, 1, 30_000), obs(2, 2, None), obs(3, 3, None, failure=ErrorCode.TIMEOUT), obs(4, 4, 31_000, PENDING)]
+
+    assert seen_as(history) == ["confirmed", "confirmed", "confirmed", "confirmed"]  # 31 000 от 30 000 — в пределах порога
+
+
+def test_exactly_on_threshold_counts_for_user() -> None:
+    history = [obs(1, 1, 30_000), obs(2, 2, 45_000, PENDING), obs(3, 26, 58_500, PENDING)]
+
+    assert seen_as(history, {2: Decision.ACCEPT}) == ["confirmed", "confirmed", "confirmed"]  # ровно +30 % от 45 000 — не подозрительно

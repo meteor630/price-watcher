@@ -3,18 +3,20 @@
 Общая часть главной, категории и группы. Товары берутся «в списке» (`active`); цена сейчас
 и в начале периода считается по правилам domain.totals, изменение — по цене за штуку, если она
 учтена в обоих моментах. Наблюдения читаются только с нужного окна (PriceDataRepository.observations).
-Срок актуальности цены — настройка администратора `stale_after_days` (по умолчанию 7 суток); она попадает
+Подозрительные наблюдения засчитываются по решениям самого пользователя (domain.review.resolve_for_user):
+у разных пользователей одной ссылки цены могут различаться. Срок актуальности цены — настройка администратора `stale_after_days` (по умолчанию 7 суток); она попадает
 в каждый товар расчёта, поэтому итоги, графики и пометки считаются по одному сроку.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
 
-from pricewatch.application.ports import PricedItem, StoreInfo, UnitOfWork
+from pricewatch.application.ports import LinkBinding, PricedItem, StoreInfo, UnitOfWork
 from pricewatch.domain.days import Period, period_start
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.money import Change, format_rub, price_change
-from pricewatch.domain.pricing import ItemPrice, LinkInput, LinkPrice, PriceStatus, stale_after_setting
+from pricewatch.domain.pricing import ItemPrice, LinkInput, LinkPrice, Observation, PriceStatus, stale_after_setting
+from pricewatch.domain.review import UserContext, resolve_for_user
 from pricewatch.domain.shopping import ItemState
 from pricewatch.domain.totals import BEFORE, Binding, TotalItem, in_total_shown, item_price_at
 
@@ -82,9 +84,11 @@ def load(
     else:
         items = [item for item in uow.price_data.items(user_id) if item.item_id in item_ids]
     wanted = {item.item_id for item in items}
-    bindings = [binding for binding in uow.price_data.bindings(user_id) if binding.item_id in wanted]
+    every_binding = uow.price_data.bindings(user_id)
+    bindings = [binding for binding in every_binding if binding.item_id in wanted]
     stores = uow.price_data.stores(sorted({binding.store_id for binding in bindings}))
-    history = uow.price_data.observations(sorted({binding.tracked_link_id for binding in bindings}), min(since, before_moment))
+    link_ids = sorted({binding.tracked_link_id for binding in bindings})
+    history = _as_seen_by_user(uow, user_id, link_ids, every_binding, min(since, before_moment))
     by_item: dict[int, list[Binding]] = {}
     for binding in bindings:
         link = LinkInput(binding.tracked_link_id, binding.store_id, stores[binding.store_id].enabled, history[binding.tracked_link_id])
@@ -99,6 +103,22 @@ def load(
             change = price_change(before_price.price_minor, now_price.price_minor)
         rows.append(PricedRow(item, total_item, now_price, before_price, change))
     return PricedList(rows, stores)
+
+
+def _as_seen_by_user(
+    uow: UnitOfWork, user_id: int, link_ids: list[int], bindings: list[LinkBinding], since: datetime
+) -> dict[int, tuple[Observation, ...]]:
+    """История каждой ссылки так, как её видит пользователь: подозрительное засчитано по его решениям (domain.review)."""
+    checked = uow.price_data.observations(link_ids, since)
+    states = uow.price_data.review_states(user_id, link_ids)
+    watching: dict[int, datetime] = {}
+    for binding in bindings:
+        if binding.tracked_link_id not in watching or binding.valid_from < watching[binding.tracked_link_id]:
+            watching[binding.tracked_link_id] = binding.valid_from
+    return {
+        link_id: resolve_for_user(checked[link_id], UserContext(states[link_id].baseline_title, watching[link_id], states[link_id].decisions))
+        for link_id in link_ids
+    }
 
 
 def only_row(priced: PricedList) -> PricedRow:

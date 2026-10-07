@@ -7,19 +7,37 @@
 
 Ровно на пороге — не подозрительно: в архитектуре сказано «больше чем».
 Сравнения точные, в целых числах: граница не зависит от погрешности float.
-Подозрительное наблюдение ждёт решения администратора; ценовое подозрение
-закрывается само, если следующая проверка вернула цену в пределы порога.
+Ценовое подозрение закрывается само, если следующая проверка вернула цену в пределы порога.
+
+Решают пользователи — каждый только за свои товары (решение владельца 07.10.2026). Проверка ссылки
+общая, а засчитано ли подозрительное наблюдение, у каждого своё (`resolve_for_user`):
+
+1. Наблюдение, прошедшее проверку для всех (confirmed), засчитывается всем.
+2. Подозрительное (pending): принято пользователем — засчитано ему; отклонено — нет; без решения,
+   но в пределах порога от его последней засчитанной цены и его эталона названия — засчитано само;
+   иначе ждёт его решения.
+3. Решение по наблюдению закрывает более ранние нерешённые подозрительные той же ссылки: они отклонены.
+4. Подозрительные наблюдения до того, как пользователь начал следить за ссылкой, засчитываются ему сами;
+   закрытые автоматически (rejected) — нет.
+5. Явное «принять» важнее автоматического закрытия (rejected).
 """
 
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, replace
+from datetime import datetime
 from difflib import SequenceMatcher
 from enum import StrEnum
 
 from pricewatch.domain.names import name_key
-from pricewatch.domain.pricing import Confirmation
+from pricewatch.domain.pricing import Confirmation, Observation
 
 TITLE_SIMILARITY_MIN_PERCENT = 85
 PRICE_JUMP_MAX_PERCENT = 30
+
+
+class Decision(StrEnum):
+    ACCEPT = "accept"
+    REJECT = "reject"
 
 
 class ReviewKind(StrEnum):
@@ -109,3 +127,53 @@ def closes_price_review(
     названия так не закрывается: его решает только администратор.
     """
     return new_price_minor is not None and not price_jumped(last_confirmed_price_minor, new_price_minor, thresholds)
+
+
+@dataclass(frozen=True, slots=True)
+class Checked:
+    """Наблюдение ссылки с номером и названием — то, о чём пользователь принимает решение."""
+
+    observation_id: int
+    title: str | None
+    observation: Observation
+
+
+@dataclass(frozen=True, slots=True)
+class UserContext:
+    """Что пользователь решил по ссылке.
+
+    `baseline_title` — его эталон названия: последнее принятое им название или общий эталон ссылки.
+    `watching_since` — с какого момента он следит за ссылкой (первая привязка к его товару).
+    """
+
+    baseline_title: str | None
+    watching_since: datetime
+    decisions: Mapping[int, Decision]
+
+
+def resolve_for_user(checked: Sequence[Checked], context: UserContext, thresholds: Thresholds = Thresholds()) -> tuple[Observation, ...]:
+    """Наблюдения ссылки так, как их видит пользователь: засчитанные — confirmed, отклонённые — rejected,
+    ждущие его решения — pending. Порядок — по времени проверки."""
+    ordered = sorted(checked, key=lambda item: (item.observation.checked_at, item.observation_id))
+    decided_up_to = max((index for index, item in enumerate(ordered) if item.observation_id in context.decisions), default=-1)
+    last_price: int | None = None
+    title = context.baseline_title
+    resolved = []
+    for index, item in enumerate(ordered):
+        observation = item.observation
+        confirmation = observation.confirmation
+        decision = context.decisions.get(item.observation_id)
+        if observation.failure is None and confirmation is not Confirmation.CONFIRMED:
+            before_watching = confirmation is Confirmation.PENDING and observation.checked_at < context.watching_since
+            if decision is Decision.ACCEPT or before_watching:
+                confirmation = Confirmation.CONFIRMED
+            elif decision is Decision.REJECT or confirmation is Confirmation.REJECTED or index < decided_up_to:
+                confirmation = Confirmation.REJECTED
+            else:
+                confirmation = review(title, last_price, item.title, observation.effective_price_minor, thresholds).confirmation
+            if confirmation is Confirmation.CONFIRMED and item.title is not None:
+                title = item.title
+        if observation.failure is None and confirmation is Confirmation.CONFIRMED and observation.effective_price_minor is not None:
+            last_price = observation.effective_price_minor
+        resolved.append(observation if confirmation is observation.confirmation else replace(observation, confirmation=confirmation))
+    return tuple(resolved)

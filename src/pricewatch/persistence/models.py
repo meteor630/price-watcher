@@ -568,6 +568,29 @@ class SettingRow(Base):
     )
 
 
+class PriceDecisionRow(Base):
+    """Решение пользователя по подозрительному результату проверки — только для его товаров (решение владельца 07.10.2026).
+
+    Одно решение на пару «результат — пользователь»; «Отменить» удаляет строку.
+    """
+
+    __tablename__ = "price_decisions"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    observation_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    decision: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        ForeignKeyConstraint(["observation_id"], ["price_observations.id"]),
+        ForeignKeyConstraint(["user_id"], ["users.id"]),
+        CheckConstraint("decision IN ('accept', 'reject')", name="decision"),
+        UniqueConstraint("observation_id", "user_id"),
+        Index("ix_price_decisions_user_id", "user_id"),
+    )
+
+
 class NotificationRow(Base):
     """Уведомление одному получателю в одном канале; одинаковые склеиваются по dedup_key.
 

@@ -21,7 +21,7 @@ from types import TracebackType
 from typing import Protocol, Self
 
 from pricewatch.domain.accounts import Device, Invite, Role, User, WebSession
-from pricewatch.domain.pricing import Observation
+from pricewatch.domain.review import Checked, Decision
 from pricewatch.domain.shopping import Category, Group, Item, ItemState, Purchase
 
 
@@ -271,6 +271,12 @@ class PricedItem:
 
 
 @dataclass(frozen=True, slots=True)
+class ReviewState:
+    baseline_title: str | None
+    decisions: dict[int, Decision]
+
+
+@dataclass(frozen=True, slots=True)
 class PurchasedItem:
     """Купленный товар для страниц: покупка и лучшая цена в момент добавления товара (если была)."""
 
@@ -335,10 +341,14 @@ class PriceDataRepository(Protocol):
     def links(self, tracked_link_ids: Sequence[int]) -> dict[int, LinkInfo]:
         """Адрес страницы в магазине и путь сохранённого фото ссылки."""
         ...
-    def observations(self, tracked_link_ids: Sequence[int], since: datetime) -> dict[int, list[Observation]]:
-        """Наблюдения ссылок, нужные для расчёта на любой момент начиная с `since`: всё с `since`
+    def observations(self, tracked_link_ids: Sequence[int], since: datetime) -> dict[int, list[Checked]]:
+        """Наблюдения ссылок (с номером и названием — для решений пользователя), нужные для расчёта на любой момент начиная с `since`: всё с `since`
         и раньше — начиная с последнего успешного подтверждённого до `since` (или последнего любого,
         если успешных не было). Более старая история на такие расчёты не влияет."""
+        ...
+    def review_states(self, user_id: int, tracked_link_ids: Sequence[int]) -> dict[int, "ReviewState"]:
+        """Решения пользователя по наблюдениям этих ссылок и его эталон названия
+        (название последнего принятого им наблюдения, иначе общий эталон ссылки)."""
         ...
     def link_states(self, user_id: int, item_id: int) -> list["LinkState"]:
         """Действующие ссылки товара: магазин, включён ли он, идёт ли проверка, последняя проверка."""
