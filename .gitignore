@@ -18,6 +18,9 @@ htmlcov/
 !.env.example
 worker.env
 bot.env
+# Ключи туннеля WireGuard: закрытый ключ узла
+tunnel.conf
+wg0.conf
 # Профили браузера worker: cookies магазинов
 .browser-profiles/
 # Фото товаров — данные сервера

@@ -1,0 +1,23 @@
+# Арендный сервер: пересылка в туннель (HAProxy). Запуск из этой папки: docker compose up -d
+# Сеть хоста: HAProxy слушает 80 и 443 сервера и обращается к дому по адресу туннеля 10.66.0.2.
+
+name: pricewatch-vps
+
+services:
+  haproxy:
+    image: haproxy:3.2-alpine@sha256:5d97434a423c2533cfeb42874d45cf6d69a840b60334582dfbfd5008e94c80be
+    network_mode: host
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    # Порты 80 и 443 образ занимает правом NET_BIND_SERVICE; других прав не нужно.
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    restart: unless-stopped

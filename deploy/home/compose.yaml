@@ -1,9 +1,11 @@
 # Домашний узел (DEVELOPMENT_ARCHITECTURE.md, раздел 1): база, миграции, сайт и API, планировщик, worker с Chrome.
 # Запуск из этой папки: docker compose up -d --build
-# Настройки: ../../.env (сервер), ../../worker.env (worker), .env рядом (пароль базы). Все три в Git не попадают.
+# Настройки: ../../.env (сервер), ../../worker.env (worker), .env рядом (пароль базы), tunnel.conf рядом (ключ туннеля).
+# Все они в Git не попадают.
 # Другие пути к файлам настроек — переменные PRICEWATCH_SERVER_ENV и PRICEWATCH_WORKER_ENV.
 # Порядок старта: база здорова → миграции прошли → сайт и планировщик → worker, когда сайт здоров.
-# Сети: база видна только серверу (backend); worker видит только API сайта (workers) — он открывает чужие сайты.
+# Сети: база видна только серверу (backend); worker видит только API сайта (workers) — он открывает чужие сайты;
+# туннель с Caddy видят только сайт (edge). Снаружи сайт открывается так: арендный сервер → туннель WireGuard → Caddy → app.
 
 name: pricewatch
 
@@ -66,9 +68,11 @@ services:
       <<: *server-env
       PRICEWATCH_LISTEN_HOST: 0.0.0.0
       PRICEWATCH_LISTEN_PORT: "8000"
+      # Заголовок X-Forwarded-For с IP посетителя — только от Caddy (он в сетевом пространстве туннеля).
+      PRICEWATCH_TRUSTED_PROXIES: 172.31.250.2/32
     volumes:
       - media:/data/media
-    networks: [backend, workers]
+    networks: [backend, workers, edge]
     # Только для этого компьютера; снаружи сайт открывается через Caddy и туннель (срез 11.1).
     ports:
       - "127.0.0.1:8000:8000"
@@ -82,6 +86,55 @@ services:
       migrate:
         condition: service_completed_successfully
     mem_limit: 1g
+
+  tunnel:
+    build:
+      context: .
+      dockerfile: tunnel/Dockerfile
+    image: pricewatch-tunnel
+    volumes:
+      - ./tunnel.conf:/etc/wireguard/wg0.conf:ro
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN]
+    read_only: true
+    tmpfs: [/run, /tmp]
+    networks:
+      edge:
+        ipv4_address: 172.31.250.2
+    healthcheck:
+      # Рукопожатие с сервером было не позже 3 минут назад.
+      test: ["CMD-SHELL", "test $$(( $$(date +%s) - $$(wg show wg0 latest-handshakes | awk '{ print $$2 }') )) -lt 180"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    mem_limit: 64m
+    logging: *logging
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.10-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    # Слушает 80 и 443 на адресе туннеля 10.66.0.2: трафик приходит только через него.
+    network_mode: service:tunnel
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      tunnel:
+        condition: service_started
+        # Туннель перезапустился — Caddy следом: иначе он остался бы в старом сетевом пространстве.
+        restart: true
+      app:
+        condition: service_healthy
+    mem_limit: 256m
+    logging: *logging
+    restart: unless-stopped
 
   scheduler:
     <<: *server
@@ -133,8 +186,14 @@ services:
 networks:
   backend:
   workers:
+  edge:
+    ipam:
+      config:
+        - subnet: 172.31.250.0/29
 
 volumes:
   pgdata:
   media:
   profiles:
+  caddy_data:
+  caddy_config:

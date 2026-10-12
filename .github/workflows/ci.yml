@@ -131,10 +131,17 @@ jobs:
           export PRICEWATCH_SERVER_ENV="$RUNNER_TEMP/server.env" PRICEWATCH_WORKER_ENV="$RUNNER_TEMP/worker.env"
           docker compose config -q
           docker compose build
+          # Конфигурации туннеля: Caddy дома и HAProxy на арендном сервере (теми же образами, что в работе).
+          docker run --rm -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" "$(docker compose config --images | grep '^caddy')" caddy validate --config /etc/caddy/Caddyfile
+          docker run --rm -v "$PWD/../vps/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro" "$(docker compose -f ../vps/compose.yaml config --images)" haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
           docker compose up -d --wait db app scheduler
           curl -fsS http://127.0.0.1:8000/healthz
           docker compose run --rm --no-deps worker google-chrome --version
           # Песочница Chrome в контейнере worker с его ограничениями (seccomp, только SYS_CHROOT, без записи в образ).
+          # Домашний узел — Docker Desktop (WSL2), там AppArmor нет. Ubuntu 24.04 этой машины CI запрещает контейнерам
+          # пространства имён пользователя через AppArmor — снимаем, чтобы проверять то же окружение, что дома.
+          echo "apparmor_restrict_unprivileged_userns было: $(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo нет)"
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           docker compose run --rm --no-deps worker xvfb-run -a python -c "
           from pathlib import Path
           from pricewatch.parsers.browser import BrowserFetcher

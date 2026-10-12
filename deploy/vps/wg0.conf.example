@@ -1,0 +1,11 @@
+# Туннель на арендном сервере: /etc/wireguard/wg0.conf. Его пишет deploy/vps/setup.sh; пример — для понимания.
+[Interface]
+Address = 10.66.0.1/24
+ListenPort = 51820
+# Закрытый ключ сервера: /etc/wireguard/server.key, создаётся на сервере и никуда не уходит
+PrivateKey =
+
+[Peer]
+# Домашний узел: открытый ключ из deploy/home/tunnel.conf
+PublicKey =
+AllowedIPs = 10.66.0.2/32

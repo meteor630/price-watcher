@@ -1,0 +1,16 @@
+# Туннель домашнего узла к арендному серверу. Скопируйте в deploy/home/tunnel.conf и заполните; файл в Git не попадает.
+# Ключи этого узла (закрытый остаётся здесь, открытый — в настройки сервера, deploy/vps/setup.sh):
+#   docker compose run --rm --no-deps --entrypoint wg tunnel genkey            → PrivateKey ниже
+#   echo <закрытый ключ> | docker compose run --rm --no-deps -T --entrypoint wg tunnel pubkey   → передать на сервер
+[Interface]
+Address = 10.66.0.2/24
+PrivateKey =
+
+[Peer]
+# Открытый ключ сервера — его печатает deploy/vps/setup.sh
+PublicKey =
+# По имени, не по IP: сервер можно сменить, поменяв только запись DNS
+Endpoint = tunnel.meteor630.ru:51820
+AllowedIPs = 10.66.0.1/32
+# Дом за NAT роутера: пакеты раз в 25 с держат соединение открытым
+PersistentKeepalive = 25
