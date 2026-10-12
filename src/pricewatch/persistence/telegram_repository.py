@@ -39,6 +39,12 @@ class SqlTelegramRepository:
     def is_linked(self, user_id: int) -> bool:
         return self.connection.execute(select(users.c.telegram_chat_id).where(users.c.id == user_id)).scalar_one() is not None
 
+    def linked_users(self) -> list[User]:
+        rows = self.connection.execute(
+            select(users).where(users.c.telegram_chat_id.is_not(None), users.c.disabled_at.is_(None)).order_by(users.c.id)
+        )
+        return [to_user(row) for row in rows]
+
     def user_by_chat(self, chat_id: int) -> User | None:
         row = self.connection.execute(select(users).where(users.c.telegram_chat_id == chat_id)).one_or_none()
         return None if row is None else to_user(row)

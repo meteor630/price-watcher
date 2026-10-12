@@ -29,6 +29,8 @@ class FakeJobs:
         self.reports_purged_at: list[datetime] = []
         self.watched = WatchReport()
         self.watched_at: list[datetime] = []
+        self.summarized = 0
+        self.summarized_at: list[datetime] = []
         self.fail: Exception | None = None
 
     def schedule_times(self) -> tuple[time, ...]:
@@ -63,6 +65,10 @@ class FakeJobs:
     def watch(self, now: datetime) -> WatchReport:
         self.watched_at.append(now)
         return self.watched
+
+    def send_run_summaries(self, now: datetime) -> int:
+        self.summarized_at.append(now)
+        return self.summarized
 
 
 class Clock:
@@ -213,3 +219,15 @@ def test_watchdog_runs_every_tick_and_silence_is_logged(caplog: pytest.LogCaptur
     back = next(r for r in caplog.records if r.getMessage() == "Процессы снова на связи")
     assert silent.levelno == logging.WARNING and silent.processes == ["worker:home-pi"]  # type: ignore[attr-defined]
     assert back.processes == ["bot:telegram"]  # type: ignore[attr-defined]
+
+
+def test_run_summaries_every_tick_and_logged(caplog: pytest.LogCaptureFixture) -> None:
+    jobs = FakeJobs()
+    jobs.summarized = 2
+
+    with caplog.at_level(logging.INFO):
+        Scheduler(jobs, clock=Clock(msk(8))).tick()
+
+    assert jobs.summarized_at == [msk(8)]
+    record = next(r for r in caplog.records if r.getMessage() == "Сводки проверки созданы")
+    assert record.runs == 2  # type: ignore[attr-defined]

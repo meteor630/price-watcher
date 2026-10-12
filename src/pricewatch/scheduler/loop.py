@@ -1,4 +1,4 @@
-"""Цикл планировщика: каждые 30 секунд вернуть просроченные задания, проверить, не молчат ли worker и бот, удалить данные пользователей,
+"""Цикл планировщика: каждые 30 секунд вернуть просроченные задания, проверить, не молчат ли worker и бот, создать сводки завершённых проверок, удалить данные пользователей,
 заблокированных 7 суток назад, стереть удалённое 30 дней назад, ключи повтора старше суток и отчёты об ошибках
 приложения старше 90 суток, запустить наступившую проверку.
 
@@ -35,6 +35,7 @@ class Jobs(Protocol):
     def purge_idempotency_keys(self, now: datetime) -> int: ...
     def purge_client_errors(self, now: datetime) -> int: ...
     def watch(self, now: datetime) -> WatchReport: ...
+    def send_run_summaries(self, now: datetime) -> int: ...
 
 
 class Scheduler:
@@ -78,6 +79,9 @@ class Scheduler:
             logger.warning("Процессы молчат дольше 5 минут", extra={"processes": list(watched.silent)})
         if watched.recovered:
             logger.info("Процессы снова на связи", extra={"processes": list(watched.recovered)})
+        summarized = self._jobs.send_run_summaries(now)
+        if summarized:
+            logger.info("Сводки проверки созданы", extra={"runs": summarized})
         deleted = self._jobs.delete_blocked_users_data(now)
         if deleted:
             logger.info("Данные заблокированных пользователей удалены", extra={"users": deleted})

@@ -202,6 +202,22 @@ def item_price(links: Sequence[LinkInput], now: datetime, stale_after: timedelta
     return ItemPrice(PriceStatus.AWAITING_CHECK, None, None, False, under_review, prices)
 
 
+def changed_between(observations: Sequence[Observation], since: datetime, until: datetime) -> bool:
+    """Была ли с `since` по `until` засчитанная смена действующей цены или наличия ссылки (сводка проверки):
+    успешное подтверждённое наблюдение отличается от предыдущего успешного подтверждённого. Первое наблюдение
+    ссылки — не смена; сбои, ждущие решения и отклонённые не учитываются. «Нет в наличии» — цена None."""
+    previous: Observation | None = None
+    for observation in sorted(observations, key=_checked_at):
+        if observation.checked_at > until:
+            break
+        if not observation.is_success:
+            continue
+        if previous is not None and observation.checked_at >= since and observation.effective_price_minor != previous.effective_price_minor:
+            return True
+        previous = observation
+    return False
+
+
 def _checked_at(observation: Observation) -> datetime:
     return observation.checked_at
 

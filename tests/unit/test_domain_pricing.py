@@ -12,6 +12,7 @@ from pricewatch.domain.pricing import (
     LinkInput,
     Observation,
     PriceStatus,
+    changed_between,
     item_price,
     link_price,
     stale_after_setting,
@@ -333,3 +334,34 @@ def test_stale_after_setting(raw: object, days: int) -> None:
 def test_bad_stale_after_setting_is_an_error(raw: object) -> None:
     with pytest.raises(ValueError):
         stale_after_setting(raw)
+
+
+# --- сводка проверки: была ли смена ---
+
+RUN_START, RUN_END = NOW - timedelta(hours=2), NOW
+
+
+@pytest.mark.parametrize(
+    ("observations", "changed"),
+    [
+        ((ok(100_000, ago=timedelta(days=1)), ok(90_000)), True),
+        ((ok(100_000, ago=timedelta(days=1)), ok(100_000)), False),
+        ((ok(100_000, ago=timedelta(days=1)), gone()), True),
+        ((gone(timedelta(days=1)), ok(100_000)), True),
+        ((ok(100_000, ago=timedelta(days=1), card=90_000), ok(90_000)), False),  # действующая цена та же
+        ((ok(100_000, ago=timedelta(days=1)), ok(100_000, card=95_000)), True),
+        ((ok(100_000),), False),  # первое наблюдение ссылки — не смена
+        ((ok(100_000, ago=timedelta(days=1)), failed()), False),
+        ((ok(100_000, ago=timedelta(days=1)), ok(50_000, confirmation=Confirmation.PENDING)), False),
+        ((ok(100_000, ago=timedelta(days=1)), ok(50_000, confirmation=Confirmation.REJECTED)), False),
+        ((ok(100_000, ago=timedelta(days=2)), ok(90_000, ago=timedelta(days=1)), ok(90_000)), False),  # смена была до проверки
+        ((ok(100_000, ago=timedelta(days=1)), ok(90_000, ago=-timedelta(minutes=1))), False),  # после конца проверки
+        ((ok(100_000, ago=timedelta(days=1)), ok(90_000, ago=timedelta(hours=1)), ok(100_000)), True),  # вернулась — всё равно смена
+    ],
+)
+def test_changed_between(observations: tuple[Observation, ...], changed: bool) -> None:
+    assert changed_between(observations, RUN_START, RUN_END) is changed
+
+
+def test_changed_at_run_start_boundary_counts() -> None:
+    assert changed_between((ok(100_000, ago=timedelta(days=1)), ok(90_000, ago=timedelta(hours=2))), RUN_START, RUN_END) is True

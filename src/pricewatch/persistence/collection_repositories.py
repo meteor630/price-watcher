@@ -17,6 +17,7 @@ from pricewatch.application.ports import (
     BellNotification,
     ClaimedTask,
     ExpiredTask,
+    FinishedRun,
     ItemLinkRecord,
     LeasedTask,
     LinkTarget,
@@ -499,6 +500,19 @@ class SqlQueueRepository:
             return None
         return RunInfo(RunProgress(row.id, row.kind, row.status, row.total, row.done, row.failed), row.started_at, row.finished_at)
 
+    def runs_to_summarize(self, limit: int) -> list[FinishedRun]:
+        rows = self.connection.execute(
+            select(parse_runs.c.id, parse_runs.c.kind, parse_runs.c.created_at, parse_runs.c.finished_at)
+            .where(parse_runs.c.kind.in_(("scheduled", "manual")), parse_runs.c.status == "finished", parse_runs.c.summarized_at.is_(None))
+            .order_by(parse_runs.c.id)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        return [FinishedRun(row.id, row.kind, row.created_at, row.finished_at) for row in rows]
+
+    def mark_summarized(self, run_id: int, now: datetime) -> None:
+        self.connection.execute(update(parse_runs).where(parse_runs.c.id == run_id).values(summarized_at=now))
+
     def enqueue_run(self, run_id: int, purchased_since: datetime, now: datetime) -> RunProgress:
         tracked = (items.c.state == "active") | ((items.c.state == "purchased") & (items.c.purchased_at > purchased_since))
         links = (
@@ -750,6 +764,13 @@ class SqlSettingRepository:
 class SqlNotificationRepository:
     def __init__(self, connection: Connection) -> None:
         self.connection = connection
+
+    def notify_telegram(self, user_id: int, kind: str, dedup_key: str, payload: dict[str, object], now: datetime) -> None:
+        self.connection.execute(
+            insert(notifications)
+            .values(user_id=user_id, channel="telegram", kind=kind, dedup_key=dedup_key, payload_json=payload, created_at=now)
+            .on_conflict_do_nothing(index_elements=["user_id", "channel", "dedup_key"])
+        )
 
     def notify_admins(self, kind: str, dedup_key: str, payload: dict[str, object], now: datetime, *, telegram: bool = True) -> int:
         admins = self.connection.execute(

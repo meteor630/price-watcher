@@ -16,6 +16,7 @@ from pricewatch.application.idempotency import purge_expired
 from pricewatch.application.ports import PurgedCounts
 from pricewatch.application.retention import delete_blocked_users_data, purge_deleted
 from pricewatch.application.runs import ExpiredLeases, ScheduledStart, expire_leases, schedule_times, start_scheduled_run
+from pricewatch.application.summaries import send_run_summaries
 from pricewatch.application.watchdog import WatchReport, watch
 from pricewatch.bootstrap.server import EXIT_CONFIG, EXIT_DATABASE, check_database
 from pricewatch.config.settings import ConfigError, load_settings
@@ -56,6 +57,9 @@ class SqlJobs:
 
     def watch(self, now: datetime) -> WatchReport:
         return watch(SqlUnitOfWork(self._engine), now)
+
+    def send_run_summaries(self, now: datetime) -> int:
+        return send_run_summaries(SqlUnitOfWork(self._engine), now)
 
 
 def run_scheduler(env_file: Path = Path(".env")) -> int:

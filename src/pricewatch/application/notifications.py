@@ -91,6 +91,8 @@ def notification_text(kind: str, payload: dict[str, object]) -> tuple[str, str |
         text = f"Ошибка приложения {payload['app_version']} ({payload['os_version']}) на экране «{payload['screen']}»: {payload['error_code']}"
         message = str(payload["message"])
         return f"{text}{' — ' + message if message else ''}. Номер ошибки {payload['error_id']}.", None
+    if kind == "run_summary":
+        return ("Проверка завершена: изменения есть." if payload["changed"] else "Проверка завершена: изменений нет."), "/web/"
     if kind in SILENCE_TEXTS:
         since = datetime.fromisoformat(str(payload["since"])).astimezone(MOSCOW)
         return SILENCE_TEXTS[kind].format(name=payload["name"], since=f"{since:%d.%m в %H:%M}"), None

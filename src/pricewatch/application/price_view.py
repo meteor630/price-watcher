@@ -90,7 +90,7 @@ def load(
     bindings = [binding for binding in every_binding if binding.item_id in wanted]
     stores = uow.price_data.stores(sorted({binding.store_id for binding in bindings}))
     link_ids = sorted({binding.tracked_link_id for binding in bindings})
-    history = _as_seen_by_user(uow, user_id, link_ids, every_binding, min(since, before_moment))
+    history = seen_by_user(uow, user_id, link_ids, every_binding, min(since, before_moment))
     by_item: dict[int, list[Binding]] = {}
     for binding in bindings:
         link = LinkInput(binding.tracked_link_id, binding.store_id, stores[binding.store_id].enabled, history[binding.tracked_link_id])
@@ -107,7 +107,7 @@ def load(
     return PricedList(rows, stores)
 
 
-def _as_seen_by_user(
+def seen_by_user(
     uow: UnitOfWork, user_id: int, link_ids: list[int], bindings: list[LinkBinding], since: datetime
 ) -> dict[int, tuple[Observation, ...]]:
     """История каждой ссылки так, как её видит пользователь: подозрительное засчитано по его решениям (domain.review)."""

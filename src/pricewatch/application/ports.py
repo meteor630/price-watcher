@@ -673,6 +673,9 @@ class TelegramRepository(Protocol):
     def mark_failed(self, notification_id: int, retry_at: datetime) -> bool:
         """Попытка не удалась: счётчик попыток растёт, повтор — не раньше `retry_at`."""
         ...
+    def linked_users(self) -> list[User]:
+        """Незаблокированные пользователи с привязанным Telegram, по номеру."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -724,6 +727,14 @@ class ExpiredTask:
     run_stopping: bool
 
 
+@dataclass(frozen=True, slots=True)
+class FinishedRun:
+    run_id: int
+    kind: str
+    created_at: datetime
+    finished_at: datetime
+
+
 class QueueRepository(Protocol):
     def enqueue_on_add(self, tracked_link_id: int, now: datetime) -> int:
         """Срочное задание на одну ссылку (запуск вида on_add); уже есть активное — его номер."""
@@ -756,6 +767,10 @@ class QueueRepository(Protocol):
     def latest_run(self) -> RunInfo | None:
         """Последний плановый или ручной запуск (идущий или завершённый)."""
         ...
+    def runs_to_summarize(self, limit: int) -> list[FinishedRun]:
+        """Завершённые плановые и ручные запуски без сводки, по номеру; строки блокируются (второй планировщик их пропустит)."""
+        ...
+    def mark_summarized(self, run_id: int, now: datetime) -> None: ...
     def enqueue_run(self, run_id: int, purchased_since: datetime, now: datetime) -> RunProgress:
         """Задания запуска: ссылки действующих привязок активных товаров и купленных позже `purchased_since`,
         у живых пользователей и включённых магазинов; ссылка с активным заданием пропускается. Пусто — запуск завершён."""
@@ -794,6 +809,9 @@ class NotificationRepository(Protocol):
         """Уведомление каждому действующему администратору: в колокольчик и в Telegram, если он привязан
         (telegram=False — только колокольчик: например, когда молчит сам бот).
         Повтор с тем же dedup_key не создаёт новых строк, а поднимает счётчик повторов. Число затронутых строк."""
+        ...
+    def notify_telegram(self, user_id: int, kind: str, dedup_key: str, payload: dict[str, object], now: datetime) -> None:
+        """Telegram-сообщение одному пользователю; строка с тем же dedup_key уже есть — ничего не меняется."""
         ...
     def bell(self, user_id: int, offset: int, limit: int) -> list[BellNotification]:
         """Уведомления колокольчика пользователя, сначала новые (по последнему повтору)."""

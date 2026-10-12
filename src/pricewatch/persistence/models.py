@@ -457,6 +457,8 @@ class ParseRunRow(Base):
     created_at: Mapped[datetime] = _created_at()
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Сводка пользователям в Telegram создана (только плановые и ручные запуски); пусто — ещё нет.
+    summarized_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         ForeignKeyConstraint(["requested_by"], ["users.id"]),
@@ -466,6 +468,7 @@ class ParseRunRow(Base):
         CheckConstraint("kind <> 'manual' OR requested_by IS NOT NULL", name="manual_requested_by"),
         CheckConstraint("total >= 0 AND done >= 0 AND failed >= 0 AND done + failed <= total", name="counters"),
         CheckConstraint("(status IN ('finished', 'failed')) = (finished_at IS NOT NULL)", name="finished_at_with_status"),
+        CheckConstraint("summarized_at IS NULL OR finished_at IS NOT NULL", name="summarized_after_finish"),
         # Не больше одного активного планового или ручного запуска (раздел 8).
         Index(
             ACTIVE_RUN_INDEX,
