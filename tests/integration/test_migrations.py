@@ -58,6 +58,10 @@ def test_upgrade_downgrade_upgrade(empty_database_url: str) -> None:
 
     command.upgrade(config, "head")
     assert tables(empty_database_url) == TABLES
+    assert revision(empty_database_url) == "0013"
+
+    command.downgrade(config, "0012")
+    assert "silent_since" not in columns(empty_database_url, "workers") | columns(empty_database_url, "services")
     assert revision(empty_database_url) == "0012"
 
     command.downgrade(config, "0011")

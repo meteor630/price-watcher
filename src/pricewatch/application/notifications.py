@@ -18,6 +18,12 @@ from pricewatch.domain.days import MOSCOW
 PAGE_MAX = 100
 READ_IDS_MAX = 100
 PAUSE_REASONS = {"CAPTCHA": "магазин запросил проверку «я не робот»", "BLOCKED": "магазин ограничил доступ"}
+SILENCE_TEXTS = {
+    "worker_silent": "Worker «{name}» молчит с {since}: цены не проверяются.",
+    "worker_back": "Worker «{name}» снова на связи (молчал с {since}).",
+    "bot_silent": "Telegram-бот «{name}» молчит с {since}: сообщения в Telegram не уходят.",
+    "bot_back": "Telegram-бот «{name}» снова на связи (молчал с {since}).",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,5 +91,8 @@ def notification_text(kind: str, payload: dict[str, object]) -> tuple[str, str |
         text = f"Ошибка приложения {payload['app_version']} ({payload['os_version']}) на экране «{payload['screen']}»: {payload['error_code']}"
         message = str(payload["message"])
         return f"{text}{' — ' + message if message else ''}. Номер ошибки {payload['error_id']}.", None
+    if kind in SILENCE_TEXTS:
+        since = datetime.fromisoformat(str(payload["since"])).astimezone(MOSCOW)
+        return SILENCE_TEXTS[kind].format(name=payload["name"], since=f"{since:%d.%m в %H:%M}"), None
     # Вид уведомления открыт: незнакомый показывается нейтрально, а не пропадает.
     return f"Системное событие «{kind}».", None

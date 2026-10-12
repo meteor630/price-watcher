@@ -44,9 +44,9 @@ Worker может работать и на домашнем ПК: он обща�
 Взаимный контроль:
 
 - Бот раз в минуту опрашивает API через туннель. Нет ответа 3 минуты — бот сам пишет администраторам в Telegram: токен и chat id администраторов лежат в его конфигурации.
-- Worker раз в минуту шлёт heartbeat в API. Молчит дольше 5 минут — администраторы получают уведомление.
+- Worker раз в минуту шлёт heartbeat в API. Молчит дольше 5 минут — администраторы получают уведомление в колокольчик и в Telegram.
 - Каждый запрос бота к `/internal/v1` обновляет `services.last_seen_at`. Бот молчит дольше 5 минут — API создаёт уведомление в колокольчике администраторов.
-- На каждое событие приходит и сообщение о восстановлении.
+- На каждое событие приходит и сообщение о восстановлении. Проверяет планировщик на каждом обходе (срез 8.1б): начало молчания запоминается в `silent_since` процесса, поэтому каждое молчание — одно уведомление и одно сообщение о восстановлении, новое молчание — новый инцидент. Процесс, ни разу не выходивший на связь, и отключённый не проверяются.
 
 ## 2. Стек
 
@@ -191,10 +191,10 @@ Telegram привязывается к пользователю одноразо
 
 - `parse_runs(id, kind, slot_key, status, requested_by, total, done, failed, started_at, finished_at)` — `kind`: `scheduled`, `manual`, `on_add`.
 - `check_tasks(id, run_id, tracked_link_id, status, priority, attempt, lease_until, heartbeat_at, worker_id, error_code, safe_message, duration_ms, created_at, finished_at)`
-- `workers(id, name, token_hash, next_token_hash, last_seen_at, disabled_at)`
+- `workers(id, name, token_hash, next_token_hash, created_at, last_seen_at, disabled_at, silent_since)` — `silent_since` — сторож сообщил, что worker молчит с этого момента; пусто — на связи.
 - `settings(key, value_json, version, updated_by, updated_at)`
 - `notifications(id, user_id, channel, kind, dedup_key, payload_json, created_at, sent_at, attempts, read_at, repeat_count, claimed_until)` — `channel`: `telegram`, `in_app`; `claimed_until` — бот взял Telegram-сообщение на отправку до этого момента (второй экземпляр его не возьмёт), после сбоя — когда повторить.
-- `services(id, name, token_hash, next_token_hash, created_at, last_seen_at, disabled_at)` — служебные процессы с доступом к `/internal/v1` (Telegram-бот): токен как у worker, `last_seen_at` — пульс для сторожа (план этапа 8, вместо `service_heartbeats`).
+- `services(id, name, token_hash, next_token_hash, created_at, last_seen_at, disabled_at, silent_since)` — служебные процессы с доступом к `/internal/v1` (Telegram-бот): токен как у worker, `last_seen_at` — пульс для сторожа (план этапа 8, вместо `service_heartbeats`).
 - `telegram_link_codes(id, user_id, code_hash, created_at, expires_at, used_at)` — одноразовый код привязки Telegram с сайта, 15 минут; в базе только HMAC.
 - `client_error_reports(id, user_id, device_id, app_version, os_version, screen, error_code, message, occurred_at, received_at)`
 - `audit_events(id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at)` — журнал: решения пользователей по подозрительным изменениям и их отмена, перепроверки, автоматическое закрытие подозрения (`actor_id` пуст — система), изменения настроек проверки.

@@ -488,6 +488,8 @@ class WorkerRow(Base):
     created_at: Mapped[datetime] = _created_at()
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Сторож сообщил администраторам, что процесс молчит с этого момента (последний пульс); пусто — на связи.
+    silent_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         _hash_check("token_hash"),
@@ -510,6 +512,8 @@ class ServiceRow(Base):
     created_at: Mapped[datetime] = _created_at()
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Сторож сообщил администраторам, что процесс молчит с этого момента (последний пульс); пусто — на связи.
+    silent_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         _hash_check("token_hash"),

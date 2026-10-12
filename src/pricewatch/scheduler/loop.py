@@ -1,4 +1,4 @@
-"""Цикл планировщика: каждые 30 секунд вернуть просроченные задания, удалить данные пользователей,
+"""Цикл планировщика: каждые 30 секунд вернуть просроченные задания, проверить, не молчат ли worker и бот, удалить данные пользователей,
 заблокированных 7 суток назад, стереть удалённое 30 дней назад, ключи повтора старше суток и отчёты об ошибках
 приложения старше 90 суток, запустить наступившую проверку.
 
@@ -17,6 +17,7 @@ from typing import Protocol
 
 from pricewatch.application.ports import PurgedCounts
 from pricewatch.application.runs import ExpiredLeases, ScheduledStart
+from pricewatch.application.watchdog import WatchReport
 from pricewatch.domain.days import day_start, moscow_date
 from pricewatch.domain.schedule import due_slot
 
@@ -33,6 +34,7 @@ class Jobs(Protocol):
     def purge_deleted(self, now: datetime) -> PurgedCounts: ...
     def purge_idempotency_keys(self, now: datetime) -> int: ...
     def purge_client_errors(self, now: datetime) -> int: ...
+    def watch(self, now: datetime) -> WatchReport: ...
 
 
 class Scheduler:
@@ -71,6 +73,11 @@ class Scheduler:
                 "Аренда заданий истекла",
                 extra={"requeued": expired.requeued, "failed": expired.failed, "cancelled": expired.cancelled},
             )
+        watched = self._jobs.watch(now)
+        if watched.silent:
+            logger.warning("Процессы молчат дольше 5 минут", extra={"processes": list(watched.silent)})
+        if watched.recovered:
+            logger.info("Процессы снова на связи", extra={"processes": list(watched.recovered)})
         deleted = self._jobs.delete_blocked_users_data(now)
         if deleted:
             logger.info("Данные заблокированных пользователей удалены", extra={"users": deleted})

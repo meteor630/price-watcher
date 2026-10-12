@@ -27,6 +27,7 @@ from pricewatch.application.ports import (
     StorePause,
     StoreOverview,
     StoreRecord,
+    Silence,
     StoredSetting,
     WorkerAuth,
 )
@@ -680,6 +681,34 @@ class SqlWorkerRepository:
     def touch(self, worker_id: int, now: datetime) -> None:
         self.connection.execute(update(self.table).where(self.table.c.id == worker_id).values(last_seen_at=now))
 
+    def report_silent(self, seen_before: datetime) -> list[Silence]:
+        t = self.table
+        rows = self.connection.execute(
+            update(t)
+            .where(t.c.disabled_at.is_(None), t.c.silent_since.is_(None), t.c.last_seen_at < seen_before)
+            .values(silent_since=t.c.last_seen_at)
+            .returning(t.c.id, t.c.name, t.c.silent_since, t.c.last_seen_at)
+        )
+        return sorted((Silence(row.id, row.name, row.silent_since, row.last_seen_at) for row in rows), key=lambda silence: silence.process_id)
+
+    def report_recovered(self) -> list[Silence]:
+        t = self.table
+        # Начало молчания нужно в сообщении о восстановлении, а UPDATE ... RETURNING отдаёт уже новое значение:
+        # прежнее берётся из подзапроса, который блокирует строку (второй сторож её дождётся и не повторит).
+        before = (
+            select(t.c.id, t.c.silent_since.label("since"))
+            .where(t.c.silent_since.is_not(None), t.c.last_seen_at > t.c.silent_since)
+            .with_for_update()
+            .subquery()
+        )
+        rows = self.connection.execute(
+            update(t)
+            .where(t.c.id == before.c.id, t.c.silent_since.is_not(None))
+            .values(silent_since=None)
+            .returning(t.c.id, t.c.name, before.c.since, t.c.last_seen_at)
+        )
+        return sorted((Silence(row.id, row.name, row.since, row.last_seen_at) for row in rows), key=lambda silence: silence.process_id)
+
     def last_seen(self) -> datetime | None:
         return self.connection.execute(select(func.max(self.table.c.last_seen_at)).where(self.table.c.disabled_at.is_(None))).scalar_one()
 
@@ -722,7 +751,7 @@ class SqlNotificationRepository:
     def __init__(self, connection: Connection) -> None:
         self.connection = connection
 
-    def notify_admins(self, kind: str, dedup_key: str, payload: dict[str, object], now: datetime) -> int:
+    def notify_admins(self, kind: str, dedup_key: str, payload: dict[str, object], now: datetime, *, telegram: bool = True) -> int:
         admins = self.connection.execute(
             select(users.c.id, users.c.telegram_chat_id).where(users.c.role == "admin", users.c.disabled_at.is_(None)).order_by(users.c.id)
         ).all()
@@ -730,7 +759,7 @@ class SqlNotificationRepository:
             {"user_id": admin.id, "channel": channel, "kind": kind, "dedup_key": dedup_key, "payload_json": payload, "created_at": now}
             for admin in admins
             for channel in ("in_app", "telegram")
-            if channel == "in_app" or admin.telegram_chat_id is not None
+            if channel == "in_app" or (telegram and admin.telegram_chat_id is not None)
         ]
         if not rows:
             return 0

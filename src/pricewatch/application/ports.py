@@ -593,6 +593,16 @@ class WorkerAuth:
     used_next_token: bool
 
 
+@dataclass(frozen=True, slots=True)
+class Silence:
+    """Процесс (worker или сервис), замолчавший или снова вышедший на связь."""
+
+    process_id: int
+    name: str
+    silent_since: datetime
+    last_seen_at: datetime
+
+
 class WorkerRepository(Protocol):
     def create(self, name: str, token_hash: str, now: datetime) -> int:
         """Новый worker; занятое имя — NAME_TAKEN."""
@@ -603,6 +613,13 @@ class WorkerRepository(Protocol):
         """Новый токен ротации; нет такого worker — NOT_FOUND."""
         ...
     def touch(self, worker_id: int, now: datetime) -> None: ...
+    def report_silent(self, seen_before: datetime) -> list[Silence]:
+        """Действующие процессы, последний пульс которых раньше `seen_before`, о молчании которых ещё не сообщено:
+        начало молчания (последний пульс) запоминается. Процесс, ни разу не выходивший на связь, не молчит."""
+        ...
+    def report_recovered(self) -> list[Silence]:
+        """Процессы, о молчании которых сообщено, и с тех пор был пульс: отметка молчания снимается."""
+        ...
     def last_seen(self) -> datetime | None:
         """Когда действующий (не отключённый) worker последний раз обращался к серверу; None — ни разу."""
         ...
@@ -618,6 +635,12 @@ class ServiceRepository(Protocol):
     def promote_next_token(self, worker_id: int) -> None: ...
     def set_next_token(self, name: str, token_hash: str) -> None: ...
     def touch(self, worker_id: int, now: datetime) -> None: ...
+    def report_silent(self, seen_before: datetime) -> list[Silence]:
+        """Как у worker."""
+        ...
+    def report_recovered(self) -> list[Silence]:
+        """Как у worker."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -767,8 +790,9 @@ class BellNotification:
 
 
 class NotificationRepository(Protocol):
-    def notify_admins(self, kind: str, dedup_key: str, payload: dict[str, object], now: datetime) -> int:
-        """Уведомление каждому действующему администратору: в колокольчик и в Telegram, если он привязан.
+    def notify_admins(self, kind: str, dedup_key: str, payload: dict[str, object], now: datetime, *, telegram: bool = True) -> int:
+        """Уведомление каждому действующему администратору: в колокольчик и в Telegram, если он привязан
+        (telegram=False — только колокольчик: например, когда молчит сам бот).
         Повтор с тем же dedup_key не создаёт новых строк, а поднимает счётчик повторов. Число затронутых строк."""
         ...
     def bell(self, user_id: int, offset: int, limit: int) -> list[BellNotification]:

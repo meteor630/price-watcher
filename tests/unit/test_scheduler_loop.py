@@ -7,6 +7,7 @@ import pytest
 
 from pricewatch.application.ports import PurgedCounts, RunProgress
 from pricewatch.application.runs import ExpiredLeases, ScheduledStart
+from pricewatch.application.watchdog import WatchReport
 from pricewatch.domain.days import MOSCOW
 from pricewatch.scheduler.loop import Scheduler
 
@@ -26,6 +27,8 @@ class FakeJobs:
         self.purged_at: list[datetime] = []
         self.keys_purged_at: list[datetime] = []
         self.reports_purged_at: list[datetime] = []
+        self.watched = WatchReport()
+        self.watched_at: list[datetime] = []
         self.fail: Exception | None = None
 
     def schedule_times(self) -> tuple[time, ...]:
@@ -56,6 +59,10 @@ class FakeJobs:
     def purge_client_errors(self, now: datetime) -> int:
         self.reports_purged_at.append(now)
         return 0
+
+    def watch(self, now: datetime) -> WatchReport:
+        self.watched_at.append(now)
+        return self.watched
 
 
 class Clock:
@@ -188,3 +195,21 @@ def test_old_idempotency_keys_are_purged_every_tick() -> None:
 
     assert jobs.keys_purged_at == [msk(8)]
     assert jobs.reports_purged_at == [msk(8)]
+
+
+def test_watchdog_runs_every_tick_and_silence_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    jobs, clock = FakeJobs(), Clock(msk(8))
+    scheduler = Scheduler(jobs, clock=clock)
+    jobs.watched = WatchReport(silent=("worker:home-pi",), recovered=("bot:telegram",))
+
+    with caplog.at_level(logging.INFO):
+        scheduler.tick()
+    jobs.watched = WatchReport()
+    clock.now += timedelta(seconds=30)
+    scheduler.tick()
+
+    assert jobs.watched_at == [msk(8), msk(8) + timedelta(seconds=30)]
+    silent = next(r for r in caplog.records if r.getMessage() == "Процессы молчат дольше 5 минут")
+    back = next(r for r in caplog.records if r.getMessage() == "Процессы снова на связи")
+    assert silent.levelno == logging.WARNING and silent.processes == ["worker:home-pi"]  # type: ignore[attr-defined]
+    assert back.processes == ["bot:telegram"]  # type: ignore[attr-defined]
