@@ -1,9 +1,10 @@
 #!/bin/sh
-# Настройка арендного сервера (Ubuntu 24.04), запуск от root:  sh setup.sh <открытый ключ домашнего узла>
+# Настройка арендного сервера (Ubuntu 24.04 и новее), запуск от root:  sh setup.sh <открытый ключ домашнего узла>
 # Повторный запуск безопасен: ключи сервера не пересоздаются, правила брандмауэра не дублируются.
 #   1. WireGuard: интерфейс 10.66.0.1, порт 51820/udp, единственный собеседник — дом 10.66.0.2.
 #   2. Брандмауэр: входящие только 22/tcp (SSH), 80/tcp, 443/tcp, 51820/udp.
-#   3. Docker для HAProxy (и бота, срез 11.2).
+#   3. Docker для HAProxy (и бота, срез 11.2) — только если его ещё нет: установленный из репозитория Docker
+#      (docker-ce) не трогаем, пакет Ubuntu docker.io с ним конфликтует.
 # В конце печатает открытый ключ сервера — его вписать в deploy/home/tunnel.conf (PublicKey).
 set -eu
 
@@ -18,7 +19,10 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y wireguard ufw docker.io docker-compose-v2
+DEBIAN_FRONTEND=noninteractive apt-get install -y wireguard-tools ufw
+if ! docker compose version >/dev/null 2>&1; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io docker-compose-v2
+fi
 
 umask 077
 if [ ! -s /etc/wireguard/server.key ]; then
