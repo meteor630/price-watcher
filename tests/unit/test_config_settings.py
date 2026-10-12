@@ -339,3 +339,78 @@ def test_bad_telegram_bot_username_is_refused(base_env: pytest.MonkeyPatch, tmp_
 
     with pytest.raises(ConfigError):
         load(tmp_path, "")
+
+
+# --- настройки бота ---
+
+from pricewatch.config.settings import BotSettings, load_bot_settings  # noqa: E402
+
+SERVICE_TOKEN = "s" * 43
+TELEGRAM_TOKEN = "123456789:" + "A" * 35
+
+
+def bot_env(monkeypatch: pytest.MonkeyPatch, **values: str) -> None:
+    for name in [name for name in __import__("os").environ if name.startswith("PRICEWATCH_")]:
+        monkeypatch.delenv(name)
+    for name, value in values.items():
+        monkeypatch.setenv(f"PRICEWATCH_BOT_{name}", value)
+
+
+def test_bot_settings_normal(monkeypatch: pytest.MonkeyPatch) -> None:
+    bot_env(monkeypatch, API_URL="https://prices.example.ru/", SERVICE_TOKEN=SERVICE_TOKEN, TELEGRAM_TOKEN=TELEGRAM_TOKEN)
+
+    settings = load_bot_settings(None)
+
+    assert settings.api_url == "https://prices.example.ru" and settings.log_level == "INFO"
+    assert (settings.service_token.get_secret_value(), settings.telegram_token.get_secret_value()) == (SERVICE_TOKEN, TELEGRAM_TOKEN)
+
+
+@pytest.mark.parametrize(
+    ("values", "variable"),
+    [
+        ({"SERVICE_TOKEN": SERVICE_TOKEN, "TELEGRAM_TOKEN": TELEGRAM_TOKEN}, "PRICEWATCH_BOT_API_URL"),
+        ({"API_URL": "https://x.ru", "TELEGRAM_TOKEN": TELEGRAM_TOKEN}, "PRICEWATCH_BOT_SERVICE_TOKEN"),
+        ({"API_URL": "https://x.ru", "SERVICE_TOKEN": "short", "TELEGRAM_TOKEN": TELEGRAM_TOKEN}, "PRICEWATCH_BOT_SERVICE_TOKEN"),
+        ({"API_URL": "https://x.ru", "SERVICE_TOKEN": SERVICE_TOKEN}, "PRICEWATCH_BOT_TELEGRAM_TOKEN"),
+        ({"API_URL": "https://x.ru", "SERVICE_TOKEN": SERVICE_TOKEN, "TELEGRAM_TOKEN": "123:abc"}, "PRICEWATCH_BOT_TELEGRAM_TOKEN"),
+        ({"API_URL": "https://x.ru/internal", "SERVICE_TOKEN": SERVICE_TOKEN, "TELEGRAM_TOKEN": TELEGRAM_TOKEN}, "PRICEWATCH_BOT_API_URL"),
+    ],
+)
+def test_bot_settings_errors_name_variable_without_value(monkeypatch: pytest.MonkeyPatch, values: dict, variable: str) -> None:
+    bot_env(monkeypatch, **values)
+
+    with pytest.raises(ConfigError) as caught:
+        load_bot_settings(None)
+
+    assert variable in str(caught.value)
+    assert SERVICE_TOKEN not in str(caught.value) and TELEGRAM_TOKEN not in str(caught.value) and "123:abc" not in str(caught.value)
+
+
+def test_bot_rejects_unknown_bot_variable(monkeypatch: pytest.MonkeyPatch) -> None:
+    bot_env(monkeypatch, API_URL="https://x.ru", SERVICE_TOKEN=SERVICE_TOKEN, TELEGRAM_TOKEN=TELEGRAM_TOKEN, TOKEN="typo")
+
+    with pytest.raises(ConfigError, match="PRICEWATCH_BOT_TOKEN"):
+        load_bot_settings(None)
+
+
+def test_server_ignores_bot_variables(monkeypatch: pytest.MonkeyPatch) -> None:
+    bot_env(monkeypatch, API_URL="https://x.ru", SERVICE_TOKEN=SERVICE_TOKEN, TELEGRAM_TOKEN=TELEGRAM_TOKEN)
+    monkeypatch.setenv("PRICEWATCH_ENV", "test")
+
+    with pytest.raises(ConfigError) as caught:
+        load_settings(None)  # сервер жалуется на свои пропущенные настройки, а не на переменные бота
+    assert "Неизвестные" not in str(caught.value)
+
+
+def test_bot_env_example_is_complete_and_loads(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    example = (ROOT / "bot.env.example").read_text(encoding="utf-8")
+    variables = {line.split("=", 1)[0] for line in example.splitlines() if line and not line.startswith("#")}
+    env_file = tmp_path / "bot.env"
+    env_file.write_text(example, encoding="utf-8")
+    # Токенов в примере нет намеренно: секреты только в bot.env.
+    bot_env(monkeypatch, SERVICE_TOKEN=SERVICE_TOKEN, TELEGRAM_TOKEN=TELEGRAM_TOKEN)
+
+    settings = load_bot_settings(env_file)
+
+    assert variables == {f"PRICEWATCH_BOT_{name.upper()}" for name in BotSettings.model_fields}
+    assert settings.api_url == "http://localhost:8000"

@@ -17,6 +17,7 @@ htmlcov/
 .env.*
 !.env.example
 worker.env
+bot.env
 # Профили браузера worker: cookies магазинов
 .browser-profiles/
 # Фото товаров — данные сервера

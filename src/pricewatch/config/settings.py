@@ -6,6 +6,7 @@
 """
 
 import os
+import re
 from ipaddress import IPv4Network, IPv6Network, ip_network
 from pathlib import Path
 from typing import Annotated, Literal
@@ -19,9 +20,11 @@ from pricewatch.observability.redaction import register_secret
 ENV_PREFIX = "PRICEWATCH_"
 # Свои переменные worker: сервер их пропускает, worker — переменные сервера (оба могут жить в одном окружении).
 WORKER_PREFIX = "PRICEWATCH_WORKER_"
+BOT_PREFIX = "PRICEWATCH_BOT_"
 WORKER_TOKEN_MIN_CHARS = 40
 LOCAL_ENVIRONMENTS = {"development", "test"}
 SECRET_KEY_MIN_BYTES = 32
+TELEGRAM_TOKEN_PATTERN = re.compile(r"[0-9]{5,15}:[A-Za-z0-9_-]{30,60}")
 
 
 class ConfigError(Exception):
@@ -101,7 +104,8 @@ class Settings(BaseSettings):
 def load_settings(env_file: Path | None = Path(".env")) -> Settings:
     """Прочитать настройки или остановиться с понятной ошибкой."""
     unknown = sorted(
-        name for name in os.environ if name.startswith(ENV_PREFIX) and not name.startswith(WORKER_PREFIX) and not _is_field(name)
+        name for name in os.environ
+        if name.startswith(ENV_PREFIX) and not name.startswith((WORKER_PREFIX, BOT_PREFIX)) and not _is_field(name)
     )
     if unknown:
         raise ConfigError("Неизвестные переменные окружения: " + ", ".join(unknown))
@@ -128,13 +132,7 @@ class WorkerSettings(BaseSettings):
     @field_validator("api_url")
     @classmethod
     def _api_origin(cls, value: str) -> str:
-        parts = urlsplit(value.strip())
-        if parts.scheme not in {"http", "https"} or not parts.hostname:
-            raise ValueError("нужен адрес сервера вида http://api:8000 или https://домен")
-        if parts.username or parts.password or parts.query or parts.fragment or parts.path not in {"", "/"}:
-            raise ValueError("только схема, хост и порт, без пути, параметров и логина")
-        port = f":{parts.port}" if parts.port else ""
-        return f"{parts.scheme}://{parts.hostname}{port}"
+        return api_origin(value)
 
     @field_validator("token")
     @classmethod
@@ -158,6 +156,64 @@ def load_worker_settings(env_file: Path | None = Path("worker.env")) -> WorkerSe
         raise ConfigError(_describe(error, WORKER_PREFIX)) from None
     register_secret(settings.token.get_secret_value())
     return settings
+
+
+class BotSettings(BaseSettings):
+    """Настройки Telegram-бота: адрес сервера, токен сервиса (create-service), токен бота от @BotFather."""
+
+    model_config = SettingsConfigDict(env_prefix=BOT_PREFIX, env_file_encoding="utf-8", extra="forbid", frozen=True)
+
+    api_url: str
+    service_token: SecretStr
+    telegram_token: SecretStr
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+
+    @field_validator("api_url")
+    @classmethod
+    def _api_origin(cls, value: str) -> str:
+        return api_origin(value)
+
+    @field_validator("service_token")
+    @classmethod
+    def _service_token_length(cls, value: SecretStr) -> SecretStr:
+        if len(value.get_secret_value()) < WORKER_TOKEN_MIN_CHARS:
+            raise ValueError("нужен токен из команды create-service")
+        return value
+
+    @field_validator("telegram_token")
+    @classmethod
+    def _telegram_token_format(cls, value: SecretStr) -> SecretStr:
+        if not TELEGRAM_TOKEN_PATTERN.fullmatch(value.get_secret_value()):
+            raise ValueError("нужен токен бота от @BotFather вида 123456789:AA…")
+        return value
+
+
+def load_bot_settings(env_file: Path | None = Path("bot.env")) -> BotSettings:
+    """Настройки бота или понятная ошибка; переменные сервера и worker бот не смотрит."""
+    unknown = sorted(
+        name for name in os.environ
+        if name.startswith(BOT_PREFIX) and name.removeprefix(BOT_PREFIX).lower() not in BotSettings.model_fields
+    )
+    if unknown:
+        raise ConfigError("Неизвестные переменные окружения: " + ", ".join(unknown))
+    try:
+        settings = BotSettings(_env_file=env_file)  # type: ignore[call-arg]
+    except ValidationError as error:
+        raise ConfigError(_describe(error, BOT_PREFIX)) from None
+    register_secret(settings.service_token.get_secret_value())
+    register_secret(settings.telegram_token.get_secret_value())
+    return settings
+
+
+def api_origin(value: str) -> str:
+    """Адрес своего сервера для worker и бота: только схема, хост и порт."""
+    parts = urlsplit(value.strip())
+    if parts.scheme not in {"http", "https"} or not parts.hostname:
+        raise ValueError("нужен адрес сервера вида http://api:8000 или https://домен")
+    if parts.username or parts.password or parts.query or parts.fragment or parts.path not in {"", "/"}:
+        raise ValueError("только схема, хост и порт, без пути, параметров и логина")
+    port = f":{parts.port}" if parts.port else ""
+    return f"{parts.scheme}://{parts.hostname}{port}"
 
 
 def _register_secrets(settings: Settings) -> None:

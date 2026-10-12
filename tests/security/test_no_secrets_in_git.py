@@ -14,8 +14,8 @@ from pricewatch.observability.redaction import is_sensitive_name
 
 ROOT = Path(__file__).resolve().parents[2]
 
-FORBIDDEN_NAMES = re.compile(r"(^|/)(\.env(\..+)?|worker\.env|\.browser-profiles/.*|id_(rsa|ed25519|ecdsa)|.+\.(pem|key|p12|pfx|keystore))$")
-ALLOWED_NAMES = {".env.example", "worker.env.example"}
+FORBIDDEN_NAMES = re.compile(r"(^|/)(\.env(\..+)?|worker\.env|bot\.env|\.browser-profiles/.*|id_(rsa|ed25519|ecdsa)|.+\.(pem|key|p12|pfx|keystore))$")
+ALLOWED_NAMES = {".env.example", "worker.env.example", "bot.env.example"}
 SECRET_PATTERNS = {
     "закрытый ключ": re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
     "токен Telegram-бота": re.compile(r"\b\d{8,10}:[A-Za-z0-9_-]{35}\b"),
@@ -92,18 +92,18 @@ def is_ignored(path: str) -> bool:
 
 
 @pytest.mark.parametrize(
-    "path", [".env", ".env.local", ".env.production", "deploy/.env", "worker.env", ".browser-profiles/avito/Default/Cookies"]
+    "path", [".env", ".env.local", ".env.production", "deploy/.env", "worker.env", "bot.env", ".browser-profiles/avito/Default/Cookies"]
 )
 def test_env_files_are_ignored_by_git(path: str) -> None:
     assert is_ignored(path)
 
 
-@pytest.mark.parametrize("name", [".env.example", "worker.env.example"])
+@pytest.mark.parametrize("name", [".env.example", "worker.env.example", "bot.env.example"])
 def test_env_example_is_not_ignored(name: str) -> None:
     assert not is_ignored(name)
 
 
-@pytest.mark.parametrize("name", [".env.example", "worker.env.example"])
+@pytest.mark.parametrize("name", [".env.example", "worker.env.example", "bot.env.example"])
 def test_env_example_has_no_filled_secrets(name: str) -> None:
     assert filled_sensitive_variables((ROOT / name).read_text(encoding="utf-8")) == []
 
@@ -138,7 +138,7 @@ def test_scanner_ignores_ordinary_text(text: str) -> None:
 
 @pytest.mark.parametrize(
     "name",
-    [".env", ".env.production", "deploy/.env.local", "worker.env", ".browser-profiles/dns/Cookies", "id_rsa", "certs/server.key", "tls/site.pem", "ios/dist.p12"],
+    [".env", ".env.production", "deploy/.env.local", "worker.env", "bot.env", ".browser-profiles/dns/Cookies", "id_rsa", "certs/server.key", "tls/site.pem", "ios/dist.p12"],
 )
 def test_forbidden_file_names_are_caught(name: str) -> None:
     assert forbidden_files([name]) == [name]

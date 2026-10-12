@@ -10,6 +10,7 @@
 - Команда: `uv run python -m pricewatch.bootstrap` — запустить сервер; настройки из окружения и .env; без базы или со старой схемой не стартует.
 - Команда: `uv run python -m pricewatch.bootstrap scheduler` — запустить планировщик: плановые проверки по расписанию, возврат просроченных заданий; настройки как у сервера.
 - Команда: `uv run python -m pricewatch.worker` — запустить worker; настройки из окружения и worker.env.
+- Команда: `uv run python -m pricewatch.bot` — запустить Telegram-бота; настройки из окружения и bot.env.
 - Команда: `uv run alembic upgrade head` — применить миграции; адрес базы из настроек.
 - Команда: `uv run python -m pricewatch.bootstrap create-admin --login <логин> --name <имя>` — создать администратора; пароль спросит дважды без эха (для автоматизации — --password-stdin).
 - Команда: `TEST_DATABASE_URL=postgresql://localhost/postgres uv run pytest` — весь набор тестов; без TEST_DATABASE_URL тесты базы падают с объяснением.
@@ -53,6 +54,7 @@
 - Файлы: `.gitignore`
 - Файлы: `.env.example` — все настройки с пояснениями, без секретов; копируется в .env. PRICEWATCH_SECRET_KEY — ключ HMAC для кодов, токенов, сессий; его смена разлогинивает всех. PRICEWATCH_MEDIA_DIR — каталог фото, входит в резервную копию.
 - Файлы: `worker.env.example` — настройки worker без токена; копируется в worker.env (в Git не попадает, как и профили браузера .browser-profiles).
+- Файлы: `bot.env.example` — настройки Telegram-бота без токенов; копируется в bot.env (в Git не попадает).
 - Файлы: `.github/workflows/ci.yml` — CI на каждый push: тесты, import-linter, проверка карты на Linux и на Windows (PostgreSQL 18 сборки EDB), gitleaks по всей истории. Действия закреплены по хешу, gitleaks и PostgreSQL для Windows — с проверкой контрольной суммы.
 - Файлы: `.gitleaksignore` — ложные срабатывания gitleaks по точному отпечатку; только ненастоящие значения из тестов и только с согласия владельца.
 
@@ -247,9 +249,14 @@
 
 ### pricewatch.bot
 - Путь: `src/pricewatch/bot/`
-- Отвечает: Telegram-бот и сторож
-- Зависит от: —
-- Тесты: `uv run pytest tests/unit/test_package_layout.py`
+- Отвечает: Telegram-бот и сторож; с сервером только по HTTP /internal/v1, к базе не подключается
+- Зависит от: `pricewatch.config`, `pricewatch.domain`, `pricewatch.observability`
+- Тесты: `uv run pytest tests/unit/test_bot_telegram.py tests/unit/test_bot_runner.py tests/integration/test_bot_end_to_end.py tests/integration/test_bot_start.py tests/unit/test_package_layout.py`
+- Файлы: `src/pricewatch/bot/telegram.py` — свой клиент Telegram Bot API на httpx2: getUpdates (только текст личных чатов), sendMessage простым текстом до 4096 символов, setMyCommands; 401/404 — токен не принят, 409 — другой экземпляр, 400/403 — чат недоступен, остальное — повторить позже (retry_after).
+- Файлы: `src/pricewatch/bot/api.py` — клиент /internal/v1 с токеном сервиса: привязка, код для приложения, взять сообщения, отправлено/сбой; 401 — токен не принят, 404 — не найдено, остальное — сервер недоступен.
+- Файлы: `src/pricewatch/bot/commands.py` — /start <код> — привязка, /code — код для приложения группами по 4, остальное — подсказка; сервер недоступен — понятный ответ.
+- Файлы: `src/pricewatch/bot/runner.py` — обход: рассылка (отправлено → отметка, чат недоступен или сбой Telegram → «сбой»), длинный опрос 10 с, ответы на команды (обновление подтверждается и при неотправленном ответе); паузы при недоступности; неверный токен — остановка; неожиданная ошибка — в журнал.
+- Файлы: `src/pricewatch/bot/__main__.py` — запуск python -m pricewatch.bot: настройки PRICEWATCH_BOT_* и bot.env, журнал JSON, SIGINT/SIGTERM; выход 2 — конфигурация, 4 — токен сервиса или бота не принят.
 
 ### pricewatch.media
 - Путь: `src/pricewatch/media/`
@@ -282,7 +289,7 @@
 - Отвечает: настройки процесса из окружения и .env; ошибка без значений; секреты регистрируются для журнала; не импортируется domain и application
 - Зависит от: `pricewatch.observability`
 - Тесты: `uv run pytest tests/unit/test_config_settings.py tests/unit/test_package_layout.py`
-- Файлы: `src/pricewatch/config/settings.py` — Settings (в том числе media_dir — каталог фото), load_settings, ConfigError; telegram_bot_username — имя бота для ссылки привязки (необязательно); WorkerSettings и load_worker_settings (PRICEWATCH_WORKER_*, worker.env; сервер и worker не видят переменных друг друга).
+- Файлы: `src/pricewatch/config/settings.py` — Settings (в том числе media_dir — каталог фото), load_settings, ConfigError; telegram_bot_username — имя бота для ссылки привязки (необязательно); BotSettings и load_bot_settings (PRICEWATCH_BOT_*, bot.env; токены сервиса и бота — секреты); api_origin — адрес своего сервера для worker и бота; WorkerSettings и load_worker_settings (PRICEWATCH_WORKER_*, worker.env; сервер и worker не видят переменных друг друга).
 
 ## Границы модулей
 
@@ -316,7 +323,7 @@
 - Файлы: `tests/security/` — набор безопасности; обязателен при изменении входа, ролей, URL, worker (`AGENTS.md`, раздел 7).
 - Команда: `uv run pytest tests/security` — только набор безопасности.
 - Файлы: `tests/security/test_access_rules.py` — все маршруты /api/v1, кроме PUBLIC_API, требуют bearer; все действия из ADMIN_ONLY запрещены не-администраторам. Новое действие администратора добавляется в ADMIN_ONLY.
-- Файлы: `tests/security/test_no_secrets_in_git.py` — нет .env, worker.env, профилей браузера, ключей и токенов в файлах, которые попадут в коммит; они игнорируются, образцы .env.example и worker.env.example без секретов.
+- Файлы: `tests/security/test_no_secrets_in_git.py` — нет .env, worker.env, bot.env, профилей браузера, ключей и токенов в файлах, которые попадут в коммит; они игнорируются, образцы .env.example, worker.env.example и bot.env.example без секретов.
 - Файлы: `tests/contracts/` — проверки контракта API.
 - Файлы: `tests/unit/conftest.py` — фикстура project_copy: копия проекта для тестов, которые ломают код.
 - Файлы: `tests/conftest.py` — фикстура database_url: временная база PostgreSQL на прогон, удаляется в конце.
