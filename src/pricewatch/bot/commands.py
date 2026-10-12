@@ -14,7 +14,10 @@ COMMANDS = [("code", "Код для подключения приложения"
 START_CODE = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
 HOW_TO_LINK = "На сайте откройте Настройки → Профиль и нажмите «Привязать Telegram»."
-HELP = f"Это бот Price Watcher: присылает сводку после проверки цен и выдаёт код для приложения. {HOW_TO_LINK} Код для приложения — команда /code."
+HELP = (
+    f"Это бот Price Watcher: присылает сводку после проверки цен и выдаёт код для приложения. {HOW_TO_LINK} Код для приложения — команда /code. "
+    "Номер этого чата: {chat_id} (администратору он нужен в настройках бота)."
+)
 LINKED = "Готово: Telegram привязан к пользователю «{name}». Сюда будут приходить сводки после проверки цен. Код для приложения — команда /code."
 BAD_LINK_CODE = f"Код не подошёл: он неверный, уже использован или истёк. Получите новый: {HOW_TO_LINK}"
 NOT_LINKED = f"Этот Telegram не привязан к Price Watcher. {HOW_TO_LINK}"
@@ -38,7 +41,7 @@ def reply(api: Api, chat_id: int, text: str) -> str:
             return _pairing(api, chat_id)
     except ApiUnavailable:
         return SERVER_DOWN
-    return HELP
+    return HELP.format(chat_id=chat_id)
 
 
 def _link(api: Api, chat_id: int, code: str) -> str:

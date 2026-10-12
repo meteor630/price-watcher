@@ -5,17 +5,21 @@
 - Уведомление: взято с сервера → отправлено → «отправлено»; чат недоступен или Telegram сбоит → «сбой»,
   сервер вернёт его позже (до 30 попыток). Telegram недоступен — остальные взятые ждут конца захвата.
 - Telegram или сервер недоступны — пауза и повтор; неверный токен бота или сервиса останавливает бота.
+- Сервер не отвечает 3 минуты — предупреждение администраторам (bot/watch.py); второй экземпляр бота,
+  которому Telegram отвечает «конфликт», не предупреждает.
 - Неожиданная ошибка обхода — в журнал с трассировкой, бот живёт дальше.
 """
 
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
 from typing import Protocol
 
 from pricewatch.bot import commands
 from pricewatch.bot.api import ApiUnavailable, NotFound, Outgoing, PairingCode, ServiceRejected
-from pricewatch.bot.telegram import ChatUnreachable, TelegramRejected, TelegramUnavailable, Update
+from pricewatch.bot.telegram import ChatUnreachable, TelegramConflict, TelegramRejected, TelegramUnavailable, Update
+from pricewatch.bot.watch import ServerWatch
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +44,22 @@ class Telegram(Protocol):
 
 
 class Bot:
-    def __init__(self, api: Api, telegram: Telegram, *, wait: Callable[[float], bool] | None = None, poll_s: int = POLL_S) -> None:
+    def __init__(
+        self,
+        api: Api,
+        telegram: Telegram,
+        *,
+        admin_chats: Sequence[int] = (),
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        wait: Callable[[float], bool] | None = None,
+        poll_s: int = POLL_S,
+    ) -> None:
         self._api = api
         self._telegram = telegram
+        self._clock = clock
+        self._watch = ServerWatch(admin_chats, clock())
+        # Этот экземпляр получает обновления из Telegram (у второго — «конфликт»); только он предупреждает.
+        self._leading = False
         self._stopping = threading.Event()
         self._wait = wait or self._stopping.wait
         self._poll_s = poll_s
@@ -70,7 +87,9 @@ class Bot:
         сервиса останавливает бота сразу после запуска."""
         delivered = self._deliver()
         self._set_commands()
-        return max(self._receive(), delivered)
+        received = self._receive()
+        self._watch.check(self._telegram, self._clock(), self._leading)
+        return max(received, delivered)
 
     def _set_commands(self) -> None:
         if self._commands_set:
@@ -85,9 +104,15 @@ class Bot:
     def _receive(self) -> float:
         try:
             updates = self._telegram.updates(self._offset, self._poll_s)
+        except TelegramConflict:
+            if self._leading:
+                logger.warning("Обновления получает другой экземпляр бота; этот только рассылает уведомления")
+            self._leading = False
+            return TELEGRAM_RETRY_S
         except TelegramUnavailable as error:
             logger.warning("Telegram не отдал обновления", extra={"reason": str(error)})
             return float(error.retry_after_s or TELEGRAM_RETRY_S)
+        self._leading = True
         for update in updates:
             self._offset = update.update_id + 1
             if update.chat_id is None or update.text is None:
@@ -105,6 +130,7 @@ class Bot:
         except ApiUnavailable as error:
             logger.warning("Сервер не отдал сообщения на отправку", extra={"reason": str(error)})
             return API_RETRY_S
+        self._watch.answered(self._clock())
         for message in batch:
             try:
                 pause = self._send(message)

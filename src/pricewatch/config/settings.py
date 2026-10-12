@@ -166,12 +166,24 @@ class BotSettings(BaseSettings):
     api_url: str
     service_token: SecretStr
     telegram_token: SecretStr
+    # Кому бот сам пишет, что сервер не отвечает: при недоступном сервере взять список больше негде.
+    admin_chat_ids: Annotated[tuple[int, ...], NoDecode] = ()
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
     @field_validator("api_url")
     @classmethod
     def _api_origin(cls, value: str) -> str:
         return api_origin(value)
+
+    @field_validator("admin_chat_ids", mode="before")
+    @classmethod
+    def _split_chat_ids(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        try:
+            return tuple(int(item.strip()) for item in value.split(",") if item.strip())
+        except ValueError:
+            raise ValueError("нужен список chat id через запятую, например 123456789,987654321") from None
 
     @field_validator("service_token")
     @classmethod

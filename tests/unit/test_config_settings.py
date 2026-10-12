@@ -414,3 +414,18 @@ def test_bot_env_example_is_complete_and_loads(monkeypatch: pytest.MonkeyPatch, 
 
     assert variables == {f"PRICEWATCH_BOT_{name.upper()}" for name in BotSettings.model_fields}
     assert settings.api_url == "http://localhost:8000"
+
+
+@pytest.mark.parametrize(("raw", "expected"), [("", ()), ("123456789", (123456789,)), (" 123456789, -100200300 ,", (123456789, -100200300))])
+def test_bot_admin_chat_ids(monkeypatch: pytest.MonkeyPatch, raw: str, expected: tuple[int, ...]) -> None:
+    bot_env(monkeypatch, API_URL="https://x.ru", SERVICE_TOKEN=SERVICE_TOKEN, TELEGRAM_TOKEN=TELEGRAM_TOKEN, ADMIN_CHAT_IDS=raw)
+
+    assert load_bot_settings(None).admin_chat_ids == expected
+
+
+@pytest.mark.parametrize("raw", ["@owner", "123;456", "12.5"])
+def test_bad_bot_admin_chat_ids_name_variable(monkeypatch: pytest.MonkeyPatch, raw: str) -> None:
+    bot_env(monkeypatch, API_URL="https://x.ru", SERVICE_TOKEN=SERVICE_TOKEN, TELEGRAM_TOKEN=TELEGRAM_TOKEN, ADMIN_CHAT_IDS=raw)
+
+    with pytest.raises(ConfigError, match="PRICEWATCH_BOT_ADMIN_CHAT_IDS"):
+        load_bot_settings(None)

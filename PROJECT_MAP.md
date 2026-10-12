@@ -161,7 +161,7 @@
 - Файлы: `src/pricewatch/api/v1_runs.py` — GET /api/v1/runs/current, POST /runs и /runs/{id}/stop (администратор, Idempotency-Key, 202; второй запуск — 409 с прогрессом).
 - Файлы: `src/pricewatch/api/v1_reviews.py` — GET /api/v1/reviews (свои карточки, страницами) и POST /reviews/{id}/decision (Idempotency-Key, решённое или чужое — 404).
 - Файлы: `src/pricewatch/api/v1_notifications.py` — GET /api/v1/notifications и POST /notifications/read (номера или все, Idempotency-Key), только администратор.
-- Файлы: `src/pricewatch/api/internal_v1.py` — /internal/v1 для бота: только токен сервиса; ping, привязка чата, код для приложения, взять сообщения, отправлено/сбой; строгие тела.
+- Файлы: `src/pricewatch/api/internal_v1.py` — /internal/v1 для бота: только токен сервиса, каждый запрос — пульс; привязка чата, код для приложения, взять сообщения, отправлено/сбой; строгие тела.
 - Файлы: `src/pricewatch/api/v1_client_errors.py` — POST /api/v1/client_errors (bearer, Idempotency-Key, строгое тело, 201 с error_id, 429 сверх лимита).
 - Файлы: `src/pricewatch/api/idempotency.py` — заголовок Idempotency-Key для изменяющих запросов: хеш метода, пути и тела; повтор возвращает сохранённый ответ; код успешного ответа задаётся (202 у запуска), повтор получает тот же.
 - Файлы: `src/pricewatch/api/web_items.py` — карточка товара, фрагмент графика по магазину, изменение количества и отметки (htmx, CSRF, версия): ответ — обновлённая страница товара или категории; конфликт — актуальные данные и сообщение; «Куплено» (окно), «В архив», «Вернуть в список» (у купленного — окно подтверждения) с «Отменить»; возврат из архива отвечает страницей архива.
@@ -254,8 +254,9 @@
 - Тесты: `uv run pytest tests/unit/test_bot_telegram.py tests/unit/test_bot_runner.py tests/integration/test_bot_end_to_end.py tests/integration/test_bot_start.py tests/unit/test_package_layout.py`
 - Файлы: `src/pricewatch/bot/telegram.py` — свой клиент Telegram Bot API на httpx2: getUpdates (только текст личных чатов), sendMessage простым текстом до 4096 символов, setMyCommands; 401/404 — токен не принят, 409 — другой экземпляр, 400/403 — чат недоступен, остальное — повторить позже (retry_after).
 - Файлы: `src/pricewatch/bot/api.py` — клиент /internal/v1 с токеном сервиса: привязка, код для приложения, взять сообщения, отправлено/сбой; 401 — токен не принят, 404 — не найдено, остальное — сервер недоступен.
-- Файлы: `src/pricewatch/bot/commands.py` — /start <код> — привязка, /code — код для приложения группами по 4, остальное — подсказка; сервер недоступен — понятный ответ.
-- Файлы: `src/pricewatch/bot/runner.py` — обход: рассылка (отправлено → отметка, чат недоступен или сбой Telegram → «сбой»), длинный опрос 10 с, ответы на команды (обновление подтверждается и при неотправленном ответе); паузы при недоступности; неверный токен — остановка; неожиданная ошибка — в журнал.
+- Файлы: `src/pricewatch/bot/commands.py` — /start <код> — привязка, /code — код для приложения группами по 4, остальное — подсказка с номером чата; сервер недоступен — понятный ответ.
+- Файлы: `src/pricewatch/bot/runner.py` — обход: рассылка (отправлено → отметка, чат недоступен или сбой Telegram → «сбой»), длинный опрос 10 с, ответы на команды (обновление подтверждается и при неотправленном ответе); паузы при недоступности; неверный токен — остановка; 409 — этот экземпляр не ведущий; неожиданная ошибка — в журнал.
+- Файлы: `src/pricewatch/bot/watch.py` — сторож бота: сервер не отвечает 3 минуты — предупреждение администраторам из PRICEWATCH_BOT_ADMIN_CHAT_IDS, ответил — восстановление; только экземпляр, получающий обновления; одно на инцидент, повтор при сбое Telegram, неверный chat id — в журнал.
 - Файлы: `src/pricewatch/bot/__main__.py` — запуск python -m pricewatch.bot: настройки PRICEWATCH_BOT_* и bot.env, журнал JSON, SIGINT/SIGTERM; выход 2 — конфигурация, 4 — токен сервиса или бота не принят.
 
 ### pricewatch.media
@@ -289,7 +290,7 @@
 - Отвечает: настройки процесса из окружения и .env; ошибка без значений; секреты регистрируются для журнала; не импортируется domain и application
 - Зависит от: `pricewatch.observability`
 - Тесты: `uv run pytest tests/unit/test_config_settings.py tests/unit/test_package_layout.py`
-- Файлы: `src/pricewatch/config/settings.py` — Settings (в том числе media_dir — каталог фото), load_settings, ConfigError; telegram_bot_username — имя бота для ссылки привязки (необязательно); BotSettings и load_bot_settings (PRICEWATCH_BOT_*, bot.env; токены сервиса и бота — секреты); api_origin — адрес своего сервера для worker и бота; WorkerSettings и load_worker_settings (PRICEWATCH_WORKER_*, worker.env; сервер и worker не видят переменных друг друга).
+- Файлы: `src/pricewatch/config/settings.py` — Settings (в том числе media_dir — каталог фото), load_settings, ConfigError; telegram_bot_username — имя бота для ссылки привязки (необязательно); BotSettings и load_bot_settings (PRICEWATCH_BOT_*, bot.env; токены сервиса и бота — секреты; chat id администраторов через запятую); api_origin — адрес своего сервера для worker и бота; WorkerSettings и load_worker_settings (PRICEWATCH_WORKER_*, worker.env; сервер и worker не видят переменных друг друга).
 
 ## Границы модулей
 

@@ -1,8 +1,10 @@
 """Бот с подменёнными сервером и Telegram: команды и ответы, подтверждение обновлений, рассылка с отметками,
-паузы при недоступности, остановка при неверном токене, неожиданная ошибка не останавливает бота."""
+паузы при недоступности, остановка при неверном токене, неожиданная ошибка не останавливает бота; сторож:
+сервер не отвечает 3 минуты — одно предупреждение каждому администратору, ответил — сообщение о восстановлении,
+Telegram недоступен — повтор без дублей, второй экземпляр (конфликт) молчит."""
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -10,6 +12,7 @@ from pricewatch.bot import commands
 from pricewatch.bot.api import ApiUnavailable, NotFound, Outgoing, PairingCode, ServiceRejected
 from pricewatch.bot.runner import API_RETRY_S, OUTBOX_BATCH, TELEGRAM_RETRY_S, Bot
 from pricewatch.bot.telegram import ChatUnreachable, TelegramConflict, TelegramRejected, TelegramUnavailable, Update
+from pricewatch.bot.watch import SERVER_BACK, SERVER_DOWN, SERVER_SILENCE
 
 CHAT = 77
 
@@ -97,11 +100,11 @@ def say(text: str, update_id: int = 1, chat: int | None = CHAT) -> Update:
         ("/start abc_DEF-123", commands.LINKED.format(name="<b>Аня</b>")),
         ("/code", commands.PAIRING.format(code="HMRP YF5P", until="12:05")),
         ("/code@price_watcher_bot", commands.PAIRING.format(code="HMRP YF5P", until="12:05")),
-        ("/start", commands.HELP),
-        ("/start код с пробелами", commands.HELP),
-        ("/start " + "x" * 65, commands.HELP),
-        ("/help", commands.HELP),
-        ("привет", commands.HELP),
+        ("/start", commands.HELP.format(chat_id=CHAT)),
+        ("/start код с пробелами", commands.HELP.format(chat_id=CHAT)),
+        ("/start " + "x" * 65, commands.HELP.format(chat_id=CHAT)),
+        ("/help", commands.HELP.format(chat_id=CHAT)),
+        ("привет", commands.HELP.format(chat_id=CHAT)),
     ],
 )
 def test_command_replies(text: str, expected: str) -> None:
@@ -264,4 +267,127 @@ def test_unexpected_error_is_logged_and_bot_goes_on(caplog: pytest.LogCaptureFix
         worker.run()
 
     assert any(record.getMessage() == "Сбой обхода бота" and record.exc_info for record in caplog.records)
-    assert waits == [TELEGRAM_RETRY_S] and telegram.messages == [(CHAT, commands.HELP)]
+    assert waits == [TELEGRAM_RETRY_S] and telegram.messages == [(CHAT, commands.HELP.format(chat_id=CHAT))]
+
+
+# --- сторож сервера ---
+
+START = datetime(2026, 10, 12, 9, 0, tzinfo=UTC)
+ADMINS = (101, 202)
+DOWN = SERVER_DOWN.format(since="12.10 в 12:00")
+BACK = SERVER_BACK.format(since="12.10 в 12:00")
+
+
+class Clock:
+    def __init__(self) -> None:
+        self.now = START
+
+    def __call__(self) -> datetime:
+        return self.now
+
+
+def setup(admins: tuple[int, ...] = ADMINS) -> tuple[Api, FakeTelegram, Clock, Bot]:
+    api, telegram, clock = Api(), FakeTelegram(), Clock()
+    return api, telegram, clock, Bot(api, telegram, admin_chats=admins, clock=clock, wait=lambda seconds: False)
+
+
+def at(bot: Bot, clock: Clock, after: timedelta) -> None:
+    clock.now = START + after
+    bot.tick()
+
+
+def test_server_down_three_minutes_warns_each_admin_once_then_recovery() -> None:
+    api, telegram, clock, bot = setup()
+    bot.tick()
+    api.claim_error = ApiUnavailable("down")
+
+    at(bot, clock, SERVER_SILENCE - timedelta(seconds=1))
+    assert telegram.messages == []
+    at(bot, clock, SERVER_SILENCE)
+    at(bot, clock, SERVER_SILENCE + timedelta(minutes=5))
+    api.claim_error = None
+    at(bot, clock, timedelta(minutes=9))
+    at(bot, clock, timedelta(minutes=10))
+
+    assert telegram.messages == [(101, DOWN), (202, DOWN), (101, BACK), (202, BACK)]
+
+
+def test_server_down_from_start_counts_from_start() -> None:
+    api, telegram, clock, bot = setup()
+    api.claim_error = ApiUnavailable("down")
+
+    at(bot, clock, SERVER_SILENCE)
+
+    assert telegram.messages == [(101, DOWN), (202, DOWN)]
+
+
+def test_telegram_failure_retries_only_unsent() -> None:
+    api, telegram, clock, bot = setup()
+    api.claim_error = ApiUnavailable("down")
+    telegram.send_errors[202] = TelegramUnavailable("sendMessage: HTTP 502")
+
+    at(bot, clock, SERVER_SILENCE)
+    at(bot, clock, SERVER_SILENCE + timedelta(seconds=10))
+    api.claim_error = None
+    telegram.send_errors[101] = TelegramUnavailable("sendMessage: HTTP 502")
+    at(bot, clock, timedelta(minutes=4))
+    at(bot, clock, timedelta(minutes=5))
+
+    assert telegram.messages == [(101, DOWN), (202, DOWN), (101, BACK), (202, BACK)]  # каждое — один раз
+
+
+def test_wrong_admin_chat_is_logged_and_not_retried(caplog: pytest.LogCaptureFixture) -> None:
+    api, telegram, clock, bot = setup()
+    api.claim_error = ApiUnavailable("down")
+    telegram.send_errors[101] = ChatUnreachable("sendMessage: HTTP 400")
+
+    with caplog.at_level(logging.ERROR):
+        at(bot, clock, SERVER_SILENCE)
+        at(bot, clock, SERVER_SILENCE + timedelta(seconds=10))
+
+    assert telegram.messages == [(202, DOWN)]
+    assert any("PRICEWATCH_BOT_ADMIN_CHAT_IDS" in record.getMessage() for record in caplog.records)
+
+
+def test_second_outage_is_a_new_warning() -> None:
+    api, telegram, clock, bot = setup(admins=(101,))
+    for start in (timedelta(0), timedelta(hours=1)):
+        at(bot, clock, start)  # сервер ещё отвечает
+        api.claim_error = ApiUnavailable("down")
+        at(bot, clock, start + SERVER_SILENCE)
+        api.claim_error = None
+        at(bot, clock, start + SERVER_SILENCE + timedelta(minutes=1))
+
+    assert [text for _, text in telegram.messages] == [DOWN, BACK, SERVER_DOWN.format(since="12.10 в 13:00"), SERVER_BACK.format(since="12.10 в 13:00")]
+
+
+def test_instance_in_conflict_does_not_warn() -> None:
+    api, telegram, clock, bot = setup()
+    api.claim_error = ApiUnavailable("down")
+    telegram.batches = [TelegramConflict("getUpdates: HTTP 409")] * 3
+
+    at(bot, clock, SERVER_SILENCE)
+
+    assert telegram.messages == []
+
+
+def test_two_instances_warn_once() -> None:
+    leader_api, leader_telegram, clock, leader = setup()
+    other_api, other_telegram = Api(), FakeTelegram([TelegramConflict("getUpdates: HTTP 409")] * 3)
+    other = Bot(other_api, other_telegram, admin_chats=ADMINS, clock=clock, wait=lambda seconds: False)
+    leader_api.claim_error = other_api.claim_error = ApiUnavailable("down")
+
+    clock.now = START + SERVER_SILENCE
+    leader.tick()
+    other.tick()
+
+    assert leader_telegram.messages == [(101, DOWN), (202, DOWN)] and other_telegram.messages == []
+
+
+def test_without_admins_nothing_is_sent() -> None:
+    api, telegram, clock, bot = setup(admins=())
+    api.claim_error = ApiUnavailable("down")
+
+    at(bot, clock, timedelta(hours=1))
+
+    assert telegram.messages == []

@@ -81,7 +81,6 @@ def telegram_message(engine: Engine, user: User) -> int:
 
 
 ROUTES = [
-    ("GET", "/internal/v1/ping", None),
     ("POST", "/internal/v1/telegram/link", {"code": "x", "chat_id": 1}),
     ("POST", "/internal/v1/telegram/pairing-code", {"chat_id": 1}),
     ("POST", "/internal/v1/outbox/claim", {"limit": 1}),
@@ -105,8 +104,8 @@ def test_app_token_and_site_cookie_do_not_open_internal_routes(client: TestClien
     tokens = client.post("/api/v1/auth/pair", json={"code": code, "device_name": "iPad"}).json()
     client.cookies.set(SESSION_COOKIE, "some-session")
 
-    assert client.get("/internal/v1/ping", headers=bearer(tokens["access_token"])).status_code == 401
-    assert client.get("/internal/v1/ping").status_code == 401
+    assert client.post("/internal/v1/outbox/claim", json={"limit": 1}, headers=bearer(tokens["access_token"])).status_code == 401
+    assert client.post("/internal/v1/outbox/claim", json={"limit": 1}).status_code == 401
 
 
 def test_service_token_does_not_open_app_or_worker_routes(client: TestClient, engine: Engine) -> None:
@@ -116,12 +115,12 @@ def test_service_token_does_not_open_app_or_worker_routes(client: TestClient, en
     assert client.post("/worker/v1/claim", headers=bearer(token)).status_code == 401
 
 
-def test_ping_marks_bot_alive(client: TestClient, engine: Engine) -> None:
+def test_request_marks_bot_alive(client: TestClient, engine: Engine) -> None:
     token = service_token(engine)
 
-    response = client.get("/internal/v1/ping", headers=bearer(token))
+    response = client.post("/internal/v1/outbox/claim", json={"limit": 1}, headers=bearer(token))
 
-    assert response.status_code == 200 and response.json() == {"ok": True}
+    assert response.status_code == 200
     assert sql(engine, "SELECT count(*) FROM services WHERE last_seen_at = :t", t=NOW) >= 1  # type: ignore[operator]
 
 
@@ -189,7 +188,7 @@ def test_service_token_never_logged(client: TestClient, engine: Engine, caplog: 
     token = service_token(engine)
 
     with caplog.at_level(logging.DEBUG):
-        client.get("/internal/v1/ping", headers=bearer(token))
+        client.post("/internal/v1/outbox/claim", json={"limit": 1}, headers=bearer(token))
         client.post("/internal/v1/telegram/link", json={"code": "не тот", "chat_id": 1}, headers=bearer(token))
 
     assert token not in "\n".join(str(vars(record)) for record in caplog.records)

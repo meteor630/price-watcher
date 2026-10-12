@@ -1,8 +1,7 @@
 """Внутренний API для Telegram-бота (DEVELOPMENT_ARCHITECTURE.md, разделы 3, 4 и 10): /internal/v1.
 
 Только Authorization: Bearer с токеном сервиса; токены приложения, worker и cookie сайта здесь не действуют.
-Каждый запрос отмечает пульс бота (сторож видит, что бот жив). В контракт приложения не входит.
-- GET  /ping                         — API доступен (бот опрашивает раз в минуту);
+Каждый запрос отмечает пульс бота (сторож видит, что бот жив; бот берёт сообщения на каждом обходе). В контракт приложения не входит.
 - POST /telegram/link                — привязать чат по коду с сайта;
 - POST /telegram/pairing-code        — код для приложения привязанному пользователю;
 - POST /outbox/claim                 — взять сообщения на отправку;
@@ -49,11 +48,6 @@ class ClaimIn(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     limit: Annotated[int, Field(ge=1, le=BATCH_MAX)]
-
-
-@router.get("/ping")
-def ping(_service: int = Depends(current_service)) -> dict[str, bool]:
-    return {"ok": True}
 
 
 @router.post("/telegram/link")

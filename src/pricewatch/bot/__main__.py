@@ -31,11 +31,17 @@ def main() -> int:
         return EXIT_CONFIG
     configure_logging(settings.log_level)
     with api.http_client(settings.api_url) as server, telegram.http_client() as telegram_http:
-        bot = Bot(InternalApi(server, settings.service_token.get_secret_value()), TelegramClient(telegram_http, settings.telegram_token.get_secret_value()))
+        bot = Bot(
+            InternalApi(server, settings.service_token.get_secret_value()),
+            TelegramClient(telegram_http, settings.telegram_token.get_secret_value()),
+            admin_chats=settings.admin_chat_ids,
+        )
         for name in ("SIGINT", "SIGTERM"):
             if hasattr(signal, name):
                 signal.signal(getattr(signal, name), lambda *_: bot.stop())
-        logger.info("Бот запущен", extra={"api": settings.api_url})
+        logger.info("Бот запущен", extra={"api": settings.api_url, "admins": len(settings.admin_chat_ids)})
+        if not settings.admin_chat_ids:
+            logger.warning("PRICEWATCH_BOT_ADMIN_CHAT_IDS пуст: если сервер перестанет отвечать, бот никого не предупредит")
         try:
             bot.run()
         except ServiceRejected:
