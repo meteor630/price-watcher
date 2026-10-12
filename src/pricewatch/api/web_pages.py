@@ -27,6 +27,11 @@ from pricewatch.web.templates import render
 router = APIRouter()
 
 HOME_PATH = "/web/"
+LOGIN_CHECK_PATH = "/web/login/check"
+COOKIE_MISSING = (
+    "Пароль верный, но браузер не сохранил вход. Разрешите cookie для этого сайта; "
+    "если адрес начинается с http://, откройте его по https://."
+)
 
 FIELD_MESSAGES: Mapping[tuple[str, str], str] = {
     ("login", "format"): "3–64 символа: латиница, цифры, точка, дефис, подчёркивание.",
@@ -43,11 +48,22 @@ def root() -> RedirectResponse:
 
 
 @router.get("/web/login")
-def login_page(request: Request, registered: str | None = None) -> Response:
+def login_page(request: Request, registered: str | None = None, cookie: str | None = None) -> Response:
     if _signed_in(request):
         return RedirectResponse(HOME_PATH, status_code=303)
+    if cookie == "missing":
+        return _login_page(error=COOKIE_MISSING)
     notice = "Регистрация завершена. Войдите со своим логином и паролем." if registered == "1" else None
     return _login_page(notice=notice)
+
+
+@router.get(LOGIN_CHECK_PATH)
+def login_check(request: Request) -> RedirectResponse:
+    """После верного пароля: браузер прислал cookie сессии — на главную, нет — на вход с объяснением.
+    Иначе Safari по http:// или запрет cookie молча возвращали бы на форму входа."""
+    if _signed_in(request):
+        return RedirectResponse(HOME_PATH, status_code=303)
+    return RedirectResponse("/web/login?cookie=missing", status_code=303)
 
 
 @router.post("/web/login")
@@ -72,7 +88,7 @@ async def login_submit(request: Request) -> Response:
             response.headers["Retry-After"] = str(seconds)
             return response
         raise
-    response = RedirectResponse(HOME_PATH, status_code=303)
+    response = RedirectResponse(LOGIN_CHECK_PATH, status_code=303)
     set_session_cookie(response, issued.token)
     return response
 

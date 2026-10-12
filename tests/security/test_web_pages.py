@@ -97,9 +97,24 @@ def test_root_goes_to_site(client: TestClient) -> None:
 def test_successful_login_sets_session_and_goes_home(client: TestClient, engine: Engine) -> None:
     response = sign_in(client, account(engine))
 
-    assert response.status_code == 303 and response.headers["location"] == "/web/"
+    # Сначала проверка, что браузер сохранил вход; сохранил — на главную.
+    assert response.status_code == 303 and response.headers["location"] == "/web/login/check"
     assert response.headers["set-cookie"].startswith(f"{SESSION_COOKIE}=")
+    assert client.get("/web/login/check", follow_redirects=False).headers["location"] == "/web/"
     assert client.get("/web/login", follow_redirects=False).headers["location"] == "/web/"  # уже вошёл
+
+
+def test_browser_that_dropped_the_cookie_gets_an_explanation(client: TestClient, engine: Engine) -> None:
+    # Safari по http:// или запрет cookie: пароль верный, но сессия не вернулась — не молчаливый возврат на вход.
+    sign_in(client, account(engine))
+    client.cookies.clear()
+
+    check = client.get("/web/login/check", follow_redirects=False)
+    page = client.get(check.headers["location"])
+
+    assert check.status_code == 303 and check.headers["location"] == "/web/login?cookie=missing"
+    assert page.status_code == 200 and "браузер не сохранил вход" in page.text and "https://" in page.text
+    assert "браузер не сохранил вход" not in client.get("/web/login").text
 
 
 def test_wrong_password_and_unknown_login_look_the_same(client: TestClient, engine: Engine) -> None:
