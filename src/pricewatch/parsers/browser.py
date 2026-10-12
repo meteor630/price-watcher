@@ -223,6 +223,9 @@ class BrowserFetcher:
             str(profile),
             channel="chrome",
             headless=False,
+            # Песочница Chrome: страницы магазинов — недоверенный контент; Playwright без этого добавляет --no-sandbox.
+            # В Docker ей нужен профиль seccomp deploy/home/chrome-seccomp.json.
+            chromium_sandbox=True,
             args=[*CHROME_ARGS, f"--proxy-server=http://127.0.0.1:{self._proxy.port}"],
             no_viewport=True,
             accept_downloads=False,  # сайты пользователей не могут ничего скачать на worker

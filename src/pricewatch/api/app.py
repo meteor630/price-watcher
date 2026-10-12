@@ -9,6 +9,7 @@ from starlette.staticfiles import StaticFiles
 from pricewatch.api.context import ApiContext
 from pricewatch.api.edge import REQUEST_ID_HEADER, EdgeMiddleware
 from pricewatch.api.errors import handle_http_exception, handle_project_error, handle_validation_error
+from pricewatch.api.health import router as health_router
 from pricewatch.api.internal_v1 import router as internal_v1_router
 from pricewatch.api.v1_auth import router as v1_auth_router
 from pricewatch.api.v1_categories import router as v1_categories_router
@@ -48,6 +49,7 @@ def create_app(settings: Settings, context: ApiContext | None = None) -> FastAPI
     app.add_exception_handler(PriceWatcherError, handle_project_error)
     app.add_exception_handler(RequestValidationError, handle_validation_error)
     app.add_exception_handler(HTTPException, handle_http_exception)
+    app.include_router(health_router)
     app.include_router(v1_auth_router)
     app.include_router(v1_dashboard_router)
     app.include_router(v1_categories_router)

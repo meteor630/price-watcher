@@ -1,0 +1,140 @@
+# Домашний узел (DEVELOPMENT_ARCHITECTURE.md, раздел 1): база, миграции, сайт и API, планировщик, worker с Chrome.
+# Запуск из этой папки: docker compose up -d --build
+# Настройки: ../../.env (сервер), ../../worker.env (worker), .env рядом (пароль базы). Все три в Git не попадают.
+# Другие пути к файлам настроек — переменные PRICEWATCH_SERVER_ENV и PRICEWATCH_WORKER_ENV.
+# Порядок старта: база здорова → миграции прошли → сайт и планировщик → worker, когда сайт здоров.
+# Сети: база видна только серверу (backend); worker видит только API сайта (workers) — он открывает чужие сайты.
+
+name: pricewatch
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-server: &server
+  build:
+    context: ../..
+    dockerfile: deploy/Dockerfile
+    target: app
+  image: pricewatch-app
+  env_file: ${PRICEWATCH_SERVER_ENV:-../../.env}
+  environment: &server-env
+    PRICEWATCH_DATABASE_URL: "postgresql://pricewatch:${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в deploy/home/.env}@db:5432/pricewatch"
+    PRICEWATCH_MEDIA_DIR: /data/media
+  logging: *logging
+  restart: unless-stopped
+  networks: [backend]
+  # Процессам сервера права Linux не нужны; запись — только в тома и /tmp.
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  read_only: true
+  tmpfs: [/tmp]
+
+services:
+  db:
+    image: postgres:18@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+    environment:
+      POSTGRES_USER: pricewatch
+      POSTGRES_DB: pricewatch
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в deploy/home/.env}"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "pricewatch", "-d", "pricewatch"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    mem_limit: 1g
+    logging: *logging
+    restart: unless-stopped
+    networks: [backend]
+
+  migrate:
+    <<: *server
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    <<: *server
+    command: ["python", "-m", "pricewatch.bootstrap", "serve"]
+    environment:
+      <<: *server-env
+      PRICEWATCH_LISTEN_HOST: 0.0.0.0
+      PRICEWATCH_LISTEN_PORT: "8000"
+    volumes:
+      - media:/data/media
+    networks: [backend, workers]
+    # Только для этого компьютера; снаружи сайт открывается через Caddy и туннель (срез 11.1).
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5).status != 200)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    mem_limit: 1g
+
+  scheduler:
+    <<: *server
+    command: ["python", "-m", "pricewatch.bootstrap", "scheduler"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    mem_limit: 512m
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile
+      target: worker
+    image: pricewatch-worker
+    platform: linux/amd64
+    # Постоянное имя: Chrome помечает профиль именем компьютера и после пересоздания контейнера с новым именем
+    # считал бы профили магазинов занятыми «другим компьютером».
+    hostname: pricewatch-worker
+    env_file: ${PRICEWATCH_WORKER_ENV:-../../worker.env}
+    environment:
+      PRICEWATCH_WORKER_API_URL: http://app:8000
+      PRICEWATCH_WORKER_PROFILES_DIR: /data/profiles
+    volumes:
+      - profiles:/data/profiles
+    networks: [workers]
+    # Песочница Chrome (страницы магазинов — недоверенный контент): стандартный профиль Docker плюс clone/unshare
+    # для её пространств имён (tools/chrome_seccomp.py). Из прав Linux — только SYS_CHROOT: песочница уходит в chroot
+    # внутри своего пространства имён. Запись — только профили браузера и временные папки.
+    security_opt:
+      - seccomp=chrome-seccomp.json
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    cap_add: [SYS_CHROOT]
+    read_only: true
+    tmpfs: [/tmp, /home/pricewatch]
+    # Первый процесс — init: xvfb-run ждёт сигнала готовности экрана, а процесс №1 сигналов не получает;
+    # init же подбирает завершившиеся процессы Chrome.
+    init: true
+    # Chrome держит страницы в разделяемой памяти; 64 МБ по умолчанию ему мало.
+    shm_size: "1gb"
+    depends_on:
+      app:
+        condition: service_healthy
+    mem_limit: 4g
+    logging: *logging
+    restart: unless-stopped
+
+networks:
+  backend:
+  workers:
+
+volumes:
+  pgdata:
+  media:
+  profiles:

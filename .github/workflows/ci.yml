@@ -112,6 +112,42 @@ jobs:
       - name: Карта проекта
         run: uv run python tools/check_project_map.py
 
+  docker:
+    name: Образы и запуск в Docker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Сборка, запуск домашнего узла, проверка здоровья и Chrome
+        working-directory: deploy/home
+        env:
+          POSTGRES_PASSWORD: cionlynotsecretdocker
+        run: |
+          printf 'PRICEWATCH_ENV=development\nPRICEWATCH_PUBLIC_ORIGIN=http://127.0.0.1:8000\nPRICEWATCH_SECRET_KEY=%s\n' "$(openssl rand -hex 32)" > "$RUNNER_TEMP/server.env"
+          printf 'PRICEWATCH_WORKER_TOKEN=%s\n' "$(openssl rand -hex 32)" > "$RUNNER_TEMP/worker.env"
+          export PRICEWATCH_SERVER_ENV="$RUNNER_TEMP/server.env" PRICEWATCH_WORKER_ENV="$RUNNER_TEMP/worker.env"
+          docker compose config -q
+          docker compose build
+          docker compose up -d --wait db app scheduler
+          curl -fsS http://127.0.0.1:8000/healthz
+          docker compose run --rm --no-deps worker google-chrome --version
+          # Песочница Chrome в контейнере worker с его ограничениями (seccomp, только SYS_CHROOT, без записи в образ).
+          docker compose run --rm --no-deps worker xvfb-run -a python -c "
+          from pathlib import Path
+          from pricewatch.parsers.browser import BrowserFetcher
+          fetcher = BrowserFetcher(Path('/data/profiles/sandbox-check'), resolver=lambda host: [])
+          tab = fetcher.context('check').new_page()
+          tab.goto('chrome://sandbox')
+          status = tab.inner_text('body')
+          fetcher.close()
+          print(status)
+          raise SystemExit(0 if 'You are adequately sandboxed' in status else 1)
+          "
+          docker compose down -v
+
   secrets:
     name: Секреты во всей истории (gitleaks)
     runs-on: ubuntu-24.04
