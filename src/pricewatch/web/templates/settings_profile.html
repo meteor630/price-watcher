@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% from "_macros.html" import settings_tabs %}
+{% block title %}Настройки — профиль{% endblock %}
+{% macro password_field(name, id, label, autocomplete) %}
+<div class="field">
+  <label class="field__label" for="{{ id }}">{{ label }}</label>
+  <input class="input" id="{{ id }}" name="{{ name }}" type="password" autocomplete="{{ autocomplete }}" required maxlength="128"
+         {% if errors.get(name) %}aria-invalid="true" aria-describedby="{{ id }}-error"{% endif %}>
+  {% if errors.get(name) %}<p class="field__error" id="{{ id }}-error">{{ errors[name] }}</p>{% endif %}
+</div>
+{% endmacro %}
+{% block content %}
+<nav class="crumbs" aria-label="Путь"><a href="/web/">Главная</a><span aria-hidden="true"> › </span><span class="crumbs__here" aria-current="page">Настройки</span></nav>
+<h1 class="page-title">Настройки</h1>
+<p class="summary">{{ session_user.user.display_name }} · {{ session_user.user.login }}</p>
+{{ settings_tabs("profile", session_user.user.is_admin) }}
+
+<div id="page-rest">
+  {% if notice %}<p class="alert alert--ok users-notice" role="status" data-notice>{{ notice }}</p>{% endif %}
+
+  <section class="section panel-box profile-block" aria-labelledby="app-title">
+    <h2 id="app-title" class="section__title">Приложение для iPhone и iPad</h2>
+    <p class="muted">Код подключает приложение к вашему списку. Он одноразовый и действует 5 минут.</p>
+    <div id="pairing">
+      <button class="btn btn--primary" type="button" hx-post="/web/profile/pairing-code" hx-target="#pairing" hx-swap="outerHTML" hx-disabled-elt="this">Получить код</button>
+    </div>
+  </section>
+
+  <section class="section panel-box profile-block" aria-labelledby="telegram-title">
+    <h2 id="telegram-title" class="section__title">Telegram</h2>
+    {% if telegram_linked %}
+    <p data-telegram-linked>Telegram привязан: сюда приходят сводки проверки{% if session_user.user.is_admin %} и системные уведомления{% endif %}, у бота можно получить код для приложения.</p>
+    <div><button class="btn btn--ghost btn--small" type="button" hx-post="/web/profile/telegram/unlink" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash" hx-disabled-elt="this">Отвязать</button></div>
+    {% else %}
+    <p class="muted">Бот присылает сводку после каждой проверки цен и выдаёт код для приложения.</p>
+    <div id="telegram">
+      <button class="btn btn--primary" type="button" hx-post="/web/profile/telegram/code" hx-target="#telegram" hx-swap="outerHTML" hx-disabled-elt="this">Привязать Telegram</button>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="section panel-box profile-block" aria-labelledby="devices-title">
+    <h2 id="devices-title" class="section__title">Устройства <span class="count-pill num">{{ devices | length }}</span></h2>
+    {% if devices %}
+    <ul class="edit-list">
+      {% for device in devices %}
+      <li class="edit-row" data-device="{{ device.device_id }}">
+        <div class="edit-row__main">
+          <div class="edit-row__text">
+            <span class="edit-row__name">{{ device.name }}</span>
+            <span class="edit-row__meta">подключено {{ long_date(moscow_day(device.created_at)) }} · последний раз {{ moscow_moment(device.last_seen_at) }}</span>
+          </div>
+          <div class="edit-row__actions">
+            <button class="btn btn--danger btn--small" type="button" hx-get="/web/devices/{{ device.device_id }}/revoke" hx-target="#dialog" hx-swap="innerHTML">Отозвать</button>
+          </div>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">Приложение ещё не подключено.</p>
+    {% endif %}
+  </section>
+
+  <section class="section panel-box profile-block" aria-labelledby="password-title">
+    <h2 id="password-title" class="section__title">Пароль</h2>
+    <form class="form password-form" hx-post="/web/profile/password" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash" novalidate>
+      {{ password_field("current_password", "current-password", "Текущий пароль", "current-password") }}
+      {{ password_field("password", "new-password", "Новый пароль", "new-password") }}
+      <p class="field__hint">От {{ password_min }} до {{ password_max }} символов, не совпадает с логином. После смены остальные сессии и приложения выйдут.</p>
+      {{ password_field("password_repeat", "repeat-password", "Новый пароль ещё раз", "new-password") }}
+      <div class="check-form__actions"><button class="btn btn--primary" type="submit">Сменить пароль</button></div>
+    </form>
+  </section>
+
+  <section class="section panel-box profile-block" aria-labelledby="logout-title">
+    <h2 id="logout-title" class="section__title">Выход</h2>
+    <button class="btn btn--ghost" type="button" hx-post="/web/logout">Выйти на этом устройстве</button>
+  </section>
+</div>
+<div id="dialog"></div>
+{% endblock %}

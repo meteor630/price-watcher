@@ -9,6 +9,7 @@ from starlette.staticfiles import StaticFiles
 from pricewatch.api.context import ApiContext
 from pricewatch.api.edge import REQUEST_ID_HEADER, EdgeMiddleware
 from pricewatch.api.errors import handle_http_exception, handle_project_error, handle_validation_error
+from pricewatch.api.internal_v1 import router as internal_v1_router
 from pricewatch.api.v1_auth import router as v1_auth_router
 from pricewatch.api.v1_categories import router as v1_categories_router
 from pricewatch.api.v1_client_errors import router as v1_client_errors_router
@@ -24,6 +25,7 @@ from pricewatch.api.web_items import router as web_items_router
 from pricewatch.api.web_pages import router as web_pages_router
 from pricewatch.api.web_settings import router as web_settings_router
 from pricewatch.api.web_notifications import router as web_notifications_router
+from pricewatch.api.web_profile import router as web_profile_router
 from pricewatch.api.web_purchases import router as web_purchases_router
 from pricewatch.api.web_reviews import router as web_reviews_router
 from pricewatch.api.web_runs import router as web_runs_router
@@ -42,6 +44,7 @@ def create_app(settings: Settings, context: ApiContext | None = None) -> FastAPI
     app = FastAPI(title="Price Watcher", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.context = context
     app.state.public_origin = settings.public_origin
+    app.state.telegram_bot = settings.telegram_bot_username
     app.add_exception_handler(PriceWatcherError, handle_project_error)
     app.add_exception_handler(RequestValidationError, handle_validation_error)
     app.add_exception_handler(HTTPException, handle_http_exception)
@@ -55,6 +58,7 @@ def create_app(settings: Settings, context: ApiContext | None = None) -> FastAPI
     app.include_router(v1_notifications_router)
     app.include_router(v1_client_errors_router)
     app.include_router(worker_v1_router)
+    app.include_router(internal_v1_router)
     app.include_router(web_pages_router)
     app.include_router(web_home_router)
     app.include_router(web_categories_router)
@@ -63,6 +67,7 @@ def create_app(settings: Settings, context: ApiContext | None = None) -> FastAPI
     app.include_router(web_runs_router)
     app.include_router(web_reviews_router)
     app.include_router(web_notifications_router)
+    app.include_router(web_profile_router)
     app.include_router(web_settings_router)
     app.include_router(web_settings_items_router)
     app.include_router(web_settings_check_router)

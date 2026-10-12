@@ -92,6 +92,13 @@ class SqlSessionRepository:
             .values(revoked_at=now)
         )
 
+    def revoke_others(self, user_id: int, keep_session_id: int, now: datetime) -> int:
+        return self.connection.execute(
+            update(web_sessions)
+            .where(web_sessions.c.user_id == user_id, web_sessions.c.id != keep_session_id, web_sessions.c.revoked_at.is_(None))
+            .values(revoked_at=now)
+        ).rowcount
+
     def revoke_all(self, user_id: int, now: datetime) -> int:
         return self.connection.execute(
             update(web_sessions).where(web_sessions.c.user_id == user_id, web_sessions.c.revoked_at.is_(None)).values(revoked_at=now)

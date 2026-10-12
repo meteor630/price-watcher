@@ -324,3 +324,18 @@ def test_worker_env_example_is_complete_and_loads(monkeypatch: pytest.MonkeyPatc
 
     assert variables == {f"PRICEWATCH_WORKER_{name.upper()}" for name in WorkerSettings.model_fields}
     assert settings.api_url == "http://localhost:8000"
+
+
+@pytest.mark.parametrize(("raw", "expected"), [("", None), ("price_watcher_bot", "price_watcher_bot")])
+def test_telegram_bot_username_is_optional(base_env: pytest.MonkeyPatch, tmp_path: Path, raw: str, expected: str | None) -> None:
+    base_env.setenv("PRICEWATCH_TELEGRAM_BOT_USERNAME", raw)
+
+    assert load(tmp_path, "").telegram_bot_username == expected
+
+
+@pytest.mark.parametrize("raw", ["@price_bot", "bot", "имя_бота", "x" * 33])
+def test_bad_telegram_bot_username_is_refused(base_env: pytest.MonkeyPatch, tmp_path: Path, raw: str) -> None:
+    base_env.setenv("PRICEWATCH_TELEGRAM_BOT_USERNAME", raw)
+
+    with pytest.raises(ConfigError):
+        load(tmp_path, "")

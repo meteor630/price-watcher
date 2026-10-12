@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     listen_host: str = "127.0.0.1"
     listen_port: int = Field(default=8000, ge=1, le=65535)
     media_dir: Path = Path("media")
+    # Имя Telegram-бота без @: страница профиля даёт ссылку t.me/<имя>?start=<код>; не задано — только команда /start <код>.
+    telegram_bot_username: Annotated[str, Field(pattern=r"^[A-Za-z0-9_]{5,32}$")] | None = None
+
+    @field_validator("telegram_bot_username", mode="before")
+    @classmethod
+    def _empty_is_unset(cls, value: object) -> object:
+        return None if value == "" else value
 
     @field_validator("public_origin")
     @classmethod

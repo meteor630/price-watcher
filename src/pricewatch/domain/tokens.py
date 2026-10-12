@@ -28,6 +28,8 @@ class Purpose(StrEnum):
     ACCESS = "access"
     REFRESH = "refresh"
     WORKER = "worker"
+    SERVICE = "service"
+    TELEGRAM_LINK = "telegram_link"
     UNDO = "undo"
 
 

@@ -126,6 +126,9 @@ class SessionRepository(Protocol):
     def touch(self, session_id: int, now: datetime) -> None: ...
     def revoke(self, session_id: int, now: datetime) -> None: ...
     def revoke_all(self, user_id: int, now: datetime) -> int: ...
+    def revoke_others(self, user_id: int, keep_session_id: int, now: datetime) -> int:
+        """Отозвать все сессии пользователя, кроме текущей."""
+        ...
 
 
 class InviteRepository(Protocol):
@@ -160,6 +163,14 @@ class PairingCodeRepository(Protocol):
     def mark_used(self, code_id: int, now: datetime) -> None: ...
 
 
+@dataclass(frozen=True, slots=True)
+class DeviceOverview:
+    device_id: int
+    name: str
+    created_at: datetime
+    last_seen_at: datetime
+
+
 class DeviceRepository(Protocol):
     def create(self, user_id: int, name: str, created_at: datetime) -> Device: ...
     def get_active(self, device_id: int) -> Device | None: ...
@@ -167,6 +178,12 @@ class DeviceRepository(Protocol):
     def revoke(self, device_id: int, now: datetime) -> None: ...
     def revoke_all(self, user_id: int, now: datetime) -> int:
         """Отозвать все устройства пользователя — вместе с их токенами."""
+        ...
+    def list_active(self, user_id: int) -> list["DeviceOverview"]:
+        """Неотозванные устройства пользователя, сначала недавно активные."""
+        ...
+    def revoke_owned(self, user_id: int, device_id: int, now: datetime) -> bool:
+        """Отозвать своё устройство; чужое или уже отозванное — False."""
         ...
 
 
@@ -591,6 +608,50 @@ class WorkerRepository(Protocol):
         ...
 
 
+class ServiceRepository(Protocol):
+    """Служебные процессы /internal/v1 (бот): тот же механизм токена, что у worker (WorkerAuth — владелец токена)."""
+
+    def create(self, name: str, token_hash: str, now: datetime) -> int:
+        """Новый сервис; занятое имя — NAME_TAKEN."""
+        ...
+    def find_by_token(self, token_hash: str) -> WorkerAuth | None: ...
+    def promote_next_token(self, worker_id: int) -> None: ...
+    def set_next_token(self, name: str, token_hash: str) -> None: ...
+    def touch(self, worker_id: int, now: datetime) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class OutboxMessage:
+    """Telegram-сообщение, взятое ботом на отправку."""
+
+    notification_id: int
+    chat_id: int
+    kind: str
+    payload: dict[str, object]
+    repeat_count: int
+
+
+class TelegramRepository(Protocol):
+    def create_link_code(self, user_id: int, code_hash: str, now: datetime, expires_at: datetime) -> None: ...
+    def use_link_code(self, code_hash: str, now: datetime) -> int | None:
+        """Погасить действующий код привязки; чей он. Неизвестный, использованный или истёкший — None."""
+        ...
+    def set_chat(self, user_id: int, chat_id: int) -> None:
+        """Привязать чат к пользователю; этот чат у другого пользователя отвязывается (один Telegram — один пользователь)."""
+        ...
+    def clear_chat(self, user_id: int) -> None: ...
+    def is_linked(self, user_id: int) -> bool: ...
+    def user_by_chat(self, chat_id: int) -> User | None: ...
+    def claim_outbox(self, now: datetime, claimed_until: datetime, limit: int, attempts_max: int) -> list[OutboxMessage]:
+        """Взять неотправленные Telegram-сообщения тех, у кого есть чат: не взятые другим экземпляром бота
+        (или его захват истёк) и не исчерпавшие попытки; захват — до `claimed_until`."""
+        ...
+    def mark_sent(self, notification_id: int, now: datetime) -> bool: ...
+    def mark_failed(self, notification_id: int, retry_at: datetime) -> bool:
+        """Попытка не удалась: счётчик попыток растёт, повтор — не раньше `retry_at`."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class ClaimedTask:
     task_id: int
@@ -827,6 +888,8 @@ class UnitOfWork(Protocol):
     decisions: DecisionRepository
     audit: AuditRepository
     client_errors: ClientErrorRepository
+    services: ServiceRepository
+    telegram: TelegramRepository
 
     def __enter__(self) -> Self: ...
     def __exit__(

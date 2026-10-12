@@ -38,6 +38,7 @@ from pricewatch.persistence.models import (
     NotificationRow,
     ParseRunRow,
     PriceObservationRow,
+    ServiceRow,
     SettingRow,
     StoreRow,
     TrackedLinkRow,
@@ -53,6 +54,7 @@ parse_runs: Table = ParseRunRow.__table__
 check_tasks: Table = CheckTaskRow.__table__
 price_observations: Table = PriceObservationRow.__table__
 workers: Table = WorkerRow.__table__
+services: Table = ServiceRow.__table__
 users: Table = UserRow.__table__
 settings: Table = SettingRow.__table__
 notifications: Table = NotificationRow.__table__
@@ -634,6 +636,11 @@ class SqlQueueRepository:
 
 
 class SqlWorkerRepository:
+    """Процесс с токеном (HMAC в базе, ротация через next_token_hash, пульс last_seen_at): worker; сервисы — подкласс."""
+
+    table: Table = workers
+    name_index = "uq_workers_name"
+
     def __init__(self, connection: Connection) -> None:
         self.connection = connection
 
@@ -641,17 +648,17 @@ class SqlWorkerRepository:
         try:
             with self.connection.begin_nested():
                 return self.connection.execute(
-                    workers.insert().values(name=name, token_hash=token_hash, created_at=now).returning(workers.c.id)
+                    self.table.insert().values(name=name, token_hash=token_hash, created_at=now).returning(self.table.c.id)
                 ).scalar_one()
         except IntegrityError as error:
-            if "uq_workers_name" in str(error.orig):
+            if self.name_index in str(error.orig):
                 raise PriceWatcherError(ErrorCode.NAME_TAKEN) from error
             raise
 
     def find_by_token(self, token_hash: str) -> WorkerAuth | None:
         row = self.connection.execute(
-            select(workers.c.id, workers.c.disabled_at, workers.c.next_token_hash).where(
-                (workers.c.token_hash == token_hash) | (workers.c.next_token_hash == token_hash)
+            select(self.table.c.id, self.table.c.disabled_at, self.table.c.next_token_hash).where(
+                (self.table.c.token_hash == token_hash) | (self.table.c.next_token_hash == token_hash)
             )
         ).one_or_none()
         if row is None:
@@ -660,22 +667,29 @@ class SqlWorkerRepository:
 
     def promote_next_token(self, worker_id: int) -> None:
         self.connection.execute(
-            update(workers)
-            .where(workers.c.id == worker_id, workers.c.next_token_hash.is_not(None))
-            .values(token_hash=workers.c.next_token_hash, next_token_hash=None)
+            update(self.table)
+            .where(self.table.c.id == worker_id, self.table.c.next_token_hash.is_not(None))
+            .values(token_hash=self.table.c.next_token_hash, next_token_hash=None)
         )
 
     def set_next_token(self, name: str, token_hash: str) -> None:
-        updated = self.connection.execute(update(workers).where(workers.c.name == name).values(next_token_hash=token_hash))
+        updated = self.connection.execute(update(self.table).where(self.table.c.name == name).values(next_token_hash=token_hash))
         if updated.rowcount != 1:
             raise PriceWatcherError(ErrorCode.NOT_FOUND)
 
     def touch(self, worker_id: int, now: datetime) -> None:
-        self.connection.execute(update(workers).where(workers.c.id == worker_id).values(last_seen_at=now))
+        self.connection.execute(update(self.table).where(self.table.c.id == worker_id).values(last_seen_at=now))
 
     def last_seen(self) -> datetime | None:
-        return self.connection.execute(select(func.max(workers.c.last_seen_at)).where(workers.c.disabled_at.is_(None))).scalar_one()
+        return self.connection.execute(select(func.max(self.table.c.last_seen_at)).where(self.table.c.disabled_at.is_(None))).scalar_one()
 
+
+
+class SqlServiceRepository(SqlWorkerRepository):
+    """Служебные процессы с доступом к /internal/v1 (бот): тот же механизм токена в своей таблице."""
+
+    table = services
+    name_index = "uq_services_name"
 
 class SqlSettingRepository:
     def __init__(self, connection: Connection) -> None:

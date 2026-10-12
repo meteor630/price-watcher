@@ -230,7 +230,24 @@
     });
   }
 
+  // Обратный отсчёт кода подключения приложения: «осталось 4:59», по истечении — «код истёк».
+  function tickCountdowns() {
+    document.querySelectorAll("[data-countdown]").forEach((node) => {
+      const left = Math.round((Date.parse(node.dataset.countdown) - Date.now()) / 1000);
+      if (left <= 0) {
+        node.textContent = "Код истёк — получите новый.";
+        node.removeAttribute("data-countdown");
+        node.closest("[data-pairing]")?.classList.add("pairing--expired");
+        return;
+      }
+      const seconds = String(left % 60).padStart(2, "0");
+      node.textContent = `Осталось ${Math.floor(left / 60)}:${seconds}.`;
+    });
+  }
+  setInterval(tickCountdowns, 1000);
+
   htmx.onLoad((root) => {
+    tickCountdowns();
     initSortables(root);
     armToasts(root);
     openDialogs(root);

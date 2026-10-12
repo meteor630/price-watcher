@@ -1,0 +1,10 @@
+{# Код привязки Telegram: ссылка на бота (если имя бота задано) или команда /start, срок 15 минут. #}
+<div class="pairing" id="telegram" data-pairing>
+  {% if bot %}
+  <a class="btn btn--primary" href="https://t.me/{{ bot }}?start={{ code }}" target="_blank" rel="noopener noreferrer" data-telegram-link>Открыть бота в Telegram</a>
+  <p class="pairing__hint">Или отправьте боту @{{ bot }} команду <code class="num">/start {{ code }}</code></p>
+  {% else %}
+  <p class="pairing__hint">Отправьте боту команду <code class="num">/start {{ code }}</code></p>
+  {% endif %}
+  <p class="pairing__hint"><span data-countdown="{{ expires_at.isoformat() }}" aria-live="polite">Действует до {{ moscow_moment(expires_at) }}</span> Код одноразовый.</p>
+</div>

@@ -307,6 +307,26 @@ class PairingCodeRow(Base):
     )
 
 
+class TelegramLinkCodeRow(Base):
+    """Одноразовый код привязки Telegram с сайта: бот получает его в /start и передаёт API."""
+
+    __tablename__ = "telegram_link_codes"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    code_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    created_at: Mapped[datetime] = _created_at()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        ForeignKeyConstraint(["user_id"], ["users.id"]),
+        _hash_check("code_hash"),
+        CheckConstraint("expires_at > created_at", name="expires_after_created"),
+        Index("ix_telegram_link_codes_user_id", "user_id"),
+    )
+
+
 class AuthFailureRow(Base):
     """Неудачная попытка входа (login) или ввода кода связки (pairing) — для ограничений."""
 
@@ -464,6 +484,28 @@ class WorkerRow(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     # Новый токен при ротации: оба действуют, пока worker не перейдёт на новый.
+    next_token_hash: Mapped[str | None] = mapped_column(Text, unique=True)
+    created_at: Mapped[datetime] = _created_at()
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        _hash_check("token_hash"),
+        CheckConstraint(f"next_token_hash IS NULL OR next_token_hash ~ {HASH_PATTERN}", name="next_token_hash_format"),
+        CheckConstraint("next_token_hash IS NULL OR next_token_hash <> token_hash", name="tokens_differ"),
+        CheckConstraint("char_length(name) BETWEEN 1 AND 80", name="name_length"),
+    )
+
+
+class ServiceRow(Base):
+    """Служебный процесс с доступом к /internal/v1 (Telegram-бот). Токен — как у worker: в базе только HMAC,
+    ротация через next_token_hash. last_seen_at — пульс сервиса для сторожа."""
+
+    __tablename__ = "services"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     next_token_hash: Mapped[str | None] = mapped_column(Text, unique=True)
     created_at: Mapped[datetime] = _created_at()
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -664,11 +706,14 @@ class NotificationRow(Base):
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Сколько раз повторился инцидент: повтор поднимает счётчик и снова делает уведомление непрочитанным.
     repeat_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    # Бот взял сообщение на отправку до этого момента: второй экземпляр бота его не возьмёт.
+    claimed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         ForeignKeyConstraint(["user_id"], ["users.id"]),
         CheckConstraint("channel IN ('telegram', 'in_app')", name="channel"),
         CheckConstraint("repeat_count >= 1", name="repeat_count"),
+        CheckConstraint("claimed_until IS NULL OR channel = 'telegram'", name="claimed_only_telegram"),
         CheckConstraint("kind ~ '^[a-z_]{1,60}$'", name="kind_format"),
         CheckConstraint("char_length(dedup_key) BETWEEN 1 AND 200", name="dedup_key_length"),
         CheckConstraint("attempts >= 0", name="attempts"),

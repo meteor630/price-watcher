@@ -1,0 +1,10 @@
+<dialog class="dialog" data-modal data-open aria-labelledby="device-confirm-title">
+  <form class="dialog__body" data-close-on-success hx-post="/web/devices/{{ device.device_id }}/revoke" hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">
+    <h2 id="device-confirm-title" class="dialog__title">Отозвать доступ «{{ device.name }}»?</h2>
+    <p class="dialog__text">Приложение на этом устройстве сразу выйдет. Чтобы снова подключить его, понадобится новый код.</p>
+    <div class="dialog__actions">
+      <button class="btn btn--ghost" type="button" data-dialog-close data-autofocus>Отмена</button>
+      <button class="btn btn--danger" type="submit">Отозвать</button>
+    </div>
+  </form>
+</dialog>

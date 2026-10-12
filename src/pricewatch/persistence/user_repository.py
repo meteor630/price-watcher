@@ -14,7 +14,7 @@ users: Table = UserRow.__table__
 web_sessions: Table = WebSessionRow.__table__
 
 
-def _to_user(row: Row) -> User:
+def to_user(row: Row) -> User:
     return User(
         id=row.id,
         login=row.login,
@@ -41,17 +41,17 @@ class SqlUserRepository:
             if getattr(diagnostics, "constraint_name", None) == USER_LOGIN_INDEX:
                 raise PriceWatcherError(ErrorCode.LOGIN_TAKEN) from error
             raise
-        return _to_user(row)
+        return to_user(row)
 
     def get(self, user_id: int) -> User:
         row = self.connection.execute(select(users).where(users.c.id == user_id)).one_or_none()
         if row is None:
             raise PriceWatcherError(ErrorCode.NOT_FOUND)
-        return _to_user(row)
+        return to_user(row)
 
     def find_credentials(self, login: str) -> UserCredentials | None:
         row = self.connection.execute(select(users).where(func.lower(users.c.login) == login_key(login))).one_or_none()
-        return None if row is None else UserCredentials(user=_to_user(row), password_hash=row.password_hash)
+        return None if row is None else UserCredentials(user=to_user(row), password_hash=row.password_hash)
 
     def set_password_hash(self, user_id: int, password_hash: str) -> None:
         self.connection.execute(update(users).where(users.c.id == user_id).values(password_hash=password_hash))

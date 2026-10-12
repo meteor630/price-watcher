@@ -1,4 +1,5 @@
-"""Команды сервера: python -m pricewatch.bootstrap [serve | scheduler | create-admin | create-worker | rotate-worker-token].
+"""Команды сервера: python -m pricewatch.bootstrap [serve | scheduler | create-admin | create-worker | rotate-worker-token |
+create-service | rotate-service-token].
 
 Пароль никогда не передаётся аргументом (он попал бы в историю оболочки и список
 процессов): только скрытый ввод дважды или одна строка из stdin (--password-stdin).
@@ -16,8 +17,9 @@ from typing import TextIO
 from sqlalchemy import Engine
 
 from pricewatch.application.accounts import create_admin
-from pricewatch.application.worker_protocol import create_worker, rotate_worker_token
 from pricewatch.application.passwords import PasswordHasher
+from pricewatch.application.services import create_service, rotate_service_token
+from pricewatch.application.worker_protocol import create_worker, rotate_worker_token
 from pricewatch.bootstrap.scheduling import run_scheduler
 from pricewatch.bootstrap.server import EXIT_CONFIG, EXIT_DATABASE, check_database, serve
 from pricewatch.config.settings import ConfigError, load_settings
@@ -53,6 +55,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     worker.add_argument("--name", required=True)
     rotate = commands.add_parser("rotate-worker-token", help="выпустить новый токен worker; старый действует до первого входа с новым")
     rotate.add_argument("--name", required=True)
+    service = commands.add_parser("create-service", help="зарегистрировать служебный процесс (Telegram-бот) и выпустить его токен")
+    service.add_argument("--name", required=True)
+    rotate_service = commands.add_parser("rotate-service-token", help="выпустить новый токен сервиса; старый действует до первого входа с новым")
+    rotate_service.add_argument("--name", required=True)
     args = parser.parse_args(argv)
 
     if args.command in (None, "serve"):
@@ -63,6 +69,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return worker_token_command(args.name, rotate=False)
     if args.command == "rotate-worker-token":
         return worker_token_command(args.name, rotate=True)
+    if args.command == "create-service":
+        return worker_token_command(args.name, rotate=False, kind="service")
+    if args.command == "rotate-service-token":
+        return worker_token_command(args.name, rotate=True, kind="service")
     return create_admin_command(args.login, args.name or args.login, args.password_stdin)
 
 
@@ -119,8 +129,17 @@ def _create_admin(
     return 0
 
 
-def worker_token_command(name: str, *, rotate: bool, env_file: Path = Path(".env"), out: TextIO | None = None) -> int:
-    """Токен worker печатается один раз: его нужно сразу записать в настройки worker, в базе — только HMAC."""
+TOKEN_KINDS: Mapping[str, tuple[Callable[..., str], Callable[..., str], str]] = {
+    "worker": (create_worker, rotate_worker_token, "worker «{name}» (показывается один раз, сохраните в PRICEWATCH_WORKER_TOKEN worker)"),
+    "service": (create_service, rotate_service_token, "сервиса «{name}» (показывается один раз, сохраните в PRICEWATCH_BOT_SERVICE_TOKEN бота)"),
+}
+
+
+def worker_token_command(
+    name: str, *, rotate: bool, kind: str = "worker", env_file: Path = Path(".env"), out: TextIO | None = None
+) -> int:
+    """Токен worker или сервиса печатается один раз: его нужно сразу записать в настройки процесса, в базе — только HMAC."""
+    create, rotate_token, label = TOKEN_KINDS[kind]
     out = out or sys.stdout
     try:
         settings = load_settings(env_file)
@@ -136,15 +155,15 @@ def worker_token_command(name: str, *, rotate: bool, env_file: Path = Path(".env
         work = SqlUnitOfWork(engine)
         try:
             if rotate:
-                token = rotate_worker_token(work, key, name)
+                token = rotate_token(work, key, name)
             else:
-                token = create_worker(work, key, name, datetime.now(UTC))
+                token = create(work, key, name, datetime.now(UTC))
         except PriceWatcherError as error:
             print(f"Токен не выпущен: {error.safe_message}", file=out)
             return EXIT_INVALID
     finally:
         engine.dispose()
-    print(f"Токен worker «{name}» (показывается один раз, сохраните в PRICEWATCH_WORKER_TOKEN worker):", file=out)
+    print("Токен " + label.format(name=name) + ":", file=out)
     print(token, file=out)
     return 0
 

@@ -69,11 +69,12 @@ def report_unexpected(uow: UnitOfWork, error_id: str, method: str, route: str, e
 
 
 def _item(notification: BellNotification) -> BellItem:
-    text, href = _describe(notification.kind, notification.payload)
+    text, href = notification_text(notification.kind, notification.payload)
     return BellItem(notification.notification_id, notification.kind, text, notification.created_at, notification.read, notification.repeat_count, href)
 
 
-def _describe(kind: str, payload: dict[str, object]) -> tuple[str, str | None]:
+def notification_text(kind: str, payload: dict[str, object]) -> tuple[str, str | None]:
+    """Текст уведомления и раздел сайта для перехода — общий для колокольчика и Telegram."""
     if kind == "store_paused":
         until = datetime.fromisoformat(str(payload["paused_until"])).astimezone(MOSCOW)
         reason = PAUSE_REASONS.get(str(payload["reason"]), str(payload["reason"]))

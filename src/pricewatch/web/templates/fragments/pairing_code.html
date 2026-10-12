@@ -1,0 +1,6 @@
+{# Код подключения приложения: крупно, с отсчётом 5 минут (app.js); без JS — «действует до». #}
+<div class="pairing" id="pairing" data-pairing>
+  <p class="pairing__code num" aria-label="Код подключения: {{ code | join(' ') }}">{{ code[:4] }}<span class="pairing__gap" aria-hidden="true"> </span>{{ code[4:] }}</p>
+  <p class="pairing__hint">Введите код в приложении на экране входа. <span data-countdown="{{ expires_at.isoformat() }}" aria-live="polite">Действует до {{ moscow_moment(expires_at) }}</span></p>
+  <button class="btn btn--ghost btn--small" type="button" hx-post="/web/profile/pairing-code" hx-target="#pairing" hx-swap="outerHTML" hx-disabled-elt="this">Новый код</button>
+</div>

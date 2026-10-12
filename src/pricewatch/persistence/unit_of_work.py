@@ -19,6 +19,7 @@ from pricewatch.persistence.collection_repositories import (
     SqlNotificationRepository,
     SqlObservationRepository,
     SqlQueueRepository,
+    SqlServiceRepository,
     SqlSettingRepository,
     SqlStoreRepository,
     SqlTrackedLinkRepository,
@@ -40,6 +41,7 @@ from pricewatch.persistence.shopping_repositories import (
     SqlItemRepository,
     SqlPersonalDataRepository,
 )
+from pricewatch.persistence.telegram_repository import SqlTelegramRepository
 from pricewatch.persistence.user_repository import SqlUserRepository
 
 logger = logging.getLogger(__name__)
@@ -87,6 +89,8 @@ class SqlUnitOfWork:
         self.decisions = SqlDecisionRepository(self._connection)
         self.audit = SqlAuditRepository(self._connection)
         self.client_errors = SqlClientErrorRepository(self._connection)
+        self.services = SqlServiceRepository(self._connection)
+        self.telegram = SqlTelegramRepository(self._connection)
         return self
 
     def commit(self) -> None:

@@ -69,7 +69,7 @@ def login(
 ) -> IssuedSession:
     subject = _subject(login)
     with uow:
-        _ensure_not_limited(uow, subject, ip, now)
+        ensure_login_not_limited(uow, subject, ip, now)
         credentials = uow.users.find_credentials(subject) if subject else None
         if credentials is None:
             hasher.verify_dummy(password)
@@ -125,7 +125,8 @@ def _subject(login: str) -> str | None:
     return login_key(candidate) if LOGIN_PATTERN.fullmatch(candidate) else None
 
 
-def _ensure_not_limited(uow: UnitOfWork, subject: str | None, ip: str | None, now: datetime) -> None:
+def ensure_login_not_limited(uow: UnitOfWork, subject: str | None, ip: str | None, now: datetime) -> None:
+    """Лимит неверных паролей на логин и на IP — общий для входа и смены пароля (проверка текущего пароля)."""
     since = now - FAILURE_WINDOW
     exceeded: list[FailureWindow] = []
     if subject is not None:

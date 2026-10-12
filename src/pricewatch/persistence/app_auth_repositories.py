@@ -4,7 +4,7 @@ from datetime import datetime
 
 from sqlalchemy import Connection, Row, Table, select, update
 
-from pricewatch.application.ports import AccessGrant, PairingClaim, RefreshRecord
+from pricewatch.application.ports import AccessGrant, DeviceOverview, PairingClaim, RefreshRecord
 from pricewatch.domain.accounts import Device
 from pricewatch.persistence.models import AccessTokenRow, DeviceRow, PairingCodeRow, RefreshTokenRow
 
@@ -66,6 +66,18 @@ class SqlDeviceRepository:
         self.connection.execute(
             update(devices).where(devices.c.id == device_id, devices.c.revoked_at.is_(None)).values(revoked_at=now)
         )
+
+    def list_active(self, user_id: int) -> list[DeviceOverview]:
+        rows = self.connection.execute(
+            select(devices).where(devices.c.user_id == user_id, devices.c.revoked_at.is_(None))
+            .order_by(devices.c.last_seen_at.desc(), devices.c.id.desc())
+        )
+        return [DeviceOverview(row.id, row.name, row.created_at, row.last_seen_at) for row in rows]
+
+    def revoke_owned(self, user_id: int, device_id: int, now: datetime) -> bool:
+        return self.connection.execute(
+            update(devices).where(devices.c.id == device_id, devices.c.user_id == user_id, devices.c.revoked_at.is_(None)).values(revoked_at=now)
+        ).rowcount == 1
 
     def revoke_all(self, user_id: int, now: datetime) -> int:
         return self.connection.execute(
