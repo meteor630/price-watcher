@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import change_badges, period_switch, price_flags, quantity_stepper, total_toggle %}
+{% from "_macros.html" import change_badges, period_switch, price_flags, quantity_stepper, total_toggle, store_label %}
 {% block title %}{{ detail.name }}{% endblock %}
 {% block content %}
 {% set since = period_since[detail.period] %}
@@ -46,7 +46,7 @@
         <div class="row__main">
           <p class="row__name"><a class="row__link" href="/web/items/{{ row.item_id }}">{{ row.name }}</a></p>
           <p class="row__meta">
-            {% if row.best_store %}<span class="store-dot store-dot--{{ row.best_store.color_token }}" aria-hidden="true"></span>{{ row.best_store.name }}{% endif %}
+            {% if row.best_store %}{{ store_label(row.best_store.color_token, row.best_store.name) }}{% endif %}
             {{ quantity_stepper(row.item_id, row.version, row.quantity, row.name, "category", detail.period) }}
             <span class="row__qty num">шт{% if row.unit_price_text %} × {{ row.unit_price_text }}{% endif %}</span>
             {{ price_flags(row) }}
@@ -78,7 +78,7 @@
       {% for entry in detail.purchased %}
       <li class="purchased__row">
         <a class="row__link purchased__name" href="/web/items/{{ entry.item_id }}">{{ entry.name }}</a>
-        <span class="purchased__meta">{{ long_date(entry.purchased_on) }}{% if entry.store %} · <span class="store-dot store-dot--{{ entry.store.color_token }}" aria-hidden="true"></span>{{ entry.store.name }}{% endif %}</span>
+        <span class="purchased__meta">{{ long_date(entry.purchased_on) }}{% if entry.store %} · {{ store_label(entry.store.color_token, entry.store.name) }}{% endif %}</span>
         <span class="purchased__sum num">{% if entry.quantity > 1 %}{{ entry.quantity }} × {{ entry.price_text }} = {% endif %}{{ entry.total_text }}</span>
       </li>
       {% endfor %}

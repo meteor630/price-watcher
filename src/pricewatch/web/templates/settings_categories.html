@@ -34,12 +34,14 @@
           <span class="edit-row__meta">{{ count_word(entry.item_count, "товар", "товара", "товаров") }} · <span class="num">{{ entry.total_text }}</span></span>
         </div>
         <div class="edit-row__actions">
-          <button class="icon-btn" type="button" aria-label="Выше: {{ entry.name }}" {% if loop.first %}disabled{% endif %}
-                  hx-post="/web/categories/order" hx-vals='{"ids": "{{ swapped_order(ids, loop.index0, loop.index0 - 1) if not loop.first else '' }}", "version": "{{ overview.order_version }}", "view": "settings"}'
-                  hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">↑</button>
-          <button class="icon-btn" type="button" aria-label="Ниже: {{ entry.name }}" {% if loop.last %}disabled{% endif %}
-                  hx-post="/web/categories/order" hx-vals='{"ids": "{{ swapped_order(ids, loop.index0, loop.index0 + 1) if not loop.last else '' }}", "version": "{{ overview.order_version }}", "view": "settings"}'
-                  hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">↓</button>
+          <span class="edit-row__order">
+            <button class="icon-btn" type="button" aria-label="Выше: {{ entry.name }}" {% if loop.first %}disabled{% endif %}
+                    hx-post="/web/categories/order" hx-vals='{"ids": "{{ swapped_order(ids, loop.index0, loop.index0 - 1) if not loop.first else '' }}", "version": "{{ overview.order_version }}", "view": "settings"}'
+                    hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">↑</button>
+            <button class="icon-btn" type="button" aria-label="Ниже: {{ entry.name }}" {% if loop.last %}disabled{% endif %}
+                    hx-post="/web/categories/order" hx-vals='{"ids": "{{ swapped_order(ids, loop.index0, loop.index0 + 1) if not loop.last else '' }}", "version": "{{ overview.order_version }}", "view": "settings"}'
+                    hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">↓</button>
+          </span>
           <button class="btn btn--ghost btn--small" type="button" hx-get="/web/categories/{{ entry.category_id }}/rename" hx-target="#name-category-{{ entry.category_id }}" hx-swap="innerHTML">Переименовать</button>
           {% if entry.item_count %}
           <button class="btn btn--danger btn--small" type="button" hx-get="/web/categories/{{ entry.category_id }}/delete" hx-target="#dialog" hx-swap="innerHTML">Удалить</button>
@@ -67,12 +69,14 @@
                 <span class="edit-row__meta">{{ count_word(group.item_count, "товар", "товара", "товаров") }}</span>
               </div>
               <div class="edit-row__actions">
-                <button class="icon-btn" type="button" aria-label="Выше: {{ group.name }}" {% if loop.first %}disabled{% endif %}
-                        hx-post="/web/categories/{{ entry.category_id }}/groups/order" hx-vals='{"ids": "{{ swapped_order(group_ids, loop.index0, loop.index0 - 1) if not loop.first else '' }}", "version": "{{ entry.version }}"}'
-                        hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">↑</button>
-                <button class="icon-btn" type="button" aria-label="Ниже: {{ group.name }}" {% if loop.last %}disabled{% endif %}
-                        hx-post="/web/categories/{{ entry.category_id }}/groups/order" hx-vals='{"ids": "{{ swapped_order(group_ids, loop.index0, loop.index0 + 1) if not loop.last else '' }}", "version": "{{ entry.version }}"}'
-                        hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">↓</button>
+                <span class="edit-row__order">
+                  <button class="icon-btn" type="button" aria-label="Выше: {{ group.name }}" {% if loop.first %}disabled{% endif %}
+                          hx-post="/web/categories/{{ entry.category_id }}/groups/order" hx-vals='{"ids": "{{ swapped_order(group_ids, loop.index0, loop.index0 - 1) if not loop.first else '' }}", "version": "{{ entry.version }}"}'
+                          hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">↑</button>
+                  <button class="icon-btn" type="button" aria-label="Ниже: {{ group.name }}" {% if loop.last %}disabled{% endif %}
+                          hx-post="/web/categories/{{ entry.category_id }}/groups/order" hx-vals='{"ids": "{{ swapped_order(group_ids, loop.index0, loop.index0 + 1) if not loop.last else '' }}", "version": "{{ entry.version }}"}'
+                          hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">↓</button>
+                </span>
                 <button class="btn btn--ghost btn--small" type="button" hx-get="/web/groups/{{ group.group_id }}/rename" hx-target="#name-group-{{ group.group_id }}" hx-swap="innerHTML">Переименовать</button>
                 {% if group.item_count %}
                 <button class="btn btn--danger btn--small" type="button" hx-get="/web/groups/{{ group.group_id }}/delete" hx-target="#dialog" hx-swap="innerHTML">Удалить</button>

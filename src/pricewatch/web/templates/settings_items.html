@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import settings_tabs, total_toggle %}
+{% from "_macros.html" import settings_tabs, total_toggle, store_label %}
 {% block title %}Настройки — товары{% endblock %}
 {% block content %}
 <nav class="crumbs" aria-label="Путь"><a href="/web/">Главная</a><span aria-hidden="true"> › </span><span class="crumbs__here" aria-current="page">Настройки</span></nav>
@@ -35,17 +35,19 @@
           <span class="edit-row__meta">
             {{ entry.category_name }}{% if entry.group_name %} · {{ entry.group_name }}{% endif %}
             · {{ entry.row.quantity }} шт {{ "в итоге" if entry.row.in_total else "наблюдаю" }}
-            {% for store in entry.stores %}· <span class="store-dot store-dot--{{ store.color_token }}" aria-hidden="true"></span> {{ store.name }} {% endfor %}
+            {% for store in entry.stores %}· {{ store_label(store.color_token, store.name) }} {% endfor %}
             {% if not entry.stores %}· <span class="flag">нет ссылок</span>{% endif %}
           </span>
         </div>
         <div class="edit-row__actions">
-          <button class="icon-btn" type="button" aria-label="Выше: {{ entry.row.name }}" {% if index == 0 %}disabled{% endif %}
-                  hx-post="/web/items/order" hx-vals='{"ids": "{{ swapped_order(entry.siblings, index, index - 1) if index > 0 else '' }}", {{ common }}}'
-                  hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">↑</button>
-          <button class="icon-btn" type="button" aria-label="Ниже: {{ entry.row.name }}" {% if index == entry.siblings | length - 1 %}disabled{% endif %}
-                  hx-post="/web/items/order" hx-vals='{"ids": "{{ swapped_order(entry.siblings, index, index + 1) if index < entry.siblings | length - 1 else '' }}", {{ common }}}'
-                  hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">↓</button>
+          <span class="edit-row__order">
+            <button class="icon-btn" type="button" aria-label="Выше: {{ entry.row.name }}" {% if index == 0 %}disabled{% endif %}
+                    hx-post="/web/items/order" hx-vals='{"ids": "{{ swapped_order(entry.siblings, index, index - 1) if index > 0 else '' }}", {{ common }}}'
+                    hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">↑</button>
+            <button class="icon-btn" type="button" aria-label="Ниже: {{ entry.row.name }}" {% if index == entry.siblings | length - 1 %}disabled{% endif %}
+                    hx-post="/web/items/order" hx-vals='{"ids": "{{ swapped_order(entry.siblings, index, index + 1) if index < entry.siblings | length - 1 else '' }}", {{ common }}}'
+                    hx-select="#page-rest" hx-target="#page-rest" hx-swap="outerHTML" hx-select-oob="#flash">↓</button>
+          </span>
           <button class="btn btn--ghost btn--small" type="button" hx-get="/web/items/{{ entry.row.item_id }}/edit" hx-target="#dialog" hx-swap="innerHTML">Изменить</button>
           <button class="btn btn--danger btn--small" type="button" hx-post="/web/items/{{ entry.row.item_id }}/delete"
                   hx-vals='{"version": "{{ entry.row.version }}", "filter": "{{ overview.selected or '' }}"}'

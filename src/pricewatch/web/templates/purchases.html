@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import period_switch, purchases_tabs, savings_badge %}
+{% from "_macros.html" import period_switch, purchases_tabs, savings_badge, store_label %}
 {% block title %}Покупки{% endblock %}
 {% block content %}
 {% set since = period_since[overview.period] %}
@@ -44,7 +44,7 @@
       {% set view = entry.view %}
       <li class="purchased__row purchased__row--wide">
         <a class="row__link purchased__name" href="/web/items/{{ view.item_id }}">{{ view.name }}</a>
-        <span class="purchased__meta">{{ long_date(view.purchased_on) }} · {{ entry.category_name }}{% if view.store %} · <span class="store-dot store-dot--{{ view.store.color_token }}" aria-hidden="true"></span>{{ view.store.name }}{% endif %}</span>
+        <span class="purchased__meta">{{ long_date(view.purchased_on) }} · {{ entry.category_name }}{% if view.store %} · {{ store_label(view.store.color_token, view.store.name) }}{% endif %}</span>
         <span class="purchased__sum num">{% if view.quantity > 1 %}{{ view.quantity }} × {{ view.price_text }} = {% endif %}{{ view.total_text }}</span>
         <span class="purchased__savings">{{ savings_badge(entry.savings_minor, entry.savings_text) }}</span>
       </li>

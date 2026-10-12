@@ -159,3 +159,14 @@ def test_empty_list_has_empty_state(client: TestClient, engine: Engine) -> None:
     html = client.get("/web/").text
 
     assert "Список пока пуст" in html and '<svg class="sparkline"' not in html
+
+
+def test_category_with_nothing_in_total_explains_instead_of_zero_chart(client: TestClient, engine: Engine) -> None:
+    login = account_with_list(engine, category="Только наблюдаю")
+    sign_in(client, login)
+    with engine.begin() as db:
+        db.execute(text("UPDATE items SET in_total = false WHERE user_id = (SELECT id FROM users WHERE login = :l)"), {"l": login})
+
+    card = client.get("/web/").text.split('class="cat"', 1)[1].split("</a>", 1)[0]
+
+    assert "В итог пока ничего не входит" in card and "sparkline" not in card

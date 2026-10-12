@@ -1,3 +1,4 @@
-{# Статус проверки в шапке; пока проверка идёт, обновляется сам раз в 5 секунд (после неё опрос прекращается). #}
+{# Статус проверки в шапке; пока проверка идёт, обновляется сам раз в 5 секунд (после неё опрос прекращается).
+   Кнопка — ради телефона: там видна только точка, полный текст — подпись кнопки и подсказка по нажатию (app.js). #}
 {% set line, tone = run_line(run.status, run.done, run.failed, run.total, run.finished_at) %}
-<p class="run-status" id="run-status" data-run-status="{{ run.status }}"{% if run.status in active_run_statuses %} hx-get="/web/runs/status" hx-trigger="every 5s" hx-swap="outerHTML"{% endif %}{% if oob is defined and oob %} hx-swap-oob="true"{% endif %}><span class="dot dot--{{ tone }}" aria-hidden="true"></span><span class="run-status__text">{{ line }}</span></p>
+<button class="run-status" type="button" id="run-status" data-run-status="{{ run.status }}"{% if run.status in active_run_statuses %} hx-get="/web/runs/status" hx-trigger="every 5s" hx-swap="outerHTML"{% endif %}{% if oob is defined and oob %} hx-swap-oob="true"{% endif %}><span class="dot dot--{{ tone }}" aria-hidden="true"></span><span class="run-status__text">{{ line }}</span></button>

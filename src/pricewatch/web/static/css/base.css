@@ -293,8 +293,10 @@ code {
     box-shadow var(--duration-fast) var(--ease-standard);
 }
 
+/* :focus-within — для полей времени и даты: фокус получает их часть (часы, минуты), а не само поле. */
 .input:focus,
-.input:focus-visible {
+.input:focus-visible,
+.input:focus-within {
   outline: none;
   border-color: var(--color-accent);
   box-shadow: var(--focus-glow);

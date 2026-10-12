@@ -35,8 +35,20 @@
         <a class="gear" href="/web/settings" aria-label="Настройки" title="Настройки">
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
         </a>
-        <span class="top__user" data-user-name>{{ session_user.user.display_name }}</span>
-        <button class="btn btn--ghost btn--small" type="button" hx-post="/web/logout" data-logout>Выйти</button>
+        <div class="top__account">
+          <span class="top__user" data-user-name>{{ session_user.user.display_name }}</span>
+          <button class="btn btn--ghost btn--small" type="button" hx-post="/web/logout" data-logout>Выйти</button>
+        </div>
+        {# На телефоне имя и выход — в меню, чтобы шапка помещалась в одну строку (решение владельца 12.10.2026). #}
+        <details class="menu account-menu">
+          <summary class="gear" aria-label="Меню пользователя «{{ session_user.user.display_name }}»" title="{{ session_user.user.display_name }}">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg>
+          </summary>
+          <div class="menu__list account-menu__list">
+            <p class="account-menu__name">{{ session_user.user.display_name }}</p>
+            <button class="btn btn--ghost btn--small" type="button" hx-post="/web/logout">Выйти</button>
+          </div>
+        </details>
       </div>
       {% endif %}
     </div>

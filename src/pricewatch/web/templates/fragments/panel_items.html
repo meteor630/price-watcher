@@ -1,4 +1,4 @@
-{% from "_macros.html" import change_badges %}
+{% from "_macros.html" import change_badges, store_label %}
 {% if first %}
 <div class="drawer__head">
   <h3 class="drawer__title">{{ title }} {{ period_since[period] }}</h3>
@@ -12,7 +12,7 @@
     <div class="change-row__main">
       <p class="change-row__name">{{ row.name }}</p>
       <p class="change-row__meta">
-        {% if row.store %}<span class="store-dot store-dot--{{ row.store.color_token }}" aria-hidden="true"></span>{{ row.store.name }} · {% endif %}{{ row.category_name }}
+        {% if row.store %}{{ store_label(row.store.color_token, row.store.name) }} · {% endif %}{{ row.category_name }}
       </p>
     </div>
     <div class="change-row__prices num">

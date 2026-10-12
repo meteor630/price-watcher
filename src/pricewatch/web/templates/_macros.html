@@ -11,6 +11,9 @@
 {% endif %}
 {% endmacro %}
 
+{# Магазин: цветная точка внутри строки названия — при переносе точка остаётся на первой строке. #}
+{% macro store_label(color_token, name) %}<span class="store-label"><span class="store-dot store-dot--{{ color_token }}" aria-hidden="true"></span>{{ name }}</span>{% endmacro %}
+
 {% macro sparkline(points, label) %}
 {% set chart = plot(points) %}
 {% if chart is none %}

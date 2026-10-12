@@ -41,14 +41,19 @@
         {% set empty = card.in_total_count + card.watching_count == 0 %}
         <header class="cat__top">
           <h3 class="cat__name">{{ card.name }}</h3>
-          <p class="cat__count">{% if empty %}пусто{% else %}{{ card.in_total_count }} в итоге{% if card.watching_count %} · {{ card.watching_count }} наблюдаю{% endif %}{% endif %}</p>
+          <p class="cat__count">{% if empty %}пусто{% else %}<span class="cat__count-part">{{ card.in_total_count }} в итоге</span>{% if card.watching_count %}<span class="cat__count-sep" aria-hidden="true"> · </span><span class="cat__count-part">{{ card.watching_count }} наблюдаю</span>{% endif %}{% endif %}</p>
         </header>
         {% if empty %}
         <p class="cat__empty">В категории пока нет товаров.</p>
         {% else %}
         <p class="cat__total num">{{ card.total_text }}</p>
         <p class="cat__delta">{{ change_badges(card.change) }}</p>
+        {# Сумма считается только по товарам «в итоге»: без них график был бы ложным нулём (ТЗ, раздел 4). #}
+        {% if card.in_total_count %}
         <div class="cat__chart">{{ sparkline(card.sparkline, "Сумма категории «" ~ card.name ~ "» за 30 дней") }}</div>
+        {% else %}
+        <p class="cat__chart chart-empty">В итог пока ничего не входит.</p>
+        {% endif %}
         <p class="cat__foot">
           {% if card.top_mover %}
           <span class="cat__mover">Сильнее всего: {{ card.top_mover.name }}</span>

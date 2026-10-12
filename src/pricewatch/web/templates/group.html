@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import change_badges, period_switch, price_flags %}
+{% from "_macros.html" import change_badges, period_switch, price_flags, store_label %}
 {% block title %}{{ detail.name }}{% endblock %}
 {% block content %}
 {% set since = period_since[detail.period] %}
@@ -38,7 +38,7 @@
               <ul class="offers__stores">
                 {% for offer in item.offers %}
                 <li class="{{ 'offers__store--best' if offer.best else '' }}">
-                  <span class="store-dot store-dot--{{ offer.store.color_token }}" aria-hidden="true"></span>{{ offer.store.name }}
+                  {{ store_label(offer.store.color_token, offer.store.name) }}
                   <span class="num offers__price">{{ offer.price_text or status_labels.get(offer.status.value, "—") }}</span>
                   {% if offer.best %}<span class="visually-hidden">(лучшая цена)</span>{% endif %}
                 </li>

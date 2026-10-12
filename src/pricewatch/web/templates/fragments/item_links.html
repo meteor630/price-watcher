@@ -1,3 +1,4 @@
+{% from "_macros.html" import store_label %}
 {% set checking = links | selectattr("status.value", "equalto", "checking") | list %}
 <div id="item-links" class="links"{% if checking %} hx-get="/web/items/{{ item_id }}/links" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
   {% for result in results %}{% if result.error %}<p class="alert alert--error links__error"><span class="links__url">{{ result.url }}</span> — {{ result.error }}</p>{% endif %}{% endfor %}
@@ -5,7 +6,7 @@
   <ul class="links__list">
     {% for link in links %}
     <li class="links__row links__row--{{ link.status.value }}">
-      <span class="links__store"><span class="store-dot store-dot--{{ link.color_token }}" aria-hidden="true"></span>{{ link.store_name }}</span>
+      <span class="links__store">{{ store_label(link.color_token, link.store_name) }}</span>
       <span class="links__state">{{ link_status_labels[link.status.value] }}{% if link.price_text %} · <span class="num">{{ link.price_text }}</span>{% endif %}{% if link.source_label %} · {{ link.source_label }}{% endif %}</span>
       <a class="links__url" href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.url }}</a>
       <button class="btn btn--danger btn--small links__remove" type="button" aria-label="Снять ссылку {{ link.store_name }}"

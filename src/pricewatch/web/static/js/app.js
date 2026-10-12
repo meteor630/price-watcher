@@ -274,6 +274,19 @@
     }
   });
 
+  // Статус проверки на телефоне — точка; нажатие показывает полный текст под шапкой, нажатие вне — прячет.
+  document.addEventListener("click", (event) => {
+    const status = event.target.closest(".run-status");
+    document.querySelectorAll(".run-status[data-open]").forEach((open) => {
+      if (open !== status) {
+        delete open.dataset.open;
+      }
+    });
+    if (status) {
+      status.toggleAttribute("data-open");
+    }
+  });
+
   // «Копировать»: текст из поля, на которое указывает data-copy; без доступа к буферу поле просто выделяется.
   document.addEventListener("click", async (event) => {
     const button = event.target.closest("[data-copy]");

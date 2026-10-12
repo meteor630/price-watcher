@@ -1,4 +1,4 @@
-{% from "_macros.html" import big_chart %}
+{% from "_macros.html" import big_chart, store_label %}
 {% if store_id is none %}
 <p class="chart-empty chart-empty--big">График появится, когда у товара будет ссылка на магазин.</p>
 {% else %}
@@ -7,7 +7,7 @@
   <div class="chips" role="group" aria-label="Магазин">
     {% for store in detail.chart_stores %}
     <a class="chip" href="/web/items/{{ detail.item_id }}/chart?store_id={{ store.store_id }}&amp;range={{ chart_range.value }}" {% if store.store_id == store_id %}aria-current="true"{% endif %}
-       hx-get="/web/items/{{ detail.item_id }}/chart?store_id={{ store.store_id }}&amp;range={{ chart_range.value }}" hx-target="#item-chart" hx-swap="innerHTML"><span class="store-dot store-dot--{{ store.color_token }}" aria-hidden="true"></span>{{ store.name }}</a>
+       hx-get="/web/items/{{ detail.item_id }}/chart?store_id={{ store.store_id }}&amp;range={{ chart_range.value }}" hx-target="#item-chart" hx-swap="innerHTML">{{ store_label(store.color_token, store.name) }}</a>
     {% endfor %}
   </div>
   {% endif %}

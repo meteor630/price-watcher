@@ -25,6 +25,12 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: default;
 }
 
 .run-status__text {
@@ -127,6 +133,7 @@
   color: var(--color-muted);
   font-family: var(--font-body);
   font-weight: var(--weight-semibold);
+  white-space: normal;
 }
 
 .pill {
@@ -335,6 +342,11 @@
 .cat__count {
   color: var(--color-muted);
   font-size: var(--text-sm);
+}
+
+/* «8 в итоге · 4 наблюдаю»; на телефоне — две строки без точки. */
+.cat__count-part {
+  white-space: nowrap;
 }
 
 .cat__total {
@@ -582,6 +594,21 @@
   border-radius: 50%;
 }
 
+/* Магазин с точкой (макрос store_label): точка стоит в левом поле первой строки названия и не отрывается
+   от него при переносе (перед встроенным блоком браузер разрешает перенос, поэтому точка — вне потока). */
+.store-label {
+  position: relative;
+  min-width: 0;
+  padding-left: 14px;
+  overflow-wrap: anywhere;
+}
+
+.store-label .store-dot {
+  position: absolute;
+  left: 0;
+  top: calc(0.5lh - 4px);
+}
+
 .store-dot--store-1 { background: var(--store-1); }
 .store-dot--store-2 { background: var(--store-2); }
 .store-dot--store-3 { background: var(--store-3); }
@@ -655,15 +682,37 @@
 
   .cat__top {
     flex-direction: column;
+    align-items: stretch;
     gap: 2px;
   }
 
+  /* Ровные карточки (NOTES.md): название — две строки с многоточием, под него всегда отведены две строки,
+     график — у нижнего края; полное название — на странице категории (решение владельца 12.10.2026). */
   .cat__name {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    min-height: calc(2 * 1.2em);
     font-size: var(--text-base);
+    line-height: 1.2;
+  }
+
+  .cat__chart,
+  .cat__empty {
+    margin-top: auto;
   }
 
   .cat__count {
     font-size: var(--text-xs);
+  }
+
+  .cat__count-part {
+    display: block;
+  }
+
+  .cat__count-sep {
+    display: none;
   }
 
   .cat__total {
@@ -1231,6 +1280,21 @@ a.cat {
   .offers td + td,
   .offers th + td {
     margin-top: var(--space-3);
+  }
+
+  /* Длинное название магазина переносится, цена остаётся справа и не уезжает за экран. */
+  .offers__stores li {
+    align-items: flex-start;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .offers__price {
+    flex: none;
+  }
+
+  .offers__stores .store-dot {
+    margin-top: 0.45em;
   }
 
   .offers td[data-label]::before {
@@ -1845,6 +1909,30 @@ a.cat {
   justify-content: flex-end;
 }
 
+.edit-row__order {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+/* Телефон: действия строки — сетка равных колонок; при переносе кнопка встаёт в колонку той же ширины,
+   «Удалить» не остаётся одна в новой строке (NOTES.md). Стрелки порядка — одна ячейка на две строки. */
+@media (max-width: 760px) {
+  .edit-row__actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 112px), 1fr));
+    width: 100%;
+  }
+
+  .edit-row__actions > .btn {
+    justify-content: center;
+  }
+
+  .edit-row__order {
+    grid-row: span 2;
+    align-self: start;
+  }
+}
+
 .edit-row.is-ghost {
   opacity: 0.4;
   background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface));
@@ -2245,9 +2333,7 @@ a.cat {
 
 .purchased__name {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .purchased__meta {
@@ -2321,9 +2407,7 @@ a.cat {
 
 .spend-list__name {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .spend-list__count {
@@ -2497,7 +2581,8 @@ a.cat {
 
 .review-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  /* Одна карточка — во всю ширину, две — пополам: без пустой половины справа. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
   gap: var(--space-4);
   margin: 0;
   padding: 0;
@@ -2599,6 +2684,11 @@ a.cat {
   width: 12px;
   height: 12px;
   margin-top: 6px;
+}
+
+/* Точка магазина — у первой строки названия, а не посередине блока из нескольких строк. */
+.store-row .edit-row__main {
+  align-items: flex-start;
 }
 
 .store-row--off .edit-row__name {
@@ -2840,4 +2930,120 @@ a.cat {
 
 .password-form {
   max-width: 420px;
+}
+
+/* ---------- шапка на телефоне: одна строка (SITE_DESIGN_SPEC.md, раздел 3; решение владельца 12.10.2026) ---------- */
+
+.account-menu {
+  display: none;
+}
+
+.top__account {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.account-menu__list {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 200px;
+  padding: var(--space-3);
+}
+
+.account-menu__name {
+  color: var(--color-fg);
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  .top__row {
+    flex-wrap: nowrap;
+    min-height: 56px;
+    padding-block: 6px;
+    gap: 6px;
+  }
+
+  .brand__name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .top__meta {
+    gap: 6px;
+  }
+
+  /* Статус — точка; полный текст — подпись кнопки и подсказка под шапкой по нажатию. */
+  .run-status {
+    justify-content: center;
+    width: 32px;
+    min-height: var(--tap-min);
+    margin-right: auto;
+    cursor: pointer;
+  }
+
+  .run-status__text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .run-status[data-open] .run-status__text {
+    top: calc(100% + 6px);
+    left: var(--gutter);
+    right: var(--gutter);
+    width: auto;
+    height: auto;
+    clip: auto;
+    padding: var(--space-3);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-popover);
+    color: var(--color-fg);
+    white-space: normal;
+    text-align: left;
+  }
+
+  .top__account {
+    display: none;
+  }
+
+  .account-menu {
+    display: block;
+  }
+
+  .account-menu .menu__list {
+    right: 0;
+    left: auto;
+  }
+}
+
+/* Цели нажатия на телефоне — не меньше 24×24 (WCAG 2.5.8): тонкие ссылки и раскрытия получают отступы.
+   Названия в «Покупках» переносятся, а не обрезаются: полного текста иначе не прочитать. */
+@media (max-width: 760px) {
+  .crumbs a,
+  .panel-head-link,
+  .rows__group-link {
+    display: inline-block;
+    padding-block: 6px;
+  }
+
+  .groups__summary {
+    padding-block: 6px;
+  }
+
+  .purchased__name,
+  .spend-list__name {
+    padding-block: 3px;
+  }
 }
