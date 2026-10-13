@@ -805,6 +805,9 @@ class BellNotification:
 
 
 class NotificationRepository(Protocol):
+    def exists(self, dedup_key: str) -> bool:
+        """Было ли уже уведомление с этим ключом (любому пользователю, в любом канале)."""
+        ...
     def notify_admins(self, kind: str, dedup_key: str, payload: dict[str, object], now: datetime, *, telegram: bool = True) -> int:
         """Уведомление каждому действующему администратору: в колокольчик и в Telegram, если он привязан
         (telegram=False — только колокольчик: например, когда молчит сам бот).
@@ -896,11 +899,29 @@ class BackupOutcome:
     error_code: str | None
 
 
+@dataclass(frozen=True, slots=True)
+class BackupHealth:
+    """Состояние копий для сторожа: последняя завершённая попытка, последняя удачная и самая первая."""
+
+    latest_id: int | None
+    latest_status: str | None
+    latest_error_code: str | None
+    latest_started_at: datetime | None
+    last_ok_at: datetime | None
+    first_started_at: datetime
+
+
 class BackupRepository(Protocol):
     def start(self, now: datetime) -> int:
         """Записать начало попытки; её номер."""
         ...
     def finish(self, backup_id: int, outcome: BackupOutcome, now: datetime) -> None: ...
+    def health(self) -> BackupHealth | None:
+        """Состояние копий; None — попыток не было (копии на узле не настроены)."""
+        ...
+    def lock_watch(self) -> None:
+        """До конца транзакции — один сторож копий: два планировщика не сообщат об одном дважды."""
+        ...
 
 
 class BackupArchive(Protocol):

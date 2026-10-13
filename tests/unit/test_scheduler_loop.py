@@ -5,6 +5,7 @@ from datetime import datetime, time, timedelta
 
 import pytest
 
+from pricewatch.application.backups import BackupAlerts
 from pricewatch.application.ports import PurgedCounts, RunProgress
 from pricewatch.application.runs import ExpiredLeases, ScheduledStart
 from pricewatch.application.watchdog import WatchReport
@@ -31,6 +32,8 @@ class FakeJobs:
         self.watched_at: list[datetime] = []
         self.summarized = 0
         self.summarized_at: list[datetime] = []
+        self.backup_alerts = BackupAlerts()
+        self.backups_watched_at: list[datetime] = []
         self.fail: Exception | None = None
 
     def schedule_times(self) -> tuple[time, ...]:
@@ -69,6 +72,10 @@ class FakeJobs:
     def send_run_summaries(self, now: datetime) -> int:
         self.summarized_at.append(now)
         return self.summarized
+
+    def watch_backups(self, now: datetime) -> BackupAlerts:
+        self.backups_watched_at.append(now)
+        return self.backup_alerts
 
 
 class Clock:
@@ -231,3 +238,21 @@ def test_run_summaries_every_tick_and_logged(caplog: pytest.LogCaptureFixture) -
     assert jobs.summarized_at == [msk(8)]
     record = next(r for r in caplog.records if r.getMessage() == "Сводки проверки созданы")
     assert record.runs == 2  # type: ignore[attr-defined]
+
+
+def test_backup_watch_every_tick_and_alerts_logged(caplog: pytest.LogCaptureFixture) -> None:
+    jobs, clock = FakeJobs(), Clock(msk(8))
+    scheduler = Scheduler(jobs, clock=clock)
+    jobs.backup_alerts = BackupAlerts(failed_backup_id=12, stale_since=msk(8) - timedelta(hours=40))
+
+    with caplog.at_level(logging.INFO):
+        scheduler.tick()
+    jobs.backup_alerts = BackupAlerts()
+    clock.now += timedelta(seconds=30)
+    scheduler.tick()
+
+    assert jobs.backups_watched_at == [msk(8), msk(8) + timedelta(seconds=30)]
+    failed = [r for r in caplog.records if r.getMessage() == "Резервная копия не удалась"]
+    stale = [r for r in caplog.records if r.getMessage() == "Удачной резервной копии нет дольше 36 часов"]
+    assert len(failed) == 1 and failed[0].levelno == logging.WARNING and failed[0].backup_id == 12  # type: ignore[attr-defined]
+    assert len(stale) == 1 and stale[0].levelno == logging.WARNING

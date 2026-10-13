@@ -772,6 +772,9 @@ class SqlNotificationRepository:
             .on_conflict_do_nothing(index_elements=["user_id", "channel", "dedup_key"])
         )
 
+    def exists(self, dedup_key: str) -> bool:
+        return self.connection.execute(select(exists().where(notifications.c.dedup_key == dedup_key))).scalar_one()
+
     def notify_admins(self, kind: str, dedup_key: str, payload: dict[str, object], now: datetime, *, telegram: bool = True) -> int:
         admins = self.connection.execute(
             select(users.c.id, users.c.telegram_chat_id).where(users.c.role == "admin", users.c.disabled_at.is_(None)).order_by(users.c.id)

@@ -7,15 +7,33 @@
    отправить; итог — код первого сбоя, файл копии в журнале остаётся. Неудачная копия — ничего не удаляется и не
    отправляется: старые копии остаются, пока нет новой.
 4. Итог — в журнал копий; по нему планировщик узнаёт о сбое и о давности последней удачной копии.
+
+Сторож копий (watch_backups) — на каждом обходе планировщика, администраторам в колокольчик и в Telegram:
+- неудачная попытка — одно уведомление на попытку;
+- удачной копии нет больше 36 часов (domain.backups.stale_since) — одно уведомление на эпизод: новая удачная копия
+  начинает отсчёт заново, и следующее такое молчание — новое уведомление.
+Уже отправленное не повторяется (иначе каждый обход снова делал бы его непрочитанным); обход идёт под блокировкой —
+два планировщика не сообщат об одном дважды.
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 
 from pricewatch.application.ports import BackupArchive, BackupError, BackupOutcome, UnitOfWork
-from pricewatch.domain.backups import backup_name, expired
+from pricewatch.domain.backups import backup_name, expired, stale_since
 
 RETENTION_FAILED = "RETENTION_FAILED"
+FAILED_KIND = "backup_failed"
+STALE_KIND = "backup_stale"
+
+
+@dataclass(frozen=True, slots=True)
+class BackupAlerts:
+    """О чём сторож копий сообщил на этом обходе."""
+
+    failed_backup_id: int | None = None
+    stale_since: datetime | None = None
 
 
 def make_backup(uow_factory: Callable[[], UnitOfWork], archive: BackupArchive, clock: Callable[[], datetime]) -> BackupOutcome:
@@ -51,3 +69,27 @@ def _store(archive: BackupArchive, name: str, size: int, now: datetime) -> Backu
     if failure is not None:
         return BackupOutcome("failed", name, size, failure)
     return BackupOutcome("ok", name, size, None)
+
+
+def watch_backups(uow: UnitOfWork, now: datetime) -> BackupAlerts:
+    with uow:
+        uow.backups.lock_watch()
+        health = uow.backups.health()
+        if health is None:
+            return BackupAlerts()
+        failed = None
+        if health.latest_status == "failed" and health.latest_id is not None and health.latest_started_at is not None:
+            key = f"{FAILED_KIND}:{health.latest_id}"
+            if not uow.notifications.exists(key):
+                payload: dict[str, object] = {"error_code": health.latest_error_code, "started_at": health.latest_started_at.isoformat()}
+                uow.notifications.notify_admins(FAILED_KIND, key, payload, now)
+                failed = health.latest_id
+        stale = None
+        since = stale_since(health.last_ok_at, health.first_started_at, now)
+        if since is not None:
+            key = f"{STALE_KIND}:{since.isoformat()}"
+            if not uow.notifications.exists(key):
+                uow.notifications.notify_admins(STALE_KIND, key, {"since": since.isoformat(), "ever_ok": health.last_ok_at is not None}, now)
+                stale = since
+        uow.commit()
+    return BackupAlerts(failed, stale)

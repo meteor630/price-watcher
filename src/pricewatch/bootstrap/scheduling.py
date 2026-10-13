@@ -11,6 +11,7 @@ from pathlib import Path
 
 from sqlalchemy import Engine
 
+from pricewatch.application.backups import BackupAlerts, watch_backups
 from pricewatch.application.client_errors import purge_client_errors
 from pricewatch.application.idempotency import purge_expired
 from pricewatch.application.ports import PurgedCounts
@@ -60,6 +61,9 @@ class SqlJobs:
 
     def send_run_summaries(self, now: datetime) -> int:
         return send_run_summaries(SqlUnitOfWork(self._engine), now)
+
+    def watch_backups(self, now: datetime) -> BackupAlerts:
+        return watch_backups(SqlUnitOfWork(self._engine), now)
 
 
 def run_scheduler(env_file: Path = Path(".env")) -> int:

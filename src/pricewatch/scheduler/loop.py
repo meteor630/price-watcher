@@ -1,4 +1,4 @@
-"""Цикл планировщика: каждые 30 секунд вернуть просроченные задания, проверить, не молчат ли worker и бот, создать сводки завершённых проверок, удалить данные пользователей,
+"""Цикл планировщика: каждые 30 секунд вернуть просроченные задания, проверить, не молчат ли worker и бот и удаются ли резервные копии, создать сводки завершённых проверок, удалить данные пользователей,
 заблокированных 7 суток назад, стереть удалённое 30 дней назад, ключи повтора старше суток и отчёты об ошибках
 приложения старше 90 суток, запустить наступившую проверку.
 
@@ -15,6 +15,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, time
 from typing import Protocol
 
+from pricewatch.application.backups import BackupAlerts
 from pricewatch.application.ports import PurgedCounts
 from pricewatch.application.runs import ExpiredLeases, ScheduledStart
 from pricewatch.application.watchdog import WatchReport
@@ -35,6 +36,7 @@ class Jobs(Protocol):
     def purge_idempotency_keys(self, now: datetime) -> int: ...
     def purge_client_errors(self, now: datetime) -> int: ...
     def watch(self, now: datetime) -> WatchReport: ...
+    def watch_backups(self, now: datetime) -> BackupAlerts: ...
     def send_run_summaries(self, now: datetime) -> int: ...
 
 
@@ -79,6 +81,11 @@ class Scheduler:
             logger.warning("Процессы молчат дольше 5 минут", extra={"processes": list(watched.silent)})
         if watched.recovered:
             logger.info("Процессы снова на связи", extra={"processes": list(watched.recovered)})
+        backups = self._jobs.watch_backups(now)
+        if backups.failed_backup_id is not None:
+            logger.warning("Резервная копия не удалась", extra={"backup_id": backups.failed_backup_id})
+        if backups.stale_since is not None:
+            logger.warning("Удачной резервной копии нет дольше 36 часов", extra={"since": backups.stale_since.isoformat()})
         summarized = self._jobs.send_run_summaries(now)
         if summarized:
             logger.info("Сводки проверки созданы", extra={"runs": summarized})

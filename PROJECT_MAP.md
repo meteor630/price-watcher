@@ -85,7 +85,7 @@
 - Зависит от: —
 - Тесты: `uv run pytest tests/unit/test_domain_backups.py tests/unit/test_domain_errors.py tests/unit/test_domain_names.py tests/unit/test_domain_shopping.py tests/unit/test_domain_tokens.py tests/unit/test_domain_accounts.py tests/unit/test_domain_money.py tests/unit/test_domain_days.py tests/unit/test_domain_pricing.py tests/unit/test_domain_totals.py tests/unit/test_domain_charts.py tests/unit/test_domain_review.py tests/unit/test_domain_purchases.py tests/unit/test_domain_schedule.py tests/unit/test_domain_store_pause.py tests/unit/test_domain_history.py tests/unit/test_domain_undo.py tests/unit/test_domain_client_errors.py`
 - Файлы: `src/pricewatch/domain/errors.py` — коды ошибок, безопасные сообщения, базовое исключение PriceWatcherError.
-- Файлы: `src/pricewatch/domain/backups.py` — имя копии по моменту UTC, возраст по имени, копии старше 30 суток.
+- Файлы: `src/pricewatch/domain/backups.py` — имя копии по моменту UTC, возраст по имени, копии старше 30 суток, «нет удачной копии больше 36 часов» (от последней удачной, без них — от первой попытки).
 - Файлы: `src/pricewatch/domain/names.py` — очистка имён для показа, ключ сравнения (регистр, пробелы, «ё», NFKC), пределы длины и количества.
 - Файлы: `src/pricewatch/domain/shopping.py` — неизменяемые записи Category, Group, Item; состояния товара ItemState; регион REGION_CODE; срок окончательной очистки удалённого (30 дней).
 - Файлы: `src/pricewatch/domain/tokens.py` — случайные токены и коды связки, HMAC с назначением (в том числе UNDO), вывод следующего токена из предыдущего.
@@ -107,7 +107,7 @@
 - Путь: `src/pricewatch/application/`
 - Отвечает: сценарии и интерфейсы репозиториев
 - Зависит от: `pricewatch.domain`
-- Тесты: `uv run pytest tests/integration/test_backups.py tests/unit/test_passwords.py tests/integration/test_create_admin_command.py tests/integration/test_registration.py tests/integration/test_web_login.py tests/integration/test_app_auth.py tests/integration/test_add_link.py tests/integration/test_worker_protocol.py tests/integration/test_runs.py tests/integration/test_store_pauses.py tests/integration/test_retention.py tests/integration/test_dashboard.py tests/integration/test_category.py tests/integration/test_item.py tests/integration/test_idempotency.py tests/integration/test_shopping_edit.py tests/integration/test_items_edit.py tests/integration/test_purchases.py tests/integration/test_check_settings.py tests/integration/test_user_decisions.py tests/integration/test_reviews.py tests/integration/test_stores_admin.py tests/integration/test_users_admin.py tests/integration/test_notifications.py tests/integration/test_client_errors.py tests/integration/test_telegram.py tests/integration/test_watchdog.py tests/integration/test_run_summaries.py tests/security/test_health_http.py`
+- Тесты: `uv run pytest tests/integration/test_backups.py tests/integration/test_backup_watch.py tests/unit/test_passwords.py tests/integration/test_create_admin_command.py tests/integration/test_registration.py tests/integration/test_web_login.py tests/integration/test_app_auth.py tests/integration/test_add_link.py tests/integration/test_worker_protocol.py tests/integration/test_runs.py tests/integration/test_store_pauses.py tests/integration/test_retention.py tests/integration/test_dashboard.py tests/integration/test_category.py tests/integration/test_item.py tests/integration/test_idempotency.py tests/integration/test_shopping_edit.py tests/integration/test_items_edit.py tests/integration/test_purchases.py tests/integration/test_check_settings.py tests/integration/test_user_decisions.py tests/integration/test_reviews.py tests/integration/test_stores_admin.py tests/integration/test_users_admin.py tests/integration/test_notifications.py tests/integration/test_client_errors.py tests/integration/test_telegram.py tests/integration/test_watchdog.py tests/integration/test_run_summaries.py tests/security/test_health_http.py`
 - Файлы: `src/pricewatch/application/ports.py` — интерфейсы репозиториев и единицы работы; общие правила владельца, версий, перестановки, удаления; LinkResolver — описание адреса от сборщика цен.
 - Файлы: `src/pricewatch/application/worker_protocol.py` — протокол worker: токен (HMAC WORKER, ротация с перекрытием), аренда 2 мин, продление, результат как недоверенный ввод, правила подозрительных изменений, автозакрытие ценового подозрения, первое название — эталон; подтверждённая цена снимает «устаревшую цену в итоге»; блокировка и капча — пауза магазина по ступеням, задание ждёт без траты попытки; исчерпано — магазин отдыхает до следующего запуска, его ждущие задания закрываются ошибкой, уведомление store_paused администраторам; другой ответ снимает паузу; фото — по своему действующему заданию, путь записывается, если у ссылки его ещё нет.
 - Файлы: `src/pricewatch/application/runs.py` — запуски: ручной (только администратор; второй — RUN_IN_PROGRESS с прогрессом) и плановый по слоту, какие ссылки входят, остановка, истёкшая аренда (возврат, после 3 попыток TIMEOUT в историю), времена расписания из настроек.
@@ -136,7 +136,7 @@
 - Файлы: `src/pricewatch/application/app_auth.py` — вход приложения: код связки (лимит по IP), устройство, ротация refresh (вывод через HMAC, окно 60 с, повтор позже — отзыв устройства), access-токен, выход.
 - Файлы: `src/pricewatch/application/web_auth.py` — вход на сайт: лимиты до проверки пароля, неотличимые отказы, сессия, выход, CSRF-токен как HMAC сессии.
 - Файлы: `src/pricewatch/application/accounts.py` — сценарии create_admin, create_invite (только активный администратор), register (по приглашению, неверные поля и занятый логин приглашение не тратят).
-- Файлы: `src/pricewatch/application/backups.py` — копия: начало в журнал, копия вне транзакции, при удаче — удаление домашних копий старше 30 суток и отправка на арендный сервер (оба шага выполняются; итог — первый сбой: RETENTION_FAILED или код отправки), итог в журнал.
+- Файлы: `src/pricewatch/application/backups.py` — копия: начало в журнал, копия вне транзакции, при удаче — удаление домашних копий старше 30 суток и отправка на арендный сервер (оба шага выполняются; итог — первый сбой: RETENTION_FAILED или код отправки), итог в журнал. Сторож копий watch_backups: неудачная попытка — одно уведомление backup_failed на попытку, нет удачной копии больше 36 часов — одно backup_stale на эпизод; администраторам в колокольчик и Telegram, без повторов, под pg_advisory_xact_lock.
 
 ### pricewatch.persistence
 - Путь: `src/pricewatch/persistence/`
@@ -158,7 +158,7 @@
 - Файлы: `src/pricewatch/persistence/app_auth_repositories.py` — коды связки, устройства, access- и refresh-токены; claim и find_refresh блокируют строку.
 - Файлы: `src/pricewatch/persistence/auth_repositories.py` — неудачные попытки (окно, самая ранняя) и сессии сайта.
 - Файлы: `src/pricewatch/persistence/invite_repository.py` — приглашения; claim блокирует строку (FOR UPDATE) до конца транзакции; времена записи — из часов сценария, не базы.
-- Файлы: `src/pricewatch/persistence/backup_repository.py` — журнал копий backup_runs: начало, итог (повторное завершение не переписывает).
+- Файлы: `src/pricewatch/persistence/backup_repository.py` — журнал копий backup_runs: начало, итог (повторное завершение не переписывает), состояние для сторожа (последняя завершённая, последняя удачная, первая попытка), блокировка сторожа.
 - Файлы: `src/pricewatch/persistence/migrations/versions/0015_backup_runs.py` — таблица backup_runs: статус running/ok/failed, файл и размер у удачной, код у неудачной.
 
 ### pricewatch.api
@@ -267,13 +267,13 @@
 - Отвечает: плановые запуски; сценарии получает от bootstrap
 - Зависит от: `pricewatch.application`, `pricewatch.domain`
 - Тесты: `uv run pytest tests/unit/test_scheduler_loop.py tests/integration/test_scheduler_start.py tests/unit/test_package_layout.py`
-- Файлы: `src/pricewatch/scheduler/loop.py` — обход каждые 30 с: просроченные задания, сторож (молчащие worker и бот — в журнал), сводки завершённых проверок, данные заблокированных 7 суток назад, очистка удалённого 30 дней назад и ключей повтора старше суток, наступивший слот (после старта — с 00:00 текущих суток: один пропущенный запуск), пропуск при идущем запуске — в журнал; сбой обхода — в журнал, слот повторится; стирает отчёты об ошибках приложения старше 90 суток.
+- Файлы: `src/pricewatch/scheduler/loop.py` — обход каждые 30 с: просроченные задания, сторож (молчащие worker и бот — в журнал), сторож копий (сбой и «нет удачной копии 36 часов» — в журнал), сводки завершённых проверок, данные заблокированных 7 суток назад, очистка удалённого 30 дней назад и ключей повтора старше суток, наступивший слот (после старта — с 00:00 текущих суток: один пропущенный запуск), пропуск при идущем запуске — в журнал; сбой обхода — в журнал, слот повторится; стирает отчёты об ошибках приложения старше 90 суток.
 
 ### pricewatch.backup
 - Путь: `src/pricewatch/backup/`
 - Отвечает: резервные копии на домашнем узле; сценарий и журнал получает от bootstrap, к базе обращается только pg_dump
 - Зависит от: `pricewatch.application`, `pricewatch.domain`
-- Тесты: `uv run pytest tests/unit/test_backup_archive.py tests/unit/test_backup_service.py tests/integration/test_backups.py tests/unit/test_package_layout.py`
+- Тесты: `uv run pytest tests/unit/test_backup_archive.py tests/unit/test_backup_service.py tests/integration/test_backups.py tests/integration/test_backup_watch.py tests/unit/test_package_layout.py`
 - Файлы: `src/pricewatch/backup/archive.py` — папка копий: pg_dump (пароль только в окружении) → tar с картинками потоком в age (открытый ключ) → временное имя → переименование; остатки оборванных попыток удаляются; отправка rsync по SSH (строгая сверка known_hosts, копия ключа с правами только владельца) всех копий, которых нет на сервере; сбои — коды DATABASE_DUMP_FAILED, ENCRYPTION_FAILED, STORAGE_FAILED, MEDIA_UNAVAILABLE, UPLOAD_FAILED.
 - Файлы: `src/pricewatch/backup/service.py` — ежедневно в заданное время по Москве; остановка прерывает ожидание; сбой попытки — в журнал, служба живёт дальше; --once — одна копия.
 

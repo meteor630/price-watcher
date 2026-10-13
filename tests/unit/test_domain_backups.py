@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from pricewatch.domain.backups import KEEP, backup_name, created_at, expired
+from pricewatch.domain.backups import KEEP, STALE_AFTER, backup_name, created_at, expired, stale_since
 
 NOW = datetime(2026, 10, 14, 1, 30, tzinfo=UTC)
 
@@ -44,3 +44,29 @@ def test_only_backups_older_than_thirty_days_expire_oldest_first() -> None:
 
 def test_nothing_expires_in_empty_folder() -> None:
     assert expired([], NOW) == []
+
+
+# --- нет удачной копии больше 36 часов ---
+
+
+def test_recent_successful_copy_is_not_stale() -> None:
+    assert stale_since(NOW - STALE_AFTER + timedelta(minutes=1), NOW - timedelta(days=5), NOW) is None
+
+
+def test_exactly_36_hours_is_not_yet_stale() -> None:
+    assert stale_since(NOW - STALE_AFTER, None, NOW) is None
+
+
+def test_older_than_36_hours_is_stale_since_last_success() -> None:
+    last_ok = NOW - STALE_AFTER - timedelta(seconds=1)
+    assert stale_since(last_ok, NOW - timedelta(days=9), NOW) == last_ok
+
+
+def test_without_any_success_counts_from_first_attempt() -> None:
+    first = NOW - timedelta(days=2)
+    assert stale_since(None, first, NOW) == first
+    assert stale_since(None, NOW - timedelta(hours=1), NOW) is None
+
+
+def test_without_attempts_backups_are_not_set_up() -> None:
+    assert stale_since(None, None, NOW) is None

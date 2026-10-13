@@ -24,6 +24,14 @@ SILENCE_TEXTS = {
     "bot_silent": "Telegram-бот «{name}» молчит с {since}: сообщения в Telegram не уходят.",
     "bot_back": "Telegram-бот «{name}» снова на связи (молчал с {since}).",
 }
+BACKUP_FAILURES = {
+    "DATABASE_DUMP_FAILED": "не снят дамп базы",
+    "ENCRYPTION_FAILED": "копия не зашифрована",
+    "STORAGE_FAILED": "нет доступа к папке копий",
+    "MEDIA_UNAVAILABLE": "нет папки картинок",
+    "RETENTION_FAILED": "копия сделана, но старые не удалены",
+    "UPLOAD_FAILED": "копия сделана, но не отправлена на арендный сервер",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +101,14 @@ def notification_text(kind: str, payload: dict[str, object]) -> tuple[str, str |
         return f"{text}{' — ' + message if message else ''}. Номер ошибки {payload['error_id']}.", None
     if kind == "run_summary":
         return ("Проверка завершена: изменения есть." if payload["changed"] else "Проверка завершена: изменений нет."), "/web/"
+    if kind == "backup_failed":
+        started = datetime.fromisoformat(str(payload["started_at"])).astimezone(MOSCOW)
+        reason = BACKUP_FAILURES.get(str(payload["error_code"]), str(payload["error_code"]))
+        return f"Резервная копия {started:%d.%m в %H:%M} не удалась: {reason}. Журнал — служба backup на домашнем узле.", None
+    if kind == "backup_stale":
+        since = datetime.fromisoformat(str(payload["since"])).astimezone(MOSCOW)
+        what = "Удачной резервной копии нет с" if payload["ever_ok"] else "Ни одной удачной резервной копии с первой попытки"
+        return f"{what} {since:%d.%m в %H:%M}: проверьте службу backup на домашнем узле.", None
     if kind in SILENCE_TEXTS:
         since = datetime.fromisoformat(str(payload["since"])).astimezone(MOSCOW)
         return SILENCE_TEXTS[kind].format(name=payload["name"], since=f"{since:%d.%m в %H:%M}"), None
