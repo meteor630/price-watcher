@@ -5,7 +5,7 @@ Playwright, у которого закрыты признаки управляе
 защиты Wildberries, Ozon и DNS не пропускают (проверено 06.10.2026). Способ запуска взят из
 рабочего парсера владельца и переписан под правила проекта:
 
-- установленный Google Chrome (`channel="chrome"`) с окном: окно за краем экрана, на сервере —
+- установленный Google Chrome (`channel="chrome"`) с окном: окно за краем экрана, на Linux без монитора —
   виртуальный экран Xvfb; язык — флагом Chrome, часовой пояс системный, ничего не подменяется;
 - у каждого магазина свой постоянный профиль: cookies, выданные защитой, переживают перезапуск;
   если магазин пометил профиль как робота, профиль стирается и делается вторая попытка;
@@ -224,7 +224,6 @@ class BrowserFetcher:
             channel="chrome",
             headless=False,
             # Песочница Chrome: страницы магазинов — недоверенный контент; Playwright без этого добавляет --no-sandbox.
-            # В Docker ей нужен профиль seccomp deploy/home/chrome-seccomp.json.
             chromium_sandbox=True,
             args=[*CHROME_ARGS, f"--proxy-server=http://127.0.0.1:{self._proxy.port}"],
             no_viewport=True,

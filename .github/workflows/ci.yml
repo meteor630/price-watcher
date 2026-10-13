@@ -112,6 +112,29 @@ jobs:
       - name: Карта проекта
         run: uv run python tools/check_project_map.py
 
+      # Worker на домашнем ПК — программа Windows (deploy/windows); скрипты — в Windows PowerShell 5.1, как у владельца.
+      - name: Скрипты worker для Windows разбираются
+        shell: powershell
+        run: |
+          foreach ($script in Get-ChildItem deploy\windows\*.ps1) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($script.FullName, [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { $errors | Format-List; throw "$($script.Name) не разбирается" }
+          }
+
+      # Последним шагом: install-worker.ps1 ставит окружение без инструментов разработки.
+      - name: Установка worker и состояние автозапуска
+        shell: powershell
+        run: |
+          Set-Content -Encoding ascii worker.env "PRICEWATCH_WORKER_API_URL=http://127.0.0.1:8000`nPRICEWATCH_WORKER_TOKEN=$('t' * 48)"
+          powershell -ExecutionPolicy Bypass -File deploy\windows\install-worker.ps1
+          if ($LASTEXITCODE -ne 0) { throw "install-worker.ps1 завершился с кодом $LASTEXITCODE" }
+          Set-Content -Encoding ascii worker.env "PRICEWATCH_WORKER_API_URL=http://127.0.0.1:8000"
+          powershell -ExecutionPolicy Bypass -File deploy\windows\install-worker.ps1
+          if ($LASTEXITCODE -ne 1) { throw "без токена install-worker.ps1 должен отказать, а вернул $LASTEXITCODE" }
+          powershell -ExecutionPolicy Bypass -File deploy\windows\autostart.ps1 -Status
+          if ($LASTEXITCODE -ne 0) { throw "autostart.ps1 -Status завершился с кодом $LASTEXITCODE" }
+
   docker:
     name: Образы и запуск в Docker
     runs-on: ubuntu-24.04
@@ -121,17 +144,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Сборка, запуск домашнего узла, проверка здоровья и Chrome
+      - name: Сборка, запуск домашнего узла, проверка здоровья и резервной копии
         working-directory: deploy/home
         env:
           POSTGRES_PASSWORD: cionlynotsecretdocker
         run: |
           printf 'PRICEWATCH_ENV=development\nPRICEWATCH_PUBLIC_ORIGIN=http://127.0.0.1:8000\nPRICEWATCH_SECRET_KEY=%s\n' "$(openssl rand -hex 32)" > "$RUNNER_TEMP/server.env"
-          printf 'PRICEWATCH_WORKER_TOKEN=%s\n' "$(openssl rand -hex 32)" > "$RUNNER_TEMP/worker.env"
           # Ключ age для копий появится после сборки образа; до неё Compose нужен файл настроек копий.
           touch "$RUNNER_TEMP/backup.env"
           mkdir -m 777 "$RUNNER_TEMP/backups"
-          export PRICEWATCH_SERVER_ENV="$RUNNER_TEMP/server.env" PRICEWATCH_WORKER_ENV="$RUNNER_TEMP/worker.env"
+          export PRICEWATCH_SERVER_ENV="$RUNNER_TEMP/server.env"
           export PRICEWATCH_BACKUP_ENV="$RUNNER_TEMP/backup.env" BACKUP_HOST_DIR="$RUNNER_TEMP/backups"
           docker compose config -q
           docker compose build
@@ -142,19 +164,6 @@ jobs:
           docker run --rm -v "$PWD/../vps/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro" "$(docker compose -f ../vps/compose.yaml config --images | grep '^haproxy')" haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
           docker compose up -d --wait db app scheduler
           curl -fsS http://127.0.0.1:8000/healthz
-          docker compose run --rm --no-deps worker google-chrome --version
-          # Песочница Chrome в контейнере worker с его ограничениями (seccomp, только SYS_CHROOT, без записи в образ).
-          docker compose run --rm --no-deps worker xvfb-run -a python -c "
-          from pathlib import Path
-          from pricewatch.parsers.browser import BrowserFetcher
-          fetcher = BrowserFetcher(Path('/data/profiles/sandbox-check'), resolver=lambda host: [])
-          tab = fetcher.context('check').new_page()
-          tab.goto('chrome://sandbox')
-          status = tab.inner_text('body')
-          fetcher.close()
-          print(status)
-          raise SystemExit(0 if 'You are adequately sandboxed' in status else 1)
-          "
           # Резервная копия тем же образом и с теми же ограничениями: копия → расшифровка тестовым ключом → pg_restore.
           docker compose run --rm --no-deps --entrypoint age-keygen backup > "$RUNNER_TEMP/age.key"
           printf 'PRICEWATCH_BACKUP_RECIPIENT=%s\n' "$(grep -o 'age1[0-9a-z]*' "$RUNNER_TEMP/age.key")" > "$RUNNER_TEMP/backup.env"

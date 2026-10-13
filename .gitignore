@@ -30,3 +30,6 @@ wg0.conf
 # Xcode
 ios/**/xcuserdata/
 ios/**/DerivedData/
+
+# Журналы worker на Windows (deploy/windows/start-worker.ps1)
+/logs/

@@ -1,6 +1,5 @@
 # Образы Price Watcher (DEVELOPMENT_ARCHITECTURE.md, раздел 1): сборка из корня репозитория.
 #   app    — сайт и API, планировщик, миграции, служебные команды; amd64 и arm64;
-#   worker — то же плюс Google Chrome и виртуальный экран Xvfb; только amd64 (Chrome для Linux — только x86-64).
 #   backup — то же плюс pg_dump 18 (как сервер базы) и age: служба резервных копий.
 # Базовые образы закреплены по отпечатку; зависимости — точно по uv.lock, без инструментов разработки.
 
@@ -28,26 +27,6 @@ RUN uv sync --locked --no-dev --no-editable \
 USER pricewatch
 EXPOSE 8000
 CMD ["python", "-m", "pricewatch.bootstrap", "serve"]
-
-FROM app AS worker
-USER root
-# Google Chrome из репозитория Google: ключ проверяется по опубликованному отпечатку (EB4C…4796, Google Linux Package Signing).
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl gnupg xvfb xauth fonts-liberation fonts-noto-color-emoji \
-    && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub -o /tmp/google.pub \
-    && gpg --show-keys --with-colons /tmp/google.pub | grep -q "^fpr:::::::::EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796:" \
-    && gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg /tmp/google.pub \
-    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends google-chrome-stable \
-    && apt-get purge -y curl gnupg \
-    && apt-get autoremove -y \
-    && rm -rf /var/lib/apt/lists/* /tmp/google.pub \
-    && mkdir -p /data/profiles \
-    && chown pricewatch:pricewatch /data/profiles
-USER pricewatch
-# Chrome с окном (patchright): окно — на виртуальном экране.
-CMD ["xvfb-run", "--auto-servernum", "--server-args=-screen 0 1440x900x24", "python", "-m", "pricewatch.worker"]
 
 FROM app AS backup
 USER root

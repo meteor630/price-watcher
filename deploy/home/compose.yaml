@@ -1,12 +1,12 @@
-# Домашний узел (DEVELOPMENT_ARCHITECTURE.md, раздел 1): база, миграции, сайт и API, планировщик, worker с Chrome.
+# Домашний узел (DEVELOPMENT_ARCHITECTURE.md, раздел 1): база, миграции, сайт и API, планировщик, резервные копии.
+# Worker с Chrome — не здесь, а программой Windows (deploy/windows): Chrome под Linux в Docker защита Ozon не пускает.
 # Запуск из этой папки: docker compose up -d --build
-# Настройки: ../../.env (сервер), ../../worker.env (worker), ../../backup.env (копии), .env рядом (пароль базы, папка копий),
-# tunnel.conf рядом (ключ туннеля).
+# Настройки: ../../.env (сервер), ../../backup.env (копии), .env рядом (пароль базы, папка копий), tunnel.conf рядом (ключ туннеля).
 # Все они в Git не попадают.
-# Другие пути к файлам настроек — переменные PRICEWATCH_SERVER_ENV, PRICEWATCH_WORKER_ENV и PRICEWATCH_BACKUP_ENV.
-# Порядок старта: база здорова → миграции прошли → сайт и планировщик → worker, когда сайт здоров.
-# Сети: база видна только серверу (backend); worker видит только API сайта (workers) — он открывает чужие сайты;
-# туннель с Caddy видят только сайт (edge). Снаружи сайт открывается так: арендный сервер → туннель WireGuard → Caddy → app.
+# Другие пути к файлам настроек — переменные PRICEWATCH_SERVER_ENV и PRICEWATCH_BACKUP_ENV.
+# Порядок старта: база здорова → миграции прошли → сайт, планировщик и копии.
+# Сети: база видна только серверу (backend); туннель с Caddy видят только сайт (edge).
+# Снаружи сайт открывается так: арендный сервер → туннель WireGuard → Caddy → app; worker — на 127.0.0.1:8000 этого ПК.
 
 name: pricewatch
 
@@ -73,8 +73,8 @@ services:
       PRICEWATCH_TRUSTED_PROXIES: 172.31.250.2/32
     volumes:
       - media:/data/media
-    networks: [backend, workers, edge]
-    # Только для этого компьютера; снаружи сайт открывается через Caddy и туннель (срез 11.1).
+    networks: [backend, edge]
+    # Только для этого компьютера: сюда ходит worker (deploy/windows); снаружи сайт открывается через Caddy и туннель.
     ports:
       - "127.0.0.1:8000:8000"
     healthcheck:
@@ -168,51 +168,8 @@ services:
         condition: service_completed_successfully
     mem_limit: 512m
 
-  worker:
-    build:
-      context: ../..
-      dockerfile: deploy/Dockerfile
-      target: worker
-    image: pricewatch-worker
-    platform: linux/amd64
-    # Постоянное имя: Chrome помечает профиль именем компьютера и после пересоздания контейнера с новым именем
-    # считал бы профили магазинов занятыми «другим компьютером».
-    hostname: pricewatch-worker
-    env_file: ${PRICEWATCH_WORKER_ENV:-../../worker.env}
-    environment:
-      PRICEWATCH_WORKER_API_URL: http://app:8000
-      PRICEWATCH_WORKER_PROFILES_DIR: /data/profiles
-    volumes:
-      - profiles:/data/profiles
-    networks: [workers]
-    # Песочница Chrome (страницы магазинов — недоверенный контент): стандартный профиль Docker плюс clone/unshare
-    # для её пространств имён (tools/chrome_seccomp.py). Из прав Linux — только SYS_CHROOT: песочница уходит в chroot
-    # внутри своего пространства имён. Запись — только профили браузера и временные папки.
-    security_opt:
-      - seccomp=chrome-seccomp.json
-      - no-new-privileges:true
-    cap_drop: [ALL]
-    cap_add: [SYS_CHROOT]
-    read_only: true
-    tmpfs:
-      - /tmp
-      # Домашняя папка — пользователю pricewatch: Chrome пишет туда настройки и отчёты о сбоях; папка root он не открыл бы.
-      - /home/pricewatch:uid=10001,gid=10001,mode=0700
-    # Первый процесс — init: xvfb-run ждёт сигнала готовности экрана, а процесс №1 сигналов не получает;
-    # init же подбирает завершившиеся процессы Chrome.
-    init: true
-    # Chrome держит страницы в разделяемой памяти; 64 МБ по умолчанию ему мало.
-    shm_size: "1gb"
-    depends_on:
-      app:
-        condition: service_healthy
-    mem_limit: 4g
-    logging: *logging
-    restart: unless-stopped
-
 networks:
   backend:
-  workers:
   edge:
     ipam:
       config:
@@ -221,6 +178,5 @@ networks:
 volumes:
   pgdata:
   media:
-  profiles:
   caddy_data:
   caddy_config:
