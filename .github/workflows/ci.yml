@@ -133,7 +133,9 @@ jobs:
           docker compose build
           # Конфигурации туннеля: Caddy дома и HAProxy на арендном сервере (теми же образами, что в работе).
           docker run --rm -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" "$(docker compose config --images | grep '^caddy')" caddy validate --config /etc/caddy/Caddyfile
-          docker run --rm -v "$PWD/../vps/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro" "$(docker compose -f ../vps/compose.yaml config --images)" haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
+          # bot.env арендного сервера в CI нет; для разбора Compose хватит пустого.
+          touch ../vps/bot.env
+          docker run --rm -v "$PWD/../vps/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro" "$(docker compose -f ../vps/compose.yaml config --images | grep '^haproxy')" haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
           docker compose up -d --wait db app scheduler
           curl -fsS http://127.0.0.1:8000/healthz
           docker compose run --rm --no-deps worker google-chrome --version
