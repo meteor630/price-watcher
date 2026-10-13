@@ -167,3 +167,20 @@ def test_sold_out_product_redirected_to_search() -> None:
 )
 def test_link_from_search_with_product_id_leads_to_card(raw: str) -> None:
     assert canonical_url(normalize_url(raw)).url == "https://www.ozon.ru/product/3208684872/"
+
+
+@pytest.mark.parametrize(
+    ("raw", "card"),
+    [
+        # Настоящая ссылка «Поделиться»: в названии есть «-1800r» и «-360-», артикул — только последнее число.
+        (
+            "https://www.ozon.ru/product/msi-34-monitor-izognutyy-mpg-341cqr-qd-oled-x36-krivizna-1800r-qd-oled-uwqhd-360-gts-0-03-4187696611/"
+            "?from=share_ios&perehod=smm_share_button_productpage_link&short=1fMpFmB",
+            "https://www.ozon.ru/product/msi-34-monitor-izognutyy-mpg-341cqr-qd-oled-x36-krivizna-1800r-qd-oled-uwqhd-360-gts-0-03-4187696611/",
+        ),
+        ("https://www.ozon.ru/product/kabel-2000-4187696611", "https://www.ozon.ru/product/kabel-2000-4187696611/"),
+        ("https://www.ozon.ru/product/3208684872/?sh=x", "https://www.ozon.ru/product/3208684872/"),
+    ],
+)
+def test_article_is_last_number_of_card_address(raw: str, card: str) -> None:
+    assert canonical_url(normalize_url(raw)).url == card

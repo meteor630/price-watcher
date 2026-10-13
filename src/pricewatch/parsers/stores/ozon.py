@@ -23,7 +23,8 @@ from pricewatch.parsers.prices import structured_price
 from pricewatch.parsers.urls import NormalizedUrl, normalize_url
 
 KEY = "ozon"
-PRODUCT_PATH = re.compile(r"^/product/[a-z0-9-]*?(\d{4,15})/?")
+# Артикул — последнее число адреса карточки: в названии тоже бывают числа («krivizna-1800r», «kabel-2000»).
+PRODUCT_PATH = re.compile(r"^/product/(?:[a-z0-9-]*-)?(\d{4,15})(?=/|\?|$)")
 PRODUCT_ID_PARAM = re.compile(r"[?&]product_id=(\d{4,15})(?:&|$)")
 OUT_OF_STOCK_WIDGET = 'data-widget="webOutOfStock"'
 IMG_SRC = re.compile(r'<img[^>]+src="(https://[^"]+)"')
