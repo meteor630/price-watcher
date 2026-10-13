@@ -138,10 +138,6 @@ jobs:
           curl -fsS http://127.0.0.1:8000/healthz
           docker compose run --rm --no-deps worker google-chrome --version
           # Песочница Chrome в контейнере worker с его ограничениями (seccomp, только SYS_CHROOT, без записи в образ).
-          # Домашний узел — Docker Desktop (WSL2), там AppArmor нет. Ubuntu 24.04 этой машины CI запрещает контейнерам
-          # пространства имён пользователя через AppArmor — снимаем, чтобы проверять то же окружение, что дома.
-          echo "apparmor_restrict_unprivileged_userns было: $(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo нет)"
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           docker compose run --rm --no-deps worker xvfb-run -a python -c "
           from pathlib import Path
           from pricewatch.parsers.browser import BrowserFetcher

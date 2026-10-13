@@ -170,7 +170,10 @@ services:
     cap_drop: [ALL]
     cap_add: [SYS_CHROOT]
     read_only: true
-    tmpfs: [/tmp, /home/pricewatch]
+    tmpfs:
+      - /tmp
+      # Домашняя папка — пользователю pricewatch: Chrome пишет туда настройки и отчёты о сбоях; папка root он не открыл бы.
+      - /home/pricewatch:uid=10001,gid=10001,mode=0700
     # Первый процесс — init: xvfb-run ждёт сигнала готовности экрана, а процесс №1 сигналов не получает;
     # init же подбирает завершившиеся процессы Chrome.
     init: true

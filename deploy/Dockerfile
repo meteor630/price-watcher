@@ -20,7 +20,8 @@ RUN uv sync --locked --no-dev --no-install-project
 COPY alembic.ini ./
 COPY src ./src
 RUN uv sync --locked --no-dev --no-editable \
-    && useradd --system --uid 10001 --create-home --home-dir /home/pricewatch --shell /usr/sbin/nologin pricewatch \
+    && groupadd --system --gid 10001 pricewatch \
+    && useradd --system --uid 10001 --gid 10001 --create-home --home-dir /home/pricewatch --shell /usr/sbin/nologin pricewatch \
     && mkdir -p /data/media \
     && chown pricewatch:pricewatch /data/media
 USER pricewatch
