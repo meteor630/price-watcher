@@ -1,0 +1,35 @@
+{
+ "result": true,
+ "data": {
+  "@context": "https://schema.org/",
+  "@type": "Product",
+  "name": "Материнская плата GIGABYTE B650E AORUS STEALTH ICE",
+  "description": "Все материнские платы семейства AORUS для игровых ПК оснащены подсистемой питания на базе цифровых компонентов, которая обеспечивает максимальную стабильность платформы даже в условиях повышенной нагрузки. \nВоспользуйтесь уникальным арсеналом аппаратных средств для интеграции системы в состав сетевой инфраструктуры, взаимодействия с хранилищами данных, а также возможностью задействовать высокоскоростное соединение в рамках стандарта Wi-Fi.",
+  "sku": "5498938",
+  "offers": {
+   "@type": "Offer",
+   "url": "https://www.dns-shop.ru/product/d1e6f9e58f48d582/materinskaa-plata-gigabyte-b650e-aorus-stealth-ice/",
+   "availability": "https://schema.org/OutOfStock",
+   "price": 33799,
+   "priceCurrency": "RUB"
+  },
+  "aggregateRating": {
+   "@type": "AggregateRating",
+   "ratingValue": 4.97,
+   "worstRating": 1,
+   "bestRating": 5,
+   "reviewCount": 39
+  },
+  "image": [
+   "https://c.dns-shop.ru/thumb/st1/fit/300/300/e93155e8bed331c2918b785dc63beeb2/d484996df39a7ef62e219b7c62316f1d3b05f57734d5c573ec4c0ab118c28b90.png",
+   "https://c.dns-shop.ru/thumb/st1/fit/300/300/4219d801004c4427c4508598f2608b3e/2a9a5169137556ede0c9c1338875c8a6df1d7ed4d5ec51ea48d5d2c811b90985.jpg",
+   "https://c.dns-shop.ru/thumb/st1/fit/300/300/88fd0aeaabf17f6b782823570202ea0b/7de34bc0c33a8b7992e558d1036dc431a46bfafd98d67d531f2542dbdf8d9002.jpg"
+  ],
+  "brand": {
+   "@type": "Brand",
+   "name": "GIGABYTE"
+  }
+ },
+ "message": "",
+ "errors": []
+}

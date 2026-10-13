@@ -1,0 +1,140 @@
+{
+ "result": true,
+ "data": {
+  "states": [
+   {
+    "id": "as-BqF-mI",
+    "data": {
+     "id": "941bee59-1c43-11f1-9411-0050569d5825",
+     "name": "Корпус LIAN LI O11 Vision-M [G99.O11VMW.R0] белый",
+     "price": {
+      "current": 6799
+     },
+     "credit": {
+      "amount": 663,
+      "period": 12
+     },
+     "primaryButton": "<span id=\"as-oKVRxh\"></span>",
+     "wishlist": "<span id=\"as-9L1L5S\" class=\"wishlist-button-placeholder wishlist-button-placeholder_btn\"></span>",
+     "hasHistory": true,
+     "maxPeriodPrice": "7 799"
+    }
+   }
+  ],
+  "data": {
+   "banksImages": [
+    "https://c.dns-shop.ru/thumb/st1/fit/0/0/aa391e39dfa62c0d9b4d5db1e304d01b/9149058858e834e59d31013b70af3eafb4335ebcf312d10f574f31ce535ffb57.jpg",
+    "https://c.dns-shop.ru/thumb/st1/fit/0/0/819bdafa1853f362f51de3e9c2288ef0/93698b3926d645c797752f4bd60bbaece81325b28279dbca01e1a678fae1fa08.jpg",
+    "https://c.dns-shop.ru/thumb/st1/fit/0/0/a271aa51ddd7cf1483314920d6d21b17/c0355ea4378f77ab69862efa5bc4828455fa6658f357e62ff336772d8c8c82d0.jpg",
+    "https://c.dns-shop.ru/thumb/st1/fit/0/0/125617d5c2489f7236d3b0d4f24f83a8/3c54c36891393c9b1d52f944d569420c66e3ddc68840aade494f12a30d64e9e6.jpg",
+    "https://c.dns-shop.ru/thumb/st4/fit/0/0/15f8f02f3b1956cfb002f1eabf97479c/df6655d04c9fcdd1a62d646371c9f9151ca84f847c3c2cbed9c647b7a42a9b20.jpg",
+    "https://c.dns-shop.ru/thumb/st4/fit/0/0/1c0a06b2f742ae05b0e95760704f53a7/77c99abbe2a9883c5d45625a0535afd9e7954e6181c9fb05651da10bd0c5e7af.jpg",
+    "https://c.dns-shop.ru/thumb/st4/fit/0/0/bba835e2d007f27c33fcbab5abcc026b/4fac3d4a52b2dad9b51c073fa91ee3c45f5eea552c7007e226ae3a7782a87633.jpg",
+    "https://c.dns-shop.ru/thumb/st1/fit/0/0/1da8a05a0021171c262f0de0b5cd4b75/00c0fa2520bdfba663db53d267d184a3ec7e47b8aa5d58ea3cc219a0d987cd27.jpg",
+    "https://c.dns-shop.ru/thumb/st1/fit/0/0/216d1dd20a0fae44d19ae037a115fa18/eb7b3cefa414837469432387bf0429795d40655463a29db725a5283d0c519207.jpg",
+    "https://c.dns-shop.ru/thumb/st1/fit/0/0/c1b9aafa46abd20850d5991db58ab7f1/db8d291de08a689bf85629ab62c7cabb54a86d2b6bc39f7def49a8fbb0aea349.png",
+    "https://c.dns-shop.ru/thumb/st1/fit/0/0/e06d5d31af685d42518965c21e35739d/4fc55198d2cd3a5a8c91754fd6a91e3732ac38e9aba0448425c2888cab325b8b.jpg"
+   ],
+   "banksUrl": "/credit/"
+  }
+ },
+ "message": "",
+ "errors": [],
+ "assets": {
+  "inlineJs": {
+   "e284cb770a6bc0caa6cc75921641df58": "if(!window.APP_TRANSLATIONS){\n\t\twindow.APP_TRANSLATIONS = {};\t\n}",
+   "77017e5761221235c6ab2e9f4f8c7c52": "window.APP_TRANSLATIONS.WishlistBtn = {\"Добавить_в_список\":\"Добавить в список\",\"Войдите_в_профиль\":\"Войдите в профиль, чтобы сохранить\",\"Войти_в_профиль\":\"Войти в профиль\",\"Список_удалится_ДАТА\":\"Список удалится: {date}\",\"Убрать_из_избранного\":\"Убрать из избранного\",\"Добавить_в_избранное\":\"Добавить в избранное\",\"Создать_новый_список\":\"Создать новый список\",\"Новый_список\":\"Новый список\",\"Список_избранного\":\"Список избранного\",\"Поле_обязательно_для_ввода\":\"Поле обязательно для ввода.\",\"Название_занято_выберите_другое\":\"Название занято, выберите другое\",\"Название_списка\":\"Название списка\",\"Добавлен_в_общий_список\":\"Добавлен в общий список\",\"изменить\":\"изменить\"};",
+   "4e7a8b5be210ef4c4d32e3d6fe5bc1aa": "window.APP_TRANSLATIONS.BuyButton = {\"В_корзине\":\"В корзине\",\"Купить\":\"Купить\",\"Перейти_в_корзину\":\"Перейти в корзину\"};",
+   "32480ff4859d7cf23b663aada748e2d2": "window.minPriceDiscountsUrl=\"\\/catalog\\/product\\/get-min-price-discounts\\/?id=\";\n\t\t\twindow.getBestCartBundleUrl=\"\\/catalog\\/product\\/get-best-cart-bundle\\/?id=\";",
+   "d22d8b687dff3f332f23cffe55dcb4de": "window.productDataForAnalyticsUrl = \"\\/catalog\\/product\\/get-data-for-analytics\\/\";",
+   "1c583a370ef043744ad6b7970fdc9b90": "window.AjaxState.register([[{\"type\":\"wishlist-button\",\"hash\":\"01d77961a9b0e39213305c289acb8120b85841c7d1607134c7285a024a5eee06d9b1e85b10\",\"timeout\":10},[{\"id\":\"as-9L1L5S\",\"data\":{\"product\":\"941bee59-1c43-11f1-9411-0050569d5825\",\"buttonType\":1,\"productType\":0,\"showChangeButton\":true}}],false],[{\"type\":\"buy-button\",\"hash\":\"a167c93179d063f243b0435d8f0a2e2f7206cb9137f18cbc774c13fed3e35035e430d31e51\",\"timeout\":10},[{\"id\":\"as-oKVRxh\",\"data\":{\"productId\":\"941bee59-1c43-11f1-9411-0050569d5825\",\"productType\":1,\"showPrepay\":false,\"cityId\":\"566ca284-5bea-11e2-aee1-00155d030b1f\",\"restApiUrl\":\"https:\\/\\/restapi.dns-shop.ru\",\"counterMode\":false}}],false]]);",
+   "93cf785bd5b8969489238be1c4ad228f": "window.productPriceHistoryConfig = {\"url\":\"\\/catalog\\/product\\/get-product-price-history\\/\",\"title\":\"История цены\",\"emptyLabel\":\"Товар отсутствовал\",\"hintText\":\"За прошедшие недели отображается средняя цена продажи\"};",
+   "92baf2d08ffaa292b90980d7ffc9abf0": "window.creditCalculatorConfig = {\"anniversaryRate\":0.2999,\"maxFirstPaymentPercent\":0.5,\"period\":{\"min\":3,\"max\":36,\"step\":3,\"default\":12}};"
+  },
+  "inlineJsHead": {
+   "e284cb770a6bc0caa6cc75921641df58": "if(!window.APP_TRANSLATIONS){\n\t\twindow.APP_TRANSLATIONS = {};\t\n}",
+   "77017e5761221235c6ab2e9f4f8c7c52": "window.APP_TRANSLATIONS.WishlistBtn = {\"Добавить_в_список\":\"Добавить в список\",\"Войдите_в_профиль\":\"Войдите в профиль, чтобы сохранить\",\"Войти_в_профиль\":\"Войти в профиль\",\"Список_удалится_ДАТА\":\"Список удалится: {date}\",\"Убрать_из_избранного\":\"Убрать из избранного\",\"Добавить_в_избранное\":\"Добавить в избранное\",\"Создать_новый_список\":\"Создать новый список\",\"Новый_список\":\"Новый список\",\"Список_избранного\":\"Список избранного\",\"Поле_обязательно_для_ввода\":\"Поле обязательно для ввода.\",\"Название_занято_выберите_другое\":\"Название занято, выберите другое\",\"Название_списка\":\"Название списка\",\"Добавлен_в_общий_список\":\"Добавлен в общий список\",\"изменить\":\"изменить\"};",
+   "4e7a8b5be210ef4c4d32e3d6fe5bc1aa": "window.APP_TRANSLATIONS.BuyButton = {\"В_корзине\":\"В корзине\",\"Купить\":\"Купить\",\"Перейти_в_корзину\":\"Перейти в корзину\"};",
+   "32480ff4859d7cf23b663aada748e2d2": "window.minPriceDiscountsUrl=\"\\/catalog\\/product\\/get-min-price-discounts\\/?id=\";\n\t\t\twindow.getBestCartBundleUrl=\"\\/catalog\\/product\\/get-best-cart-bundle\\/?id=\";"
+  },
+  "inlineCss": [],
+  "jsFiles": [
+   "https://a.dns-shop.ru/static/10/1hbslz3/button-interactive-icon.js",
+   "https://a.dns-shop.ru/static/10/16xr1jk/button-icon.js",
+   "https://a.dns-shop.ru/static/10/3ngdiu/button.js",
+   "https://a.dns-shop.ru/static/10/onjonb/tooltip-ui.js",
+   "https://a.dns-shop.ru/static/10/mbgx83/modal.js",
+   "https://a.dns-shop.ru/static/10/63cpkq/button-interactive.js",
+   "https://a.dns-shop.ru/static/10/11fqwnh/product-additions.js",
+   "https://a.dns-shop.ru/static/10/1hl5wps/product-price-history.js",
+   "https://a.dns-shop.ru/static/10/qh0agi/ru.credit-calculator.js",
+   "https://a.dns-shop.ru/static/10/xt3sdo/input-select.js",
+   "https://a.dns-shop.ru/static/10/1he2gje/input-small.js",
+   "https://a.dns-shop.ru/static/10/zbbltp/links.js",
+   "https://a.dns-shop.ru/static/10/1wdrno2/ru.ajax-state-wishlist-btn.js",
+   "https://a.dns-shop.ru/static/10/11udq9t/ru.ajax-state-buy-btn.js",
+   "https://a.dns-shop.ru/static/10/qqaku3/ajax-state.js",
+   "https://a.dns-shop.ru/static/10/9pgbzr/popup.js",
+   "https://a.dns-shop.ru/static/10/1pdjt14/vue.global.prod.js",
+   "https://a.dns-shop.ru/static/10/1mmv81r/input-number.js"
+  ],
+  "cssFiles": [
+   {
+    "url": "https://a.dns-shop.ru/static/10/mbgx83/css/modal.css",
+    "media": null
+   },
+   {
+    "url": "https://a.dns-shop.ru/static/10/onjonb/css/tooltip-ui__sm-max.css",
+    "media": "(max-width: 991px)"
+   },
+   {
+    "url": "https://a.dns-shop.ru/static/10/onjonb/css/tooltip-ui__md-min.css",
+    "media": "(min-width: 992px)"
+   },
+   {
+    "url": "https://a.dns-shop.ru/static/10/3ngdiu/css/button.css",
+    "media": null
+   },
+   {
+    "url": "https://a.dns-shop.ru/static/10/1rlivsc/css/wishlist-button.css",
+    "media": null
+   },
+   {
+    "url": "https://a.dns-shop.ru/static/10/1310whm/css/buy-button.css",
+    "media": null
+   },
+   {
+    "url": "https://a.dns-shop.ru/static/10/1hl5wps/css/product-price-history.css",
+    "media": null
+   },
+   {
+    "url": "https://a.dns-shop.ru/static/10/zbbltp/css/links.css",
+    "media": null
+   },
+   {
+    "url": "https://a.dns-shop.ru/static/10/1he2gje/css/input-small.css",
+    "media": null
+   },
+   {
+    "url": "https://a.dns-shop.ru/static/10/xt3sdo/css/input-select.css",
+    "media": null
+   },
+   {
+    "url": "https://a.dns-shop.ru/static/10/qh0agi/css/credit-calculator.css",
+    "media": null
+   },
+   {
+    "url": "https://a.dns-shop.ru/static/10/1mmv81r/css/input-number.css",
+    "media": null
+   },
+   {
+    "url": "https://a.dns-shop.ru/static/10/11udq9t/css/ajax-state-buy-btn__sm-max.css",
+    "media": "(max-width: 991px)"
+   },
+   {
+    "url": "https://a.dns-shop.ru/static/10/qqaku3/css/ajax-state.css",
+    "media": null
+   }
+  ]
+ }
+}

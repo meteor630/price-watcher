@@ -215,6 +215,46 @@ def test_category_cards_are_even_on_phone(browser: Browser, site: tuple[str, See
         assert len({card["chartBottom"] for card in row if card["chartBottom"] is not None}) <= 1, row  # графики ряда — на одной линии
 
 
+ROWS_JS = """
+() => [...document.querySelectorAll('.cats .cat')].filter(card => card.querySelector('.cat__total')).map(card => {
+  const top = card.getBoundingClientRect().top;
+  const total = card.querySelector('.cat__total'); const delta = card.querySelector('.cat__delta');
+  const text = total.firstChild; const size = parseFloat(getComputedStyle(total).fontSize); const gaps = [];
+  for (let i = 0; i < text.data.length; i++) {
+    if (text.data[i] === '\u202f' || text.data[i] === '\u00a0') {
+      const range = document.createRange(); range.setStart(text, i); range.setEnd(text, i + 1);
+      gaps.push(range.getBoundingClientRect().width / size);
+    }
+  }
+  const box = el => el.getBoundingClientRect();
+  return {name: card.querySelector('.cat__name').innerText, top: Math.round(top), totalTop: Math.round(box(total).top - top),
+          deltaTop: Math.round(box(delta).top - top), deltaHeight: Math.round(box(delta).height), gaps: gaps};
+})
+"""
+
+
+@pytest.mark.parametrize("width", [320, 375, 430])
+def test_category_card_rows_line_up_on_phone(browser: Browser, site: tuple[str, Seeded], sessions: dict[str, dict], width: int) -> None:
+    # Снимок владельца 13.10.2026: в соседних карточках сумма и изменение на разной высоте («наблюдаю» есть не у всех),
+    # длинное изменение уводит процент на вторую строку, пробелы между разрядами суммы не видны.
+    origin, seeded = site
+    page, _ = open_page(browser, origin, seeded.pages["home"], sessions["admin"], width, "dark")
+
+    cards = page.evaluate(ROWS_JS)
+    page.context.close()
+
+    rows: dict[int, list[dict]] = {}
+    for card in cards:
+        rows.setdefault(card["top"], []).append(card)
+    if width >= 375:
+        assert any(len(row) == 2 for row in rows.values())
+    for row in rows.values():
+        for field in ("totalTop", "deltaTop", "deltaHeight"):
+            assert len({card[field] for card in row}) == 1, (field, row)
+    # Пробел между разрядами — не меньше пятой части кегля: его видно.
+    assert all(gap >= 0.2 for card in cards for gap in card["gaps"]), [(card["name"], card["gaps"]) for card in cards]
+
+
 def test_single_review_card_uses_full_width_on_desktop(browser: Browser, site: tuple[str, Seeded], sessions: dict[str, dict]) -> None:
     origin, seeded = site
     page, _ = open_page(browser, origin, seeded.pages["home"], sessions["admin"], 1440, "dark")

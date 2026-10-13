@@ -1,0 +1,35 @@
+{
+ "result": true,
+ "data": {
+  "@context": "https://schema.org/",
+  "@type": "Product",
+  "name": "Оперативная память ADATA Premier OEM [AD4U32008G22-BGN] 8 ГБ",
+  "description": "Оперативная память ADATA Premier является высокопроизводительным решением для модернизации и апгрейда вычислительной платформы ПК. Наряду с быстрой работой он отличается высокой энергоэффективностью. Данный модуль характеризуется объемом 8 ГБ, тактовой частотой 3200 МГц и пропускной способностью на уровне показателя 25600 Мбит/с. Соответствие стандартам JEDEC и RoHS подчеркивает широкую совместимость с другими комплектующими, стабильность, экологичность и надежность модуля ОЗУ ADATA Premier. Оперативная память поставляется без заводской упаковки",
+  "sku": "5650685",
+  "offers": {
+   "@type": "Offer",
+   "url": "https://www.dns-shop.ru/product/0b6fcc08ca91d9cb/operativnaa-pamat-adata-premier-oem-ad4u32008g22-bgn-8-gb/",
+   "availability": "https://schema.org/OutOfStock",
+   "price": 6699,
+   "priceCurrency": "RUB"
+  },
+  "aggregateRating": {
+   "@type": "AggregateRating",
+   "ratingValue": 4.92,
+   "worstRating": 1,
+   "bestRating": 5,
+   "reviewCount": 59
+  },
+  "image": [
+   "https://c.dns-shop.ru/thumb/st1/fit/300/300/cae54d8fa02cf54d6dc9ac4d8c0c7ce0/eb392d6168bb50053cb0503853def901a8fe2a09ee473329ad01ae5194c0933a.jpg",
+   "https://c.dns-shop.ru/thumb/st1/fit/300/300/f9fc7f667e1cd6d2e442e6ad0e292290/fbbe83e7aa4c11566ab48467722146c74802d851a99cdd7f887188af1c927abc.jpg",
+   "https://c.dns-shop.ru/thumb/st1/fit/300/300/ada85d8b87f5d61d81e7f3130a848b45/a24e464e860218d92ea8067994988d5bab310c5663e9864fb2dac3a37b3efcfe.jpg"
+  ],
+  "brand": {
+   "@type": "Brand",
+   "name": "ADATA"
+  }
+ },
+ "message": "",
+ "errors": []
+}

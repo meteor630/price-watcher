@@ -20,7 +20,7 @@
 
     <div class="item-hero__price">
       {% if detail.unit_price_text %}
-      <span class="item-hero__figure num">{{ detail.unit_price_text }}</span>
+      <span class="item-hero__figure num">{{ detail.unit_price_text | figure }}</span>
       {% if detail.regular_price_text %}<span class="row__regular">без карты {{ detail.regular_price_text }}</span>{% endif %}
       {% else %}
       <span class="item-hero__figure item-hero__figure--none">Цены нет</span>
@@ -65,7 +65,7 @@
     {% elif detail.purchase %}
     <div class="purchase-box" data-purchase>
       <p class="purchase-box__title"><span class="flag flag--bought">куплен</span> {{ long_date(detail.purchase.purchased_on) }}{% if detail.purchase.store %} · {{ store_label(detail.purchase.store.color_token, detail.purchase.store.name) }}{% endif %}</p>
-      <p class="purchase-box__sum num">{% if detail.purchase.quantity > 1 %}{{ detail.purchase.quantity }} × {{ detail.purchase.price_text }} = {% endif %}{{ detail.purchase.total_text }}</p>
+      <p class="purchase-box__sum num">{% if detail.purchase.quantity > 1 %}{{ detail.purchase.quantity }} × {{ detail.purchase.price_text | figure }} = {% endif %}{{ detail.purchase.total_text | figure }}</p>
       {% if detail.cheaper_now_text %}<p class="purchase-box__cheaper" data-cheaper-now>Сейчас дешевле на <span class="num">{{ detail.cheaper_now_text }}</span> за штуку</p>{% endif %}
       <div class="item-hero__controls">
         <a class="btn btn--ghost btn--small" href="/web/settings/items?edit={{ detail.item_id }}">Изменить</a>

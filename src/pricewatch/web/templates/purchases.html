@@ -10,7 +10,7 @@
   <div class="hero__figures" id="hero-figures">
     <p class="eyebrow">Потрачено {{ since }}</p>
     <h1 id="hero-title" class="hero__title">Покупки</h1>
-    <p class="hero__total num" data-spent>{{ overview.spent_text }}</p>
+    <p class="hero__total num" data-spent>{{ overview.spent_text | figure }}</p>
     <p class="hero__delta">
       {% if overview.savings_minor is none %}<span class="delta delta--none">экономию посчитать не из чего</span>{% else %}{{ savings_badge(overview.savings_minor, overview.savings_text) }}{% endif %}
       <span class="hero__since">{{ count_word(overview.count, "покупка", "покупки", "покупок") }} {{ since }}</span>

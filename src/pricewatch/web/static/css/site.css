@@ -703,8 +703,11 @@
     margin-top: auto;
   }
 
+  /* Под «в итоге» и «наблюдаю» всегда две строки: иначе в соседних карточках сумма и изменение на разной высоте. */
   .cat__count {
     font-size: var(--text-xs);
+    line-height: 1.4;
+    min-height: calc(2 * 1.4em);
   }
 
   .cat__count-part {
@@ -717,6 +720,15 @@
 
   .cat__total {
     font-size: var(--text-xl);
+  }
+
+  /* Изменение и процент — всегда друг под другом: длинная сумма («−12 546 ₽») не уводит процент на вторую строку
+     только в одной карточке ряда. «Без изменений» занимает то же место. */
+  .cat__delta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-height: 50px;
   }
 
   .cat__delta .delta {

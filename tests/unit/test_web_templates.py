@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 from jinja2 import UndefinedError
 
+from pricewatch.web.formats import figure
 from pricewatch.web.templates import STATIC_DIR, TEMPLATES_DIR, environment, render, static_url
 
 
@@ -74,3 +75,8 @@ def test_templates_have_no_inline_code(template: str) -> None:
 
 def test_template_variable_may_be_called_name() -> None:
     assert 'value="Дом"' in render("fragments/rename_form.html", action="/web/x", name="Дом", version=1)
+
+
+def test_figure_widens_only_digit_group_spaces() -> None:
+    assert figure("−12 546,50 ₽") == "−12 546,50 ₽"
+    assert figure("0 ₽") == "0 ₽"

@@ -116,7 +116,12 @@ def seed(engine: Engine) -> Seeded:
             world.history(world.link(admin, target, (shop, other)[index % 2]), [1000_00 + index * 37_00, 1000_00 + index * 31_00], start_days=10 + index % 7)
         empty_category = world.category(admin, "Пустая категория")
         for index in range(1, 5):
-            world.history(world.link(admin, world.item(admin, world.category(admin, f"Категория {index}"), f"Вещь {index}"), other), [500_00 * index, 480_00 * index])
+            small = world.category(admin, f"Категория {index}")
+            # Свежие цены: товар в итоге, у карточки одна строка счётчика.
+            world.history(world.link(admin, world.item(admin, small, f"Вещь {index}"), other), [500_00 * index, 480_00 * index], start_days=6)
+            if index == 1:
+                # Рядом карточки с «наблюдаю» и без: сумма и изменение должны стоять на одной высоте (снимок владельца 13.10.2026).
+                world.history(world.link(admin, world.item(admin, small, "Наблюдаю рядом", in_total=False), other), [900_00, 880_00])
         watched = world.category(admin, "Только наблюдаю")
         for index in range(1, 13):
             world.history(world.link(admin, world.item(admin, watched, f"Наблюдаю {index}", in_total=False), other), [700_00, 690_00])

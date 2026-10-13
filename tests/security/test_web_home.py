@@ -106,7 +106,8 @@ def test_home_shows_list_escaped_and_without_inline_code(client: TestClient, eng
 
     assert EVIL not in html and "&lt;img src=x onerror=alert(1)&gt;" in html
     no_inline_code(html)
-    assert "2\u202f400,01\xa0₽" in html  # 1200,00 + 1200,01
+    # 1200,00 + 1200,01; крупный итог шрифтом Unbounded — с обычным неразрывным пробелом между разрядами (фильтр figure).
+    assert '<p class="hero__total num" data-total>2\xa0400,01\xa0₽</p>' in html
     assert 'data-category="' in html and '<svg class="sparkline"' in html
     assert 'hx-get="/web/?period=week"' in html and 'aria-current="true"' in html
 

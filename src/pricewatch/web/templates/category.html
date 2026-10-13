@@ -10,7 +10,7 @@
   <div class="hero__figures" id="hero-figures">
     <p class="eyebrow">Категория покупок</p>
     <h1 id="hero-title" class="hero__name">{{ detail.name }}</h1>
-    <p class="hero__total num">{{ detail.total_text }}</p>
+    <p class="hero__total num">{{ detail.total_text | figure }}</p>
     <p class="hero__delta">{{ change_badges(detail.change) }}<span class="hero__since">{{ since }} · только из-за цен</span></p>
   </div>
   {{ period_switch(base, detail.period) }}
@@ -65,7 +65,7 @@
       {% endfor %}
       <div class="rows__total">
         <span>Итого</span>
-        <span class="rows__total-sum"><span class="rows__total-figure num">{{ detail.total_text }}</span> {{ change_badges(detail.change) }}</span>
+        <span class="rows__total-sum"><span class="rows__total-figure num">{{ detail.total_text | figure }}</span> {{ change_badges(detail.change) }}</span>
       </div>
     </div>
     {% endif %}
@@ -91,7 +91,7 @@
   <div class="panel-box__head">
     <div>
       <h2 id="chart-title" class="section__title">Итог по дням</h2>
-      <p class="panel-box__lead"><span class="num panel-box__figure">{{ detail.total_text }}</span> итог сегодня</p>
+      <p class="panel-box__lead"><span class="num panel-box__figure">{{ detail.total_text | figure }}</span> итог сегодня</p>
     </div>
     <nav class="seg seg--small" aria-label="Диапазон графика" data-segmented data-active="{{ (chart_range_names | list).index(chart_range.value) }}">
       <span class="seg__thumb" aria-hidden="true"></span>

@@ -9,7 +9,7 @@
   <div class="hero__figures" id="hero-figures">
     <p class="eyebrow">Сводка на {{ long_date(board.as_of) }}</p>
     <h1 id="hero-title" class="hero__title">Всё, что хочу купить</h1>
-    <p class="hero__total num" data-total>{{ board.total_text }}</p>
+    <p class="hero__total num" data-total>{{ board.total_text | figure }}</p>
     <p class="hero__delta">{{ change_badges(board.change) }}<span class="hero__since">{{ since }} · только из-за цен</span></p>
   </div>
   {{ period_switch("/web/", board.period) }}
@@ -46,7 +46,7 @@
         {% if empty %}
         <p class="cat__empty">В категории пока нет товаров.</p>
         {% else %}
-        <p class="cat__total num">{{ card.total_text }}</p>
+        <p class="cat__total num">{{ card.total_text | figure }}</p>
         <p class="cat__delta">{{ change_badges(card.change) }}</p>
         {# Сумма считается только по товарам «в итоге»: без них график был бы ложным нулём (ТЗ, раздел 4). #}
         {% if card.in_total_count %}

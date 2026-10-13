@@ -94,3 +94,9 @@ def count_word(count: int, one: str, few: str, many: str) -> str:
     if 2 <= count % 10 <= 4:
         return f"{count} {few}"
     return f"{count} {many}"
+
+
+def figure(text: str) -> str:
+    """Крупная сумма шрифтом Unbounded: между разрядами — обычный неразрывный пробел. Узкий (U+202F, domain.money) в этом
+    шрифте со сжатым межбуквенным интервалом почти не виден, и «198 794 ₽» читалось как «198794 ₽» (13.10.2026)."""
+    return text.replace("\u202f", "\u00a0")
