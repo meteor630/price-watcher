@@ -2,21 +2,32 @@
 # Код: git clone git@github-price-watcher:meteor630/price-watcher.git /opt/price-watcher (ключ развёртывания только
 # на чтение); обновление: git pull && docker compose up -d --build. Запуск из этой папки: docker compose up -d --build
 # Настройки бота — bot.env рядом (образец ../../bot.env.example; в Git не попадает).
-# HAProxy — в сети хоста: слушает 80 и 443 сервера и обращается к дому по адресу туннеля 10.66.0.2.
+# HAProxy — в своей сети Docker: принимает 80 и 443 сервера и обращается к дому по адресу туннеля 10.66.0.2.
 
 name: pricewatch-vps
 
 services:
   haproxy:
     image: haproxy:3.2-alpine@sha256:5d97434a423c2533cfeb42874d45cf6d69a840b60334582dfbfd5008e94c80be
-    network_mode: host
+    # Своя сеть Docker, а не сеть хоста: в ней порты от 0 открываются без прав, а образ работает не от root
+    # (право NET_BIND_SERVICE пользователю haproxy Docker не передаёт). К дому 10.66.0.2 — через хост, адрес отправителя
+    # Docker подменяет на адрес wg0 10.66.0.1, его и ждёт Caddy дома.
+    ports:
+      - "80:80"
+      - "443:443"
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
-    # Порты 80 и 443 образ занимает правом NET_BIND_SERVICE; других прав не нужно.
     cap_drop: [ALL]
-    cap_add: [NET_BIND_SERVICE]
     security_opt: [no-new-privileges:true]
     read_only: true
+    healthcheck:
+      # Порты заняты: если HAProxy не смог их открыть, он перезапускается по кругу.
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 80 && nc -z 127.0.0.1 443"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      start_interval: 1s
+      retries: 3
     mem_limit: 128m
     logging:
       driver: json-file

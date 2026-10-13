@@ -153,6 +153,14 @@ jobs:
           "
           docker compose down -v
 
+      - name: Запуск HAProxy арендного сервера
+        working-directory: deploy/vps
+        run: |
+          touch bot.env
+          # Здоров — значит, открыл порты 80 и 443 от своего пользователя без прав root.
+          docker compose up -d --wait --wait-timeout 60 haproxy
+          docker compose down
+
   secrets:
     name: Секреты во всей истории (gitleaks)
     runs-on: ubuntu-24.04
