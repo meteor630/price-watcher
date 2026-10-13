@@ -4,6 +4,8 @@
 #   echo <закрытый ключ> | docker compose run --rm --no-deps -T --entrypoint wg tunnel pubkey   → передать на сервер
 [Interface]
 Address = 10.66.0.2/24
+# Путь до дома пропускает пакеты не больше ~1450 байт: с MTU WireGuard по умолчанию (1420) терялись полноразмерные пакеты.
+MTU = 1280
 PrivateKey =
 
 [Peer]
