@@ -1,5 +1,8 @@
-# Арендный сервер: пересылка в туннель (HAProxy). Запуск из этой папки: docker compose up -d
-# Сеть хоста: HAProxy слушает 80 и 443 сервера и обращается к дому по адресу туннеля 10.66.0.2.
+# Арендный сервер: пересылка в туннель (HAProxy) и Telegram-бот.
+# Код: git clone git@github-price-watcher:meteor630/price-watcher.git /opt/price-watcher (ключ развёртывания только
+# на чтение); обновление: git pull && docker compose up -d --build. Запуск из этой папки: docker compose up -d --build
+# Настройки бота — bot.env рядом (образец ../../bot.env.example; в Git не попадает).
+# HAProxy — в сети хоста: слушает 80 и 443 сервера и обращается к дому по адресу туннеля 10.66.0.2.
 
 name: pricewatch-vps
 
@@ -15,6 +18,27 @@ services:
     security_opt: [no-new-privileges:true]
     read_only: true
     mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    restart: unless-stopped
+
+  bot:
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile
+      target: app
+    image: pricewatch-bot
+    command: ["python", "-m", "pricewatch.bot"]
+    # Адрес сайта — публичный https://prices.meteor630.ru: бот заодно видит, открывается ли сайт снаружи.
+    env_file: bot.env
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 256m
     logging:
       driver: json-file
       options:
