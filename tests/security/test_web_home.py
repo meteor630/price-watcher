@@ -54,7 +54,10 @@ def account_with_list(engine: Engine, category: str = "Дом", items: int = 2) 
     store = sql(engine, "INSERT INTO stores (canonical_host, display_name, color, parser_key, auto_created, min_delay_ms) VALUES (:h, :n, 'store-5', 'universal', true, 2000) RETURNING id", h=f"{uuid.uuid4().hex[:8]}.example", n=EVIL)
     run = sql(engine, "INSERT INTO parse_runs (kind, status, total, created_at, finished_at) VALUES ('on_add', 'finished', 0, :t, :t) RETURNING id", t=NOW)
     for index in range(items):
-        item = sql(engine, "INSERT INTO items (user_id, category_id, name, position) VALUES (:u, :c, :n, :p) RETURNING id", u=user, c=category_id, n=f"{EVIL} {index}", p=index)
+        # Товар добавлен по часам приложения (NOW), после последней цены: по настоящим часам базы он с 13.10.2026 оказался
+        # «добавлен» через неделю после цен, и цена при добавлении считалась устаревшей.
+        item = sql(engine, "INSERT INTO items (user_id, category_id, name, position, created_at) VALUES (:u, :c, :n, :p, :t) RETURNING id",
+                   u=user, c=category_id, n=f"{EVIL} {index}", p=index, t=NOW - timedelta(minutes=30))
         link = sql(engine, "INSERT INTO tracked_links (store_id, normalized_url, region_code) VALUES (:s, :url, 'spb') RETURNING id", s=store, url=f"https://shop.example/{uuid.uuid4().hex}")
         sql(engine, "INSERT INTO item_links (user_id, item_id, tracked_link_id, store_id, valid_from) VALUES (:u, :i, :l, :s, :f) RETURNING id", u=user, i=item, l=link, s=store, f=NOW - timedelta(days=20))
         for at, price in ((NOW - timedelta(days=1), 1000_00), (NOW - timedelta(hours=1), 1200_00 + index)):

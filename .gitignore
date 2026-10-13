@@ -22,6 +22,8 @@ backup.env
 # Ключи туннеля WireGuard: закрытый ключ узла
 tunnel.conf
 wg0.conf
+# Ключ SSH службы копий для отправки на арендный сервер
+deploy/home/backup-ssh/
 # Профили браузера worker: cookies магазинов
 .browser-profiles/
 # Фото товаров — данные сервера

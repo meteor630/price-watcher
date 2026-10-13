@@ -222,14 +222,19 @@ def load_bot_settings(env_file: Path | None = Path("bot.env")) -> BotSettings:
 
 
 class BackupSettings(BaseSettings):
-    """Настройки службы резервных копий: папка копий, открытый ключ age, время копии по Москве.
-    База и папка картинок — из настроек сервера."""
+    """Настройки службы резервных копий: папка копий, открытый ключ age, время копии по Москве, куда отправлять копии
+    на арендный сервер (пользователь, который может только дописывать). База и папка картинок — из настроек сервера."""
 
     model_config = SettingsConfigDict(env_prefix=BACKUP_PREFIX, env_file_encoding="utf-8", extra="forbid", frozen=True)
 
     dir: Path
     recipient: Annotated[str, Field(pattern=AGE_RECIPIENT_PATTERN)]
     time: time_of_day = time_of_day(4, 30)
+    remote: Annotated[str, Field(pattern=r"^[a-z_][a-z0-9_-]{0,31}@[A-Za-z0-9.-]{1,253}$")]
+    ssh_port: int = Field(default=22, ge=1, le=65535)
+    # Закрытый ключ SSH службы копий и строка ключа арендного сервера для строгой сверки.
+    ssh_key: Path
+    known_hosts: Path
 
 
 def load_backup_settings(env_file: Path | None = Path("backup.env")) -> BackupSettings:

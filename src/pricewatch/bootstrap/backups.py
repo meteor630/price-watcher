@@ -1,7 +1,7 @@
 """Служба резервных копий: python -m pricewatch.bootstrap backup [--once].
 
-Настройки и проверка базы — как у сервера, плюс backup.env (PRICEWATCH_BACKUP_…); коды выхода те же: 2 — конфигурация,
-3 — база или схема. --once — одна копия сейчас: 0 — удалась, 1 — нет. Без него — ежедневно в заданное время.
+Настройки и проверка базы — как у сервера, плюс backup.env (PRICEWATCH_BACKUP_…, в том числе куда отправлять копии);
+коды выхода те же: 2 — конфигурация, 3 — база или схема. --once — одна копия сейчас: 0 — удалась, 1 — нет. Без него — ежедневно в заданное время.
 """
 
 import logging
@@ -12,7 +12,7 @@ from pathlib import Path
 from sqlalchemy import make_url
 
 from pricewatch.application.backups import make_backup
-from pricewatch.backup.archive import AgeArchive, DatabaseAddress
+from pricewatch.backup.archive import AgeArchive, DatabaseAddress, RemoteFolder
 from pricewatch.backup.service import BackupService
 from pricewatch.bootstrap.server import EXIT_CONFIG, EXIT_DATABASE, check_database
 from pricewatch.config.settings import ConfigError, load_backup_settings, load_settings
@@ -35,7 +35,8 @@ def run_backups(once: bool, env_file: Path = Path(".env"), backup_env: Path = Pa
     configure_logging(settings.log_level)
     url = make_url(settings.database_url.get_secret_value())
     database = DatabaseAddress(url.host or "localhost", url.port or POSTGRES_PORT, url.username or "", url.database or "", url.password or "")
-    archive = AgeArchive(backup.dir, settings.media_dir, backup.recipient, database)
+    remote = RemoteFolder(backup.remote, backup.ssh_port, backup.ssh_key, backup.known_hosts)
+    archive = AgeArchive(backup.dir, settings.media_dir, backup.recipient, database, remote)
     engine = create_db_engine(settings.database_url.get_secret_value())
     try:
         if not check_database(engine):

@@ -19,10 +19,12 @@ NOW = datetime(2026, 10, 14, 1, 30, tzinfo=UTC)
 class FolderInMemory:
     """Папка копий: имена и размеры файлов; сбой — заданный код."""
 
-    def __init__(self, names: list[str], *, create_fails: str | None = None, remove_fails: bool = False) -> None:
+    def __init__(self, names: list[str], *, create_fails: str | None = None, remove_fails: bool = False, upload_fails: bool = False) -> None:
         self.files = dict.fromkeys(names, 1)
         self.create_fails = create_fails
         self.remove_fails = remove_fails
+        self.upload_fails = upload_fails
+        self.uploaded: list[list[str]] = []
 
     def create(self, name: str) -> int:
         if self.create_fails:
@@ -37,6 +39,11 @@ class FolderInMemory:
         if self.remove_fails:
             raise BackupError("STORAGE_FAILED")
         del self.files[name]
+
+    def upload(self) -> None:
+        if self.upload_fails:
+            raise BackupError("UPLOAD_FAILED")
+        self.uploaded.append(sorted(self.files))
 
 
 class Clock:
@@ -77,30 +84,47 @@ RECENT = backup_name(NOW - timedelta(days=1))
 # --- обычный путь ---
 
 
-def test_successful_backup_is_journaled_and_old_copies_removed(engine: Engine) -> None:
+def test_successful_backup_is_journaled_old_copies_removed_and_rest_uploaded(engine: Engine) -> None:
     folder = FolderInMemory([OLD, RECENT, "notes.txt"])
     outcome = run(engine, folder)
     name = backup_name(NOW)
     assert outcome == BackupOutcome("ok", name, 4096, None)
     assert sorted(folder.files) == sorted([RECENT, "notes.txt", name])
+    # На сервер уходит то, что осталось после удаления старых: копия старше 30 суток туда не попадёт.
+    assert folder.uploaded == [sorted([RECENT, "notes.txt", name])]
     assert journal(engine) == [("ok", NOW, NOW + timedelta(minutes=1), name, 4096, None)]
 
 
 # --- отказ ---
 
 
-def test_failed_backup_keeps_old_copies_and_journals_code(engine: Engine) -> None:
+def test_failed_backup_keeps_old_copies_uploads_nothing_and_journals_code(engine: Engine) -> None:
     folder = FolderInMemory([OLD, RECENT], create_fails="DATABASE_DUMP_FAILED")
     assert run(engine, folder) == BackupOutcome("failed", None, None, "DATABASE_DUMP_FAILED")
     assert sorted(folder.files) == sorted([OLD, RECENT])
+    assert folder.uploaded == []
     assert journal(engine) == [("failed", NOW, NOW + timedelta(minutes=1), None, None, "DATABASE_DUMP_FAILED")]
 
 
-def test_copy_made_but_old_not_removed_is_a_failure(engine: Engine) -> None:
+def test_copy_made_but_old_not_removed_is_a_failure_and_still_uploaded(engine: Engine) -> None:
     folder = FolderInMemory([OLD], remove_fails=True)
     name = backup_name(NOW)
     assert run(engine, folder) == BackupOutcome("failed", name, 4096, RETENTION_FAILED)
+    assert folder.uploaded == [sorted([OLD, name])]
     assert journal(engine) == [("failed", NOW, NOW + timedelta(minutes=1), name, 4096, RETENTION_FAILED)]
+
+
+def test_copy_kept_at_home_when_upload_fails(engine: Engine) -> None:
+    folder = FolderInMemory([RECENT], upload_fails=True)
+    name = backup_name(NOW)
+    assert run(engine, folder) == BackupOutcome("failed", name, 4096, "UPLOAD_FAILED")
+    assert sorted(folder.files) == sorted([RECENT, name])
+    assert journal(engine) == [("failed", NOW, NOW + timedelta(minutes=1), name, 4096, "UPLOAD_FAILED")]
+
+
+def test_first_failure_wins_when_both_steps_fail(engine: Engine) -> None:
+    folder = FolderInMemory([OLD], remove_fails=True, upload_fails=True)
+    assert run(engine, folder).error_code == RETENTION_FAILED
 
 
 # --- граница: оборванная попытка и повторное завершение ---

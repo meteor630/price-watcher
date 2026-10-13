@@ -916,6 +916,9 @@ class BackupArchive(Protocol):
     def remove(self, name: str) -> None:
         """Удалить копию; сбой — BackupError."""
         ...
+    def upload(self) -> None:
+        """Отправить на арендный сервер копии, которых там ещё нет; сбой — BackupError."""
+        ...
 
 
 class ImageStore(Protocol):

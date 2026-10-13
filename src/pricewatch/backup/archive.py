@@ -8,6 +8,10 @@
   в age tar идёт потоком, на диск попадает только зашифрованное.
 - Копия пишется под временным именем и переименовывается целиком: оборванная запись не выглядит копией.
   Временные файлы оборванных попыток удаляются перед новой копией.
+- На арендный сервер копии уходят rsync по SSH к пользователю, который может только дописывать новые файлы
+  (deploy/vps/backup-target.sh): уже лежащие там не отправляются и не перезаписываются. Ключ сервера сверяется
+  строго по заранее записанному known_hosts; свой ключ — копией с правами только владельца (на диске Windows,
+  подключённом в контейнер, права шире, и ssh такой ключ не взял бы).
 """
 
 import logging
@@ -21,6 +25,7 @@ from pathlib import Path
 from typing import IO
 
 from pricewatch.application.ports import BackupError
+from pricewatch.domain.backups import created_at
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +33,8 @@ DATABASE_DUMP_FAILED = "DATABASE_DUMP_FAILED"
 ENCRYPTION_FAILED = "ENCRYPTION_FAILED"
 STORAGE_FAILED = "STORAGE_FAILED"
 MEDIA_UNAVAILABLE = "MEDIA_UNAVAILABLE"
+UPLOAD_FAILED = "UPLOAD_FAILED"
+UPLOAD_TIMEOUT_S = 1800
 PARTIAL_PATTERN = ".pricewatch-*.partial"
 STDERR_TAIL = 2000
 
@@ -42,22 +49,34 @@ class DatabaseAddress:
 
 
 @dataclass(frozen=True, slots=True)
+class RemoteFolder:
+    """Папка копий на арендном сервере: адрес вида pwbackup@tunnel.example.ru, порт SSH, свой ключ и ключ сервера."""
+
+    target: str
+    port: int
+    key_file: Path
+    known_hosts: Path
+
+
+@dataclass(frozen=True, slots=True)
 class Programs:
-    """Команды запуска pg_dump и age (в тестах — подставные программы)."""
+    """Команды запуска pg_dump, age и rsync (в тестах — подставные программы)."""
 
     pg_dump: Sequence[str] = ("pg_dump",)
     age: Sequence[str] = ("age",)
+    rsync: Sequence[str] = ("rsync",)
 
 
 class AgeArchive:
     def __init__(
-        self, folder: Path, media_dir: Path, recipient: str, database: DatabaseAddress, *,
+        self, folder: Path, media_dir: Path, recipient: str, database: DatabaseAddress, remote: RemoteFolder, *,
         programs: Programs = Programs(), work_root: Path | None = None,
     ) -> None:
         self.folder = folder
         self.media_dir = media_dir
         self.recipient = recipient
         self.database = database
+        self.remote = remote
         self.programs = programs
         self.work_root = work_root
 
@@ -92,6 +111,34 @@ class AgeArchive:
         except OSError as error:
             logger.error("Старая копия не удалена", extra={"file": name}, exc_info=True)
             raise BackupError(STORAGE_FAILED) from error
+
+    def upload(self) -> None:
+        names = sorted(name for name in self.names() if created_at(name) is not None)
+        if not names:
+            return
+        try:
+            key = self.remote.key_file.read_bytes()
+        except OSError as error:
+            logger.error("Нет ключа SSH для отправки копий", extra={"path": str(self.remote.key_file)}, exc_info=True)
+            raise BackupError(UPLOAD_FAILED) from error
+        with tempfile.TemporaryDirectory(dir=self.work_root) as work:
+            key_copy = Path(work) / "ssh_key"
+            key_copy.write_bytes(key)
+            key_copy.chmod(0o600)
+            ssh = " ".join([
+                "ssh", "-F", "/dev/null", "-i", str(key_copy), "-p", str(self.remote.port), "-o", "BatchMode=yes",
+                "-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={self.remote.known_hosts}",
+                "-o", "ConnectTimeout=30",
+            ])
+            command = [*self.programs.rsync, "--ignore-existing", "--chmod=F600", "-e", ssh, *(str(self.folder / name) for name in names), f"{self.remote.target}:"]
+            try:
+                result = subprocess.run(command, capture_output=True, check=False, timeout=UPLOAD_TIMEOUT_S)
+            except subprocess.TimeoutExpired as error:
+                logger.error("Отправка копий на сервер не уложилась во время", extra={"timeout_s": UPLOAD_TIMEOUT_S})
+                raise BackupError(UPLOAD_FAILED) from error
+        if result.returncode != 0:
+            logger.error("Копии не отправлены на сервер", extra={"exit_code": result.returncode, "stderr": _tail(result.stderr)})
+            raise BackupError(UPLOAD_FAILED)
 
     def _remove_partials(self) -> None:
         try:

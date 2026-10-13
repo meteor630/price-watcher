@@ -436,6 +436,7 @@ def test_bad_bot_admin_chat_ids_name_variable(monkeypatch: pytest.MonkeyPatch, r
 from pricewatch.config.settings import BackupSettings, load_backup_settings  # noqa: E402
 
 RECIPIENT = "age1" + "q" * 58
+REMOTE = {"REMOTE": "pwbackup@tunnel.example.ru", "SSH_KEY": "/run/backup-ssh/id_ed25519", "KNOWN_HOSTS": "/run/backup-ssh/known_hosts"}
 
 
 def backup_env(monkeypatch: pytest.MonkeyPatch, **values: str) -> None:
@@ -448,23 +449,27 @@ def backup_env(monkeypatch: pytest.MonkeyPatch, **values: str) -> None:
 def test_backup_settings_normal_with_default_time(monkeypatch: pytest.MonkeyPatch) -> None:
     from datetime import time
 
-    backup_env(monkeypatch, DIR="/backups", RECIPIENT=RECIPIENT)
+    backup_env(monkeypatch, DIR="/backups", RECIPIENT=RECIPIENT, **REMOTE)
 
     settings = load_backup_settings(None)
 
     assert (settings.dir, settings.recipient, settings.time) == (Path("/backups"), RECIPIENT, time(4, 30))
+    assert (settings.remote, settings.ssh_port, settings.ssh_key) == ("pwbackup@tunnel.example.ru", 22, Path("/run/backup-ssh/id_ed25519"))
 
 
 @pytest.mark.parametrize(
     ("values", "variable"),
     [
-        ({"DIR": "/backups"}, "PRICEWATCH_BACKUP_RECIPIENT"),
-        ({"DIR": "/backups", "RECIPIENT": "AGE-SECRET-KEY-1" + "Q" * 58}, "PRICEWATCH_BACKUP_RECIPIENT"),
-        ({"DIR": "/backups", "RECIPIENT": "age1" + "b" * 58}, "PRICEWATCH_BACKUP_RECIPIENT"),
-        ({"DIR": "/backups", "RECIPIENT": RECIPIENT, "TIME": "25:00"}, "PRICEWATCH_BACKUP_TIME"),
-        ({"RECIPIENT": RECIPIENT}, "PRICEWATCH_BACKUP_DIR"),
+        ({"DIR": "/backups", **REMOTE}, "PRICEWATCH_BACKUP_RECIPIENT"),
+        ({"DIR": "/backups", "RECIPIENT": "AGE-SECRET-KEY-1" + "Q" * 58, **REMOTE}, "PRICEWATCH_BACKUP_RECIPIENT"),
+        ({"DIR": "/backups", "RECIPIENT": "age1" + "b" * 58, **REMOTE}, "PRICEWATCH_BACKUP_RECIPIENT"),
+        ({"DIR": "/backups", "RECIPIENT": RECIPIENT, "TIME": "25:00", **REMOTE}, "PRICEWATCH_BACKUP_TIME"),
+        ({"RECIPIENT": RECIPIENT, **REMOTE}, "PRICEWATCH_BACKUP_DIR"),
+        ({"DIR": "/backups", "RECIPIENT": RECIPIENT, **REMOTE, "REMOTE": "tunnel.example.ru"}, "PRICEWATCH_BACKUP_REMOTE"),
+        ({"DIR": "/backups", "RECIPIENT": RECIPIENT, **REMOTE, "REMOTE": "pwbackup@host;rm -rf /"}, "PRICEWATCH_BACKUP_REMOTE"),
+        ({"DIR": "/backups", "RECIPIENT": RECIPIENT, "REMOTE": "pwbackup@tunnel.example.ru", "KNOWN_HOSTS": "/k"}, "PRICEWATCH_BACKUP_SSH_KEY"),
     ],
-    ids=["no-recipient", "secret-key-instead-of-public", "not-bech32", "bad-time", "no-dir"],
+    ids=["no-recipient", "secret-key-instead-of-public", "not-bech32", "bad-time", "no-dir", "remote-without-user", "remote-with-shell", "no-ssh-key"],
 )
 def test_backup_settings_errors_name_variable_without_value(monkeypatch: pytest.MonkeyPatch, values: dict, variable: str) -> None:
     backup_env(monkeypatch, **values)
@@ -477,14 +482,14 @@ def test_backup_settings_errors_name_variable_without_value(monkeypatch: pytest.
 
 
 def test_backup_rejects_unknown_backup_variable(monkeypatch: pytest.MonkeyPatch) -> None:
-    backup_env(monkeypatch, DIR="/backups", RECIPIENT=RECIPIENT, KEY="typo")
+    backup_env(monkeypatch, DIR="/backups", RECIPIENT=RECIPIENT, KEY="typo", **REMOTE)
 
     with pytest.raises(ConfigError, match="PRICEWATCH_BACKUP_KEY"):
         load_backup_settings(None)
 
 
 def test_server_ignores_backup_variables(monkeypatch: pytest.MonkeyPatch) -> None:
-    backup_env(monkeypatch, DIR="/backups", RECIPIENT=RECIPIENT)
+    backup_env(monkeypatch, DIR="/backups", RECIPIENT=RECIPIENT, **REMOTE)
     monkeypatch.setenv("PRICEWATCH_ENV", "test")
 
     with pytest.raises(ConfigError) as caught:

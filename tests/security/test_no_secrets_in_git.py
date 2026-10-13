@@ -92,7 +92,7 @@ def is_ignored(path: str) -> bool:
 
 
 @pytest.mark.parametrize(
-    "path", [".env", ".env.local", ".env.production", "deploy/.env", "worker.env", "bot.env", "backup.env", "deploy/home/tunnel.conf", "deploy/vps/wg0.conf", ".browser-profiles/avito/Default/Cookies"]
+    "path", [".env", ".env.local", ".env.production", "deploy/.env", "worker.env", "bot.env", "backup.env", "deploy/home/tunnel.conf", "deploy/vps/wg0.conf", "deploy/home/backup-ssh/id_ed25519", ".browser-profiles/avito/Default/Cookies"]
 )
 def test_env_files_are_ignored_by_git(path: str) -> None:
     assert is_ignored(path)

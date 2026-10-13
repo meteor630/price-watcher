@@ -153,6 +153,8 @@ jobs:
           # Ключ age для копий появится после сборки образа; до неё Compose нужен файл настроек копий.
           touch "$RUNNER_TEMP/backup.env"
           mkdir -m 777 "$RUNNER_TEMP/backups"
+          # Папка ключа SSH службы копий: до первого запуска службы, иначе Docker создаст её сам от root.
+          mkdir -m 777 backup-ssh
           export PRICEWATCH_SERVER_ENV="$RUNNER_TEMP/server.env"
           export PRICEWATCH_BACKUP_ENV="$RUNNER_TEMP/backup.env" BACKUP_HOST_DIR="$RUNNER_TEMP/backups"
           docker compose config -q
@@ -164,11 +166,36 @@ jobs:
           docker run --rm -v "$PWD/../vps/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro" "$(docker compose -f ../vps/compose.yaml config --images | grep '^haproxy')" haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
           docker compose up -d --wait db app scheduler
           curl -fsS http://127.0.0.1:8000/healthz
-          # Резервная копия тем же образом и с теми же ограничениями: копия → расшифровка тестовым ключом → pg_restore.
+          # Резервная копия тем же образом и с теми же ограничениями: копия → отправка на сервер копий → расшифровка
+          # тестовым ключом → pg_restore. Сервер копий — как арендный: тот же deploy/vps/backup-target.sh в чистой Ubuntu 26.04
+          # (rrsync -no-overwrite есть с rsync 3.4; в Debian bookworm его нет).
           docker compose run --rm --no-deps --entrypoint age-keygen backup > "$RUNNER_TEMP/age.key"
-          printf 'PRICEWATCH_BACKUP_RECIPIENT=%s\n' "$(grep -o 'age1[0-9a-z]*' "$RUNNER_TEMP/age.key")" > "$RUNNER_TEMP/backup.env"
+          docker compose run --rm --no-deps -v "$PWD/backup-ssh:/out" --entrypoint ssh-keygen backup -q -t ed25519 -N '' -C pricewatch-backup -f /out/id_ed25519
+          docker run -d --name backup-target --network pricewatch_backend -v "$PWD/../vps/backup-target.sh:/backup-target.sh:ro" \
+            ubuntu:26.04@sha256:f144425ff09be612d6d9ad965196e9cdc23dae1f42110a8a11a3e9a8198759f7 sleep infinity
+          docker exec backup-target sh -c 'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends openssh-server rsync python3 > /dev/null'
+          docker exec backup-target sh /backup-target.sh "$(cat backup-ssh/id_ed25519.pub)"
+          docker exec backup-target sh -c 'mkdir -p /run/sshd && /usr/sbin/sshd'
+          printf 'backup-target %s\n' "$(docker exec backup-target cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)" > backup-ssh/known_hosts
+          printf 'PRICEWATCH_BACKUP_RECIPIENT=%s\nPRICEWATCH_BACKUP_REMOTE=pwbackup@backup-target\n' "$(grep -o 'age1[0-9a-z]*' "$RUNNER_TEMP/age.key")" > "$RUNNER_TEMP/backup.env"
           docker compose run --rm --no-deps backup python -m pricewatch.bootstrap backup --once
           ls -l "$RUNNER_TEMP/backups"
+          name="$(basename "$RUNNER_TEMP"/backups/pricewatch-*.tar.age)"
+          test "$(docker exec backup-target sha256sum "/srv/pricewatch-backups/$name" | cut -d' ' -f1)" = "$(sha256sum "$RUNNER_TEMP/backups/$name" | cut -d' ' -f1)"
+          # Ключ службы копий может только дописывать: не читает, не выполняет команд, не удаляет и не перезаписывает.
+          cat > "$RUNNER_TEMP/deny.sh" <<'SH'
+          cp /run/backup-ssh/id_ed25519 /tmp/k && chmod 600 /tmp/k
+          SSH="ssh -F /dev/null -i /tmp/k -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/run/backup-ssh/known_hosts"
+          denied() { echo "ключ службы копий смог: $1" >&2; exit 1; }
+          rsync -e "$SSH" "pwbackup@backup-target:$1" /tmp/stolen && denied "прочитать копию"
+          $SSH pwbackup@backup-target ls / && denied "выполнить команду"
+          mkdir /tmp/empty && rsync -r --delete -e "$SSH" /tmp/empty/ pwbackup@backup-target: && denied "удалить копии"
+          printf junk > "/tmp/$1" && rsync -e "$SSH" "/tmp/$1" pwbackup@backup-target: || denied "отправить файл (должно молча пропустить)"
+          exit 0
+          SH
+          docker compose run --rm --no-deps -v "$RUNNER_TEMP/deny.sh:/deny.sh:ro" --entrypoint sh backup /deny.sh "$name"
+          test "$(docker exec backup-target sha256sum "/srv/pricewatch-backups/$name" | cut -d' ' -f1)" = "$(sha256sum "$RUNNER_TEMP/backups/$name" | cut -d' ' -f1)"
+          docker rm -f backup-target
           docker compose run --rm --no-deps -v "$RUNNER_TEMP/age.key:/run/age.key:ro" --entrypoint sh backup -c \
             'age --decrypt --identity /run/age.key /backups/pricewatch-*.tar.age | tar -xO database.dump | pg_restore --list | grep -q "TABLE public backup_runs"'
           test "$(docker compose exec -T db psql -U pricewatch -d pricewatch -tAc "SELECT status FROM backup_runs")" = ok

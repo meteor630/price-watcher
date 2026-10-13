@@ -159,10 +159,14 @@ services:
     environment:
       <<: *server-env
       PRICEWATCH_BACKUP_DIR: /backups
+      PRICEWATCH_BACKUP_SSH_KEY: /run/backup-ssh/id_ed25519
+      PRICEWATCH_BACKUP_KNOWN_HOSTS: /run/backup-ssh/known_hosts
     # Копии — на отдельном от базы диске (на ПК — D:); картинки только читаются. Незашифрованный дамп — в /tmp (память).
+    # backup-ssh рядом: ключ SSH для отправки копий на арендный сервер и строка его ключа (в Git не попадают).
     volumes:
       - media:/data/media:ro
       - ${BACKUP_HOST_DIR:?задайте BACKUP_HOST_DIR в deploy/home/.env}:/backups
+      - ./backup-ssh:/run/backup-ssh:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
