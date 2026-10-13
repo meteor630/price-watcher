@@ -1,8 +1,9 @@
 # Домашний узел (DEVELOPMENT_ARCHITECTURE.md, раздел 1): база, миграции, сайт и API, планировщик, worker с Chrome.
 # Запуск из этой папки: docker compose up -d --build
-# Настройки: ../../.env (сервер), ../../worker.env (worker), .env рядом (пароль базы), tunnel.conf рядом (ключ туннеля).
+# Настройки: ../../.env (сервер), ../../worker.env (worker), ../../backup.env (копии), .env рядом (пароль базы, папка копий),
+# tunnel.conf рядом (ключ туннеля).
 # Все они в Git не попадают.
-# Другие пути к файлам настроек — переменные PRICEWATCH_SERVER_ENV и PRICEWATCH_WORKER_ENV.
+# Другие пути к файлам настроек — переменные PRICEWATCH_SERVER_ENV, PRICEWATCH_WORKER_ENV и PRICEWATCH_BACKUP_ENV.
 # Порядок старта: база здорова → миграции прошли → сайт и планировщик → worker, когда сайт здоров.
 # Сети: база видна только серверу (backend); worker видит только API сайта (workers) — он открывает чужие сайты;
 # туннель с Caddy видят только сайт (edge). Снаружи сайт открывается так: арендный сервер → туннель WireGuard → Caddy → app.
@@ -139,6 +140,29 @@ services:
   scheduler:
     <<: *server
     command: ["python", "-m", "pricewatch.bootstrap", "scheduler"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    mem_limit: 512m
+
+  backup:
+    <<: *server
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile
+      target: backup
+    image: pricewatch-backup
+    command: ["python", "-m", "pricewatch.bootstrap", "backup"]
+    env_file:
+      - ${PRICEWATCH_SERVER_ENV:-../../.env}
+      - ${PRICEWATCH_BACKUP_ENV:-../../backup.env}
+    environment:
+      <<: *server-env
+      PRICEWATCH_BACKUP_DIR: /backups
+    # Копии — на отдельном от базы диске (на ПК — D:); картинки только читаются. Незашифрованный дамп — в /tmp (память).
+    volumes:
+      - media:/data/media:ro
+      - ${BACKUP_HOST_DIR:?задайте BACKUP_HOST_DIR в deploy/home/.env}:/backups
     depends_on:
       migrate:
         condition: service_completed_successfully

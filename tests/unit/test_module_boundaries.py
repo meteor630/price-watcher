@@ -14,10 +14,10 @@ LINT_IMPORTS = shutil.which("lint-imports", path=str(Path(sys.executable).parent
 
 DOMAIN = "domain импортирует только стандартную библиотеку"
 APPLICATION = "application зависит только от domain"
-PERSISTENCE_OUTWARD = "persistence не импортирует api, web, parsers, worker, scheduler, bot, bootstrap"
+PERSISTENCE_OUTWARD = "persistence не импортирует api, web, parsers, worker, scheduler, bot, backup, bootstrap"
 PERSISTENCE_ONLY_BOOTSTRAP = "persistence импортирует только bootstrap"
 BOOTSTRAP_ENTRY = "bootstrap никто не импортирует: обход сценариев через него невозможен"
-WORKER_BOT = "worker и bot не импортируют persistence"
+WORKER_BOT = "worker, bot и backup не импортируют persistence"
 STORES = "адаптеры магазинов не импортируют друг друга"
 
 
@@ -70,6 +70,9 @@ def test_current_code_keeps_contracts() -> None:
         ("scheduler", "from pricewatch import bootstrap", BOOTSTRAP_ENTRY),
         ("worker", "import pricewatch.persistence", WORKER_BOT),
         ("bot", "import pricewatch.persistence", WORKER_BOT),
+        ("backup", "import pricewatch.persistence", WORKER_BOT),
+        ("application", "import pricewatch.backup", APPLICATION),
+        ("persistence", "import pricewatch.backup", PERSISTENCE_OUTWARD),
     ],
 )
 def test_violation_breaks_contract(project_copy: Path, package: str, line: str, contract: str) -> None:

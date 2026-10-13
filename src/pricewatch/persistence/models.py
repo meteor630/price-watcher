@@ -753,3 +753,29 @@ class IdempotencyKeyRow(Base):
         CheckConstraint("(response_status IS NULL) = (response_body IS NULL)", name="response_together"),
         Index("ix_idempotency_keys_created_at", "created_at"),
     )
+
+
+class BackupRunRow(Base):
+    """Попытка резервной копии (DEVELOPMENT_ARCHITECTURE.md, раздел 11): начало, итог, файл и размер или код ошибки.
+    Оборванная попытка остаётся «running»; по журналу планировщик узнаёт о сбое и давности удачной копии."""
+
+    __tablename__ = "backup_runs"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    file_name: Mapped[str | None] = mapped_column(Text)
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    error_code: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint("status IN ('running', 'ok', 'failed')", name="status"),
+        CheckConstraint("(status = 'running') = (finished_at IS NULL)", name="finished_at_with_status"),
+        CheckConstraint("status <> 'ok' OR (file_name IS NOT NULL AND size_bytes IS NOT NULL)", name="ok_with_file"),
+        CheckConstraint("(status = 'failed') = (error_code IS NOT NULL)", name="error_code_with_failure"),
+        CheckConstraint("file_name IS NULL OR char_length(file_name) BETWEEN 1 AND 200", name="file_name_length"),
+        CheckConstraint("size_bytes IS NULL OR size_bytes >= 0", name="size_bytes"),
+        CheckConstraint("error_code IS NULL OR error_code ~ '^[A-Z_]{1,60}$'", name="error_code_format"),
+        Index("ix_backup_runs_started_at", "started_at"),
+    )

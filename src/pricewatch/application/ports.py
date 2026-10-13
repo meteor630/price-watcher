@@ -878,6 +878,46 @@ class ClientErrorRepository(Protocol):
     def purge(self, received_before: datetime) -> int: ...
 
 
+class BackupError(Exception):
+    """Резервная копия не создана или старые не удалены; код — для журнала копий и уведомления, без подробностей среды."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+@dataclass(frozen=True, slots=True)
+class BackupOutcome:
+    """Итог попытки копии: ok — файл и размер; failed — код ошибки (файл есть, если не удалось только удалить старые)."""
+
+    status: str
+    file_name: str | None
+    size_bytes: int | None
+    error_code: str | None
+
+
+class BackupRepository(Protocol):
+    def start(self, now: datetime) -> int:
+        """Записать начало попытки; её номер."""
+        ...
+    def finish(self, backup_id: int, outcome: BackupOutcome, now: datetime) -> None: ...
+
+
+class BackupArchive(Protocol):
+    """Папка копий на домашнем узле."""
+
+    def create(self, name: str) -> int:
+        """Зашифрованная копия базы и картинок под этим именем; размер в байтах.
+        Сбой — BackupError, и файла с этим именем нет."""
+        ...
+    def names(self) -> list[str]:
+        """Имена файлов в папке копий."""
+        ...
+    def remove(self, name: str) -> None:
+        """Удалить копию; сбой — BackupError."""
+        ...
+
+
 class ImageStore(Protocol):
     def save(self, data: bytes) -> str:
         """Проверить и сохранить фото от worker; путь относительно каталога картинок.
@@ -932,6 +972,7 @@ class UnitOfWork(Protocol):
     client_errors: ClientErrorRepository
     services: ServiceRepository
     telegram: TelegramRepository
+    backups: BackupRepository
 
     def __enter__(self) -> Self: ...
     def __exit__(

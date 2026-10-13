@@ -429,3 +429,78 @@ def test_bad_bot_admin_chat_ids_name_variable(monkeypatch: pytest.MonkeyPatch, r
 
     with pytest.raises(ConfigError, match="PRICEWATCH_BOT_ADMIN_CHAT_IDS"):
         load_bot_settings(None)
+
+
+# --- служба резервных копий ---
+
+from pricewatch.config.settings import BackupSettings, load_backup_settings  # noqa: E402
+
+RECIPIENT = "age1" + "q" * 58
+
+
+def backup_env(monkeypatch: pytest.MonkeyPatch, **values: str) -> None:
+    for name in [name for name in __import__("os").environ if name.startswith("PRICEWATCH_")]:
+        monkeypatch.delenv(name)
+    for name, value in values.items():
+        monkeypatch.setenv(f"PRICEWATCH_BACKUP_{name}", value)
+
+
+def test_backup_settings_normal_with_default_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import time
+
+    backup_env(monkeypatch, DIR="/backups", RECIPIENT=RECIPIENT)
+
+    settings = load_backup_settings(None)
+
+    assert (settings.dir, settings.recipient, settings.time) == (Path("/backups"), RECIPIENT, time(4, 30))
+
+
+@pytest.mark.parametrize(
+    ("values", "variable"),
+    [
+        ({"DIR": "/backups"}, "PRICEWATCH_BACKUP_RECIPIENT"),
+        ({"DIR": "/backups", "RECIPIENT": "AGE-SECRET-KEY-1" + "Q" * 58}, "PRICEWATCH_BACKUP_RECIPIENT"),
+        ({"DIR": "/backups", "RECIPIENT": "age1" + "b" * 58}, "PRICEWATCH_BACKUP_RECIPIENT"),
+        ({"DIR": "/backups", "RECIPIENT": RECIPIENT, "TIME": "25:00"}, "PRICEWATCH_BACKUP_TIME"),
+        ({"RECIPIENT": RECIPIENT}, "PRICEWATCH_BACKUP_DIR"),
+    ],
+    ids=["no-recipient", "secret-key-instead-of-public", "not-bech32", "bad-time", "no-dir"],
+)
+def test_backup_settings_errors_name_variable_without_value(monkeypatch: pytest.MonkeyPatch, values: dict, variable: str) -> None:
+    backup_env(monkeypatch, **values)
+
+    with pytest.raises(ConfigError) as caught:
+        load_backup_settings(None)
+
+    assert variable in str(caught.value)
+    assert "AGE-SECRET-KEY" not in str(caught.value)
+
+
+def test_backup_rejects_unknown_backup_variable(monkeypatch: pytest.MonkeyPatch) -> None:
+    backup_env(monkeypatch, DIR="/backups", RECIPIENT=RECIPIENT, KEY="typo")
+
+    with pytest.raises(ConfigError, match="PRICEWATCH_BACKUP_KEY"):
+        load_backup_settings(None)
+
+
+def test_server_ignores_backup_variables(monkeypatch: pytest.MonkeyPatch) -> None:
+    backup_env(monkeypatch, DIR="/backups", RECIPIENT=RECIPIENT)
+    monkeypatch.setenv("PRICEWATCH_ENV", "test")
+
+    with pytest.raises(ConfigError) as caught:
+        load_settings(None)  # сервер жалуется на свои пропущенные настройки, а не на переменные службы копий
+    assert "Неизвестные" not in str(caught.value)
+
+
+def test_backup_env_example_is_complete_and_loads(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    example = (ROOT / "backup.env.example").read_text(encoding="utf-8")
+    variables = {line.split("=", 1)[0] for line in example.splitlines() if line and not line.startswith("#")}
+    env_file = tmp_path / "backup.env"
+    env_file.write_text(example, encoding="utf-8")
+    # Ключа в примере нет: у каждого узла свой.
+    backup_env(monkeypatch, RECIPIENT=RECIPIENT)
+
+    settings = load_backup_settings(env_file)
+
+    assert variables == {f"PRICEWATCH_BACKUP_{name.upper()}" for name in BackupSettings.model_fields}
+    assert settings.dir == Path("backups")

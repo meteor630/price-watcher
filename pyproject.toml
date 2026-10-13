@@ -66,6 +66,7 @@ forbidden_modules = [
     "pricewatch.worker",
     "pricewatch.scheduler",
     "pricewatch.bot",
+    "pricewatch.backup",
     "pricewatch.observability",
     "pricewatch.bootstrap",
     "pricewatch.config",
@@ -73,7 +74,7 @@ forbidden_modules = [
 
 [[tool.importlinter.contracts]]
 id = "persistence-implements-application"
-name = "persistence не импортирует api, web, parsers, worker, scheduler, bot, bootstrap"
+name = "persistence не импортирует api, web, parsers, worker, scheduler, bot, backup, bootstrap"
 type = "forbidden"
 source_modules = ["pricewatch.persistence"]
 forbidden_modules = [
@@ -83,6 +84,7 @@ forbidden_modules = [
     "pricewatch.worker",
     "pricewatch.scheduler",
     "pricewatch.bot",
+    "pricewatch.backup",
     "pricewatch.bootstrap",
 ]
 
@@ -102,9 +104,9 @@ allowed_importers = []
 
 [[tool.importlinter.contracts]]
 id = "worker-bot-without-persistence"
-name = "worker и bot не импортируют persistence"
+name = "worker, bot и backup не импортируют persistence"
 type = "forbidden"
-source_modules = ["pricewatch.worker", "pricewatch.bot"]
+source_modules = ["pricewatch.worker", "pricewatch.bot", "pricewatch.backup"]
 forbidden_modules = ["pricewatch.persistence"]
 
 [[tool.importlinter.contracts]]

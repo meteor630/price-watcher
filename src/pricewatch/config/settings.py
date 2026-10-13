@@ -8,6 +8,7 @@
 import os
 import re
 from ipaddress import IPv4Network, IPv6Network, ip_network
+from datetime import time as time_of_day
 from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import unquote, urlsplit
@@ -21,6 +22,9 @@ ENV_PREFIX = "PRICEWATCH_"
 # Свои переменные worker: сервер их пропускает, worker — переменные сервера (оба могут жить в одном окружении).
 WORKER_PREFIX = "PRICEWATCH_WORKER_"
 BOT_PREFIX = "PRICEWATCH_BOT_"
+BACKUP_PREFIX = "PRICEWATCH_BACKUP_"
+# Открытый ключ age (bech32): им копии шифруются, расшифровать им нельзя.
+AGE_RECIPIENT_PATTERN = r"^age1[02-9ac-hj-np-z]{58}$"
 WORKER_TOKEN_MIN_CHARS = 40
 LOCAL_ENVIRONMENTS = {"development", "test"}
 SECRET_KEY_MIN_BYTES = 32
@@ -105,7 +109,7 @@ def load_settings(env_file: Path | None = Path(".env")) -> Settings:
     """Прочитать настройки или остановиться с понятной ошибкой."""
     unknown = sorted(
         name for name in os.environ
-        if name.startswith(ENV_PREFIX) and not name.startswith((WORKER_PREFIX, BOT_PREFIX)) and not _is_field(name)
+        if name.startswith(ENV_PREFIX) and not name.startswith((WORKER_PREFIX, BOT_PREFIX, BACKUP_PREFIX)) and not _is_field(name)
     )
     if unknown:
         raise ConfigError("Неизвестные переменные окружения: " + ", ".join(unknown))
@@ -215,6 +219,31 @@ def load_bot_settings(env_file: Path | None = Path("bot.env")) -> BotSettings:
     register_secret(settings.service_token.get_secret_value())
     register_secret(settings.telegram_token.get_secret_value())
     return settings
+
+
+class BackupSettings(BaseSettings):
+    """Настройки службы резервных копий: папка копий, открытый ключ age, время копии по Москве.
+    База и папка картинок — из настроек сервера."""
+
+    model_config = SettingsConfigDict(env_prefix=BACKUP_PREFIX, env_file_encoding="utf-8", extra="forbid", frozen=True)
+
+    dir: Path
+    recipient: Annotated[str, Field(pattern=AGE_RECIPIENT_PATTERN)]
+    time: time_of_day = time_of_day(4, 30)
+
+
+def load_backup_settings(env_file: Path | None = Path("backup.env")) -> BackupSettings:
+    """Настройки службы копий или понятная ошибка; переменные worker и бота служба не смотрит."""
+    unknown = sorted(
+        name for name in os.environ
+        if name.startswith(BACKUP_PREFIX) and name.removeprefix(BACKUP_PREFIX).lower() not in BackupSettings.model_fields
+    )
+    if unknown:
+        raise ConfigError("Неизвестные переменные окружения: " + ", ".join(unknown))
+    try:
+        return BackupSettings(_env_file=env_file)  # type: ignore[call-arg]
+    except ValidationError as error:
+        raise ConfigError(_describe(error, BACKUP_PREFIX)) from None
 
 
 def api_origin(value: str) -> str:

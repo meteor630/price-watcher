@@ -55,12 +55,13 @@
 - Файлы: `.env.example` — все настройки с пояснениями, без секретов; копируется в .env. PRICEWATCH_SECRET_KEY — ключ HMAC для кодов, токенов, сессий; его смена разлогинивает всех. PRICEWATCH_MEDIA_DIR — каталог фото, входит в резервную копию.
 - Файлы: `worker.env.example` — настройки worker без токена; копируется в worker.env (в Git не попадает, как и профили браузера .browser-profiles).
 - Файлы: `bot.env.example` — настройки Telegram-бота без токенов; копируется в bot.env (в Git не попадает).
+- Файлы: `backup.env.example` — настройки службы копий: папка, открытый ключ age, время по Москве; копируется в backup.env (в Git не попадает).
 - Файлы: `.github/workflows/ci.yml` — CI на каждый push: тесты, import-linter, проверка карты на Linux и на Windows; сборка образов Docker, проверка Caddyfile и haproxy.cfg, запуск домашнего узла, /healthz и песочница Chrome в образе worker (PostgreSQL 18 сборки EDB), gitleaks по всей истории. Действия закреплены по хешу, gitleaks и PostgreSQL для Windows — с проверкой контрольной суммы.
 - Файлы: `.gitleaksignore` — ложные срабатывания gitleaks по точному отпечатку; только ненастоящие значения из тестов и только с согласия владельца.
 - Файлы: `.dockerignore` — в образ попадают только pyproject.toml, uv.lock, alembic.ini и src: без секретов, тестов и локальных данных.
-- Файлы: `deploy/Dockerfile` — образы: app (сайт и API, планировщик, миграции, команды; amd64 и arm64) и worker (плюс Google Chrome с проверкой ключа по отпечатку и Xvfb; только amd64); базовые образы по отпечатку, зависимости по uv.lock без dev, пользователь без прав root.
-- Файлы: `deploy/home/compose.yaml` — домашний узел: PostgreSQL 18 (как в CI), миграции до старта, сайт с проверкой /healthz, туннель WireGuard и Caddy в его сетевом пространстве (сайт доверяет X-Forwarded-For только от 172.31.250.2), планировщик, worker (init, 1 ГБ разделяемой памяти, постоянное имя хоста, профиль seccomp, из прав только SYS_CHROOT); у всех, кроме базы, — без прав Linux, без повышения прав, образ только для чтения; сети: база только у сервера, worker видит только API; лимиты памяти, журналы по 10 МБ × 5; пути к файлам настроек — PRICEWATCH_SERVER_ENV и PRICEWATCH_WORKER_ENV.
-- Файлы: `deploy/home/.env.example` — пароль базы для Compose; копируется в deploy/home/.env (в Git не попадает).
+- Файлы: `deploy/Dockerfile` — образы: app (сайт и API, планировщик, миграции, команды; amd64 и arm64) worker (плюс Google Chrome с проверкой ключа по отпечатку и Xvfb; только amd64) и backup (плюс pg_dump 18 из репозитория PostgreSQL с проверкой ключа по отпечатку и age из Debian); базовые образы по отпечатку, зависимости по uv.lock без dev, пользователь без прав root.
+- Файлы: `deploy/home/compose.yaml` — домашний узел: PostgreSQL 18 (как в CI), миграции до старта, сайт с проверкой /healthz, туннель WireGuard и Caddy в его сетевом пространстве (сайт доверяет X-Forwarded-For только от 172.31.250.2), планировщик, служба копий backup (картинки только на чтение, копии — в BACKUP_HOST_DIR на отдельном диске), worker (init, 1 ГБ разделяемой памяти, постоянное имя хоста, профиль seccomp, из прав только SYS_CHROOT); у всех, кроме базы, — без прав Linux, без повышения прав, образ только для чтения; сети: база только у сервера, worker видит только API; лимиты памяти, журналы по 10 МБ × 5; пути к файлам настроек — PRICEWATCH_SERVER_ENV, PRICEWATCH_WORKER_ENV и PRICEWATCH_BACKUP_ENV.
+- Файлы: `deploy/home/.env.example` — пароль базы и папка копий (BACKUP_HOST_DIR, отдельный диск) для Compose; копируется в deploy/home/.env (в Git не попадает).
 - Файлы: `deploy/home/chrome-seccomp.json` — профиль seccomp контейнера worker (собран tools/chrome_seccomp.py; источник — moby/profiles, Apache-2.0).
 - Файлы: `deploy/home/tunnel/Dockerfile`, `deploy/home/tunnel/entrypoint.sh` — клиент WireGuard домашнего узла (Alpine + wireguard-tools): подключается к tunnel.meteor630.ru, при отсутствии рукопожатия дольше 135 с заново разрешает имя.
 - Файлы: `deploy/home/tunnel.conf.example` — ключи и адреса туннеля дома (10.66.0.2 ↔ 10.66.0.1, keepalive 25 с, MTU 1280); копируется в deploy/home/tunnel.conf (в Git не попадает).
@@ -80,8 +81,9 @@
 - Путь: `src/pricewatch/domain/`
 - Отвечает: сущности и правила расчётов; только стандартная библиотека
 - Зависит от: —
-- Тесты: `uv run pytest tests/unit/test_domain_errors.py tests/unit/test_domain_names.py tests/unit/test_domain_shopping.py tests/unit/test_domain_tokens.py tests/unit/test_domain_accounts.py tests/unit/test_domain_money.py tests/unit/test_domain_days.py tests/unit/test_domain_pricing.py tests/unit/test_domain_totals.py tests/unit/test_domain_charts.py tests/unit/test_domain_review.py tests/unit/test_domain_purchases.py tests/unit/test_domain_schedule.py tests/unit/test_domain_store_pause.py tests/unit/test_domain_history.py tests/unit/test_domain_undo.py tests/unit/test_domain_client_errors.py`
+- Тесты: `uv run pytest tests/unit/test_domain_backups.py tests/unit/test_domain_errors.py tests/unit/test_domain_names.py tests/unit/test_domain_shopping.py tests/unit/test_domain_tokens.py tests/unit/test_domain_accounts.py tests/unit/test_domain_money.py tests/unit/test_domain_days.py tests/unit/test_domain_pricing.py tests/unit/test_domain_totals.py tests/unit/test_domain_charts.py tests/unit/test_domain_review.py tests/unit/test_domain_purchases.py tests/unit/test_domain_schedule.py tests/unit/test_domain_store_pause.py tests/unit/test_domain_history.py tests/unit/test_domain_undo.py tests/unit/test_domain_client_errors.py`
 - Файлы: `src/pricewatch/domain/errors.py` — коды ошибок, безопасные сообщения, базовое исключение PriceWatcherError.
+- Файлы: `src/pricewatch/domain/backups.py` — имя копии по моменту UTC, возраст по имени, копии старше 30 суток.
 - Файлы: `src/pricewatch/domain/names.py` — очистка имён для показа, ключ сравнения (регистр, пробелы, «ё», NFKC), пределы длины и количества.
 - Файлы: `src/pricewatch/domain/shopping.py` — неизменяемые записи Category, Group, Item; состояния товара ItemState; регион REGION_CODE; срок окончательной очистки удалённого (30 дней).
 - Файлы: `src/pricewatch/domain/tokens.py` — случайные токены и коды связки, HMAC с назначением (в том числе UNDO), вывод следующего токена из предыдущего.
@@ -103,7 +105,7 @@
 - Путь: `src/pricewatch/application/`
 - Отвечает: сценарии и интерфейсы репозиториев
 - Зависит от: `pricewatch.domain`
-- Тесты: `uv run pytest tests/unit/test_passwords.py tests/integration/test_create_admin_command.py tests/integration/test_registration.py tests/integration/test_web_login.py tests/integration/test_app_auth.py tests/integration/test_add_link.py tests/integration/test_worker_protocol.py tests/integration/test_runs.py tests/integration/test_store_pauses.py tests/integration/test_retention.py tests/integration/test_dashboard.py tests/integration/test_category.py tests/integration/test_item.py tests/integration/test_idempotency.py tests/integration/test_shopping_edit.py tests/integration/test_items_edit.py tests/integration/test_purchases.py tests/integration/test_check_settings.py tests/integration/test_user_decisions.py tests/integration/test_reviews.py tests/integration/test_stores_admin.py tests/integration/test_users_admin.py tests/integration/test_notifications.py tests/integration/test_client_errors.py tests/integration/test_telegram.py tests/integration/test_watchdog.py tests/integration/test_run_summaries.py tests/security/test_health_http.py`
+- Тесты: `uv run pytest tests/integration/test_backups.py tests/unit/test_passwords.py tests/integration/test_create_admin_command.py tests/integration/test_registration.py tests/integration/test_web_login.py tests/integration/test_app_auth.py tests/integration/test_add_link.py tests/integration/test_worker_protocol.py tests/integration/test_runs.py tests/integration/test_store_pauses.py tests/integration/test_retention.py tests/integration/test_dashboard.py tests/integration/test_category.py tests/integration/test_item.py tests/integration/test_idempotency.py tests/integration/test_shopping_edit.py tests/integration/test_items_edit.py tests/integration/test_purchases.py tests/integration/test_check_settings.py tests/integration/test_user_decisions.py tests/integration/test_reviews.py tests/integration/test_stores_admin.py tests/integration/test_users_admin.py tests/integration/test_notifications.py tests/integration/test_client_errors.py tests/integration/test_telegram.py tests/integration/test_watchdog.py tests/integration/test_run_summaries.py tests/security/test_health_http.py`
 - Файлы: `src/pricewatch/application/ports.py` — интерфейсы репозиториев и единицы работы; общие правила владельца, версий, перестановки, удаления; LinkResolver — описание адреса от сборщика цен.
 - Файлы: `src/pricewatch/application/worker_protocol.py` — протокол worker: токен (HMAC WORKER, ротация с перекрытием), аренда 2 мин, продление, результат как недоверенный ввод, правила подозрительных изменений, автозакрытие ценового подозрения, первое название — эталон; подтверждённая цена снимает «устаревшую цену в итоге»; блокировка и капча — пауза магазина по ступеням, задание ждёт без траты попытки; исчерпано — магазин отдыхает до следующего запуска, его ждущие задания закрываются ошибкой, уведомление store_paused администраторам; другой ответ снимает паузу; фото — по своему действующему заданию, путь записывается, если у ссылки его ещё нет.
 - Файлы: `src/pricewatch/application/runs.py` — запуски: ручной (только администратор; второй — RUN_IN_PROGRESS с прогрессом) и плановый по слоту, какие ссылки входят, остановка, истёкшая аренда (возврат, после 3 попыток TIMEOUT в историю), времена расписания из настроек.
@@ -132,6 +134,7 @@
 - Файлы: `src/pricewatch/application/app_auth.py` — вход приложения: код связки (лимит по IP), устройство, ротация refresh (вывод через HMAC, окно 60 с, повтор позже — отзыв устройства), access-токен, выход.
 - Файлы: `src/pricewatch/application/web_auth.py` — вход на сайт: лимиты до проверки пароля, неотличимые отказы, сессия, выход, CSRF-токен как HMAC сессии.
 - Файлы: `src/pricewatch/application/accounts.py` — сценарии create_admin, create_invite (только активный администратор), register (по приглашению, неверные поля и занятый логин приглашение не тратят).
+- Файлы: `src/pricewatch/application/backups.py` — копия: начало в журнал, копия вне транзакции, при удаче — удаление домашних копий старше 30 суток (сбой удаления — RETENTION_FAILED), итог в журнал.
 
 ### pricewatch.persistence
 - Путь: `src/pricewatch/persistence/`
@@ -153,6 +156,8 @@
 - Файлы: `src/pricewatch/persistence/app_auth_repositories.py` — коды связки, устройства, access- и refresh-токены; claim и find_refresh блокируют строку.
 - Файлы: `src/pricewatch/persistence/auth_repositories.py` — неудачные попытки (окно, самая ранняя) и сессии сайта.
 - Файлы: `src/pricewatch/persistence/invite_repository.py` — приглашения; claim блокирует строку (FOR UPDATE) до конца транзакции; времена записи — из часов сценария, не базы.
+- Файлы: `src/pricewatch/persistence/backup_repository.py` — журнал копий backup_runs: начало, итог (повторное завершение не переписывает).
+- Файлы: `src/pricewatch/persistence/migrations/versions/0015_backup_runs.py` — таблица backup_runs: статус running/ok/failed, файл и размер у удачной, код у неудачной.
 
 ### pricewatch.api
 - Путь: `src/pricewatch/api/`
@@ -262,6 +267,14 @@
 - Тесты: `uv run pytest tests/unit/test_scheduler_loop.py tests/integration/test_scheduler_start.py tests/unit/test_package_layout.py`
 - Файлы: `src/pricewatch/scheduler/loop.py` — обход каждые 30 с: просроченные задания, сторож (молчащие worker и бот — в журнал), сводки завершённых проверок, данные заблокированных 7 суток назад, очистка удалённого 30 дней назад и ключей повтора старше суток, наступивший слот (после старта — с 00:00 текущих суток: один пропущенный запуск), пропуск при идущем запуске — в журнал; сбой обхода — в журнал, слот повторится; стирает отчёты об ошибках приложения старше 90 суток.
 
+### pricewatch.backup
+- Путь: `src/pricewatch/backup/`
+- Отвечает: резервные копии на домашнем узле; сценарий и журнал получает от bootstrap, к базе обращается только pg_dump
+- Зависит от: `pricewatch.application`, `pricewatch.domain`
+- Тесты: `uv run pytest tests/unit/test_backup_archive.py tests/unit/test_backup_service.py tests/integration/test_backups.py tests/unit/test_package_layout.py`
+- Файлы: `src/pricewatch/backup/archive.py` — папка копий: pg_dump (пароль только в окружении) → tar с картинками потоком в age (открытый ключ) → временное имя → переименование; остатки оборванных попыток удаляются; сбои — коды DATABASE_DUMP_FAILED, ENCRYPTION_FAILED, STORAGE_FAILED, MEDIA_UNAVAILABLE.
+- Файлы: `src/pricewatch/backup/service.py` — ежедневно в заданное время по Москве; остановка прерывает ожидание; сбой попытки — в журнал, служба живёт дальше; --once — одна копия.
+
 ### pricewatch.bot
 - Путь: `src/pricewatch/bot/`
 - Отвечает: Telegram-бот и сторож; с сервером только по HTTP /internal/v1, к базе не подключается
@@ -294,11 +307,12 @@
 ### pricewatch.bootstrap
 - Путь: `src/pricewatch/bootstrap/`
 - Отвечает: сборка приложения, связывает сценарии с репозиториями; без бизнес-логики
-- Зависит от: `pricewatch.api`, `pricewatch.application`, `pricewatch.config`, `pricewatch.domain`, `pricewatch.media`, `pricewatch.observability`, `pricewatch.parsers`, `pricewatch.persistence`, `pricewatch.scheduler`
-- Тесты: `uv run pytest tests/integration/test_server_start.py tests/integration/test_create_admin_command.py tests/integration/test_worker_commands.py tests/integration/test_scheduler_start.py`
+- Зависит от: `pricewatch.api`, `pricewatch.application`, `pricewatch.backup`, `pricewatch.config`, `pricewatch.domain`, `pricewatch.media`, `pricewatch.observability`, `pricewatch.parsers`, `pricewatch.persistence`, `pricewatch.scheduler`
+- Тесты: `uv run pytest tests/integration/test_server_start.py tests/integration/test_create_admin_command.py tests/integration/test_worker_commands.py tests/integration/test_scheduler_start.py tests/integration/test_backup_start.py`
 - Файлы: `src/pricewatch/bootstrap/scheduling.py` — процесс планировщика: настройки, журнал, проверка базы, сценарии запусков на SqlUnitOfWork, сигналы остановки; выход 2 — конфигурация, 3 — база.
 - Файлы: `src/pricewatch/bootstrap/commands.py` — команды serve, scheduler, create-admin (пароль только скрытым вводом или из stdin), create-worker и rotate-worker-token, create-service и rotate-service-token (токен печатается один раз).
 - Файлы: `src/pricewatch/bootstrap/server.py`, `src/pricewatch/bootstrap/__main__.py` — настройки, журнал, одно подключение к базе на процесс, проверка схемы, контекст приложения (SqlUnitOfWork, ключ, argon2, часы UTC, каталог фото, каталог магазинов для ссылок), uvicorn; выход 2 — конфигурация, 3 — база или схема.
+- Файлы: `src/pricewatch/bootstrap/backups.py` — команда backup [--once]: настройки сервера и backup.env, проверка базы, папка копий age, служба.
 
 ### pricewatch.config
 - Путь: `src/pricewatch/config/`
@@ -318,10 +332,10 @@
 |---|---|
 | `domain-stdlib-only` | `domain` импортирует только стандартную библиотеку и себя |
 | `application-depends-on-domain-only` | `application` импортирует из проекта только `domain` |
-| `persistence-implements-application` | `persistence` не импортирует `api`, `web`, `parsers`, `worker`, `scheduler`, `bot`, `bootstrap` |
+| `persistence-implements-application` | `persistence` не импортирует `api`, `web`, `parsers`, `worker`, `scheduler`, `bot`, `backup`, `bootstrap` |
 | `persistence-only-from-bootstrap` | `persistence` импортирует только `bootstrap` |
 | `bootstrap-is-entry-point` | `bootstrap` никто не импортирует |
-| `worker-bot-without-persistence` | `worker` и `bot` не импортируют `persistence` |
+| `worker-bot-without-persistence` | `worker`, `bot` и `backup` не импортируют `persistence` |
 | `store-adapters-independent` | модули `parsers.stores.*` (по одному на магазин) не импортируют друг друга |
 
 ## Инструменты
@@ -377,7 +391,7 @@
 - Файлы: `openapi/v1.yaml` — контракт /api/v1 для приложения, утверждён. Меняется только с согласия владельца; совместимо — новыми необязательными полями.
 - Тесты: `uv run pytest tests/contracts/test_openapi_document.py tests/contracts/test_routes_match_contract.py`
 
-Схема базы: миграция 0001 — users, categories, groups, items; 0002 — invites, web_sessions, devices, refresh_tokens, access_tokens, pairing_codes, auth_failures; 0003 — stores, tracked_links, item_links, parse_runs, check_tasks, workers, price_observations, settings и items.state, items.purchased_at; 0004 — notifications; 0005 — items.include_stale; 0006 — idempotency_keys (уникально пользователь и ключ); 0007 — данные покупки и архива в items (цена, количество, магазин, цена в момент добавления, archived_at); 0008 — price_decisions (решение пользователя по подозрительному наблюдению); 0009 — audit_events (журнал действий); 0010 — notifications.repeat_count (повторы инцидента); 0011 — client_error_reports (отчёты об ошибках приложения); 0012 — services (токены и пульс служебных процессов), telegram_link_codes, notifications.claimed_until; 0013 — workers.silent_since и services.silent_since (сторож); 0014 — parse_runs.summarized_at (сводка проверки создана; старые запуски отмечены при обновлении). Остальные таблицы раздела 5 добавляются миграциями своих этапов. Маршруты `/web`, `/worker/v1`, `/internal/v1` в контракт приложения не входят.
+Схема базы: миграция 0001 — users, categories, groups, items; 0002 — invites, web_sessions, devices, refresh_tokens, access_tokens, pairing_codes, auth_failures; 0003 — stores, tracked_links, item_links, parse_runs, check_tasks, workers, price_observations, settings и items.state, items.purchased_at; 0004 — notifications; 0005 — items.include_stale; 0006 — idempotency_keys (уникально пользователь и ключ); 0007 — данные покупки и архива в items (цена, количество, магазин, цена в момент добавления, archived_at); 0008 — price_decisions (решение пользователя по подозрительному наблюдению); 0009 — audit_events (журнал действий); 0010 — notifications.repeat_count (повторы инцидента); 0011 — client_error_reports (отчёты об ошибках приложения); 0012 — services (токены и пульс служебных процессов), telegram_link_codes, notifications.claimed_until; 0013 — workers.silent_since и services.silent_since (сторож); 0014 — parse_runs; 0015 — backup_runs (журнал резервных копий).summarized_at (сводка проверки создана; старые запуски отмечены при обновлении). Остальные таблицы раздела 5 добавляются миграциями своих этапов. Маршруты `/web`, `/worker/v1`, `/internal/v1` в контракт приложения не входят.
 
 ## Сторонние материалы и готовые решения
 
@@ -388,6 +402,7 @@
 | Хеширование паролей | argon2id через argon2-cffi | github.com/hynek/argon2-cffi, MIT | pwdlib (лишний слой), passlib (не работает на Python 3.13) |
 | Ротация refresh-токенов, сессии | своя реализация по разделу 4 архитектуры; access-токен — случайная строка, в базе HMAC | RFC 9700 (OAuth 2.0 Security BCP), схема ротации с обнаружением повтора Auth0 — как образец | fastapi-users (режим поддержки, нет refresh), Authlib (сервер OAuth2 целиком), simplejwt (только Django, нет семей) |
 | Ограничение попыток входа | своя таблица неудачных попыток в PostgreSQL | — | slowapi и limits (нет хранилища PostgreSQL), fastapi-limiter (нужен Redis) |
+| Резервные копии | pg_dump (формат custom) + tar + age (открытый ключ на узле, закрытый — у владельца), отправка rsync в rrsync -wo (срез 11.3.2) | github.com/FiloSottile/age, BSD-3 (пакет Debian); pg_dump — postgresql-client-18 из apt.postgresql.org, ключ B97B…4CF8 | restic (BSD-2), borg (BSD-3), kopia (Apache-2.0): ключ хранилища нужен на узле и для удаления старых копий — либо ключ на арендном сервере, либо дом может стирать копии; дедупликация при наших объёмах не нужна |
 | Песочница Chrome в Docker | стандартный профиль seccomp Docker + правило clone/unshare (tools/chrome_seccomp.py), только SYS_CHROOT | github.com/moby/profiles, seccomp/default.json @ 6fe7deb, Apache-2.0 | профиль jessfraz/dotfiles chrome.json (MIT, не обновлялся с 2016) и его копия в Zenika/alpine-chrome (Apache-2.0, 2018); --no-sandbox; CAP_SYS_ADMIN |
 | Пересылка 443 в туннель без расшифровки | HAProxy LTS (send-proxy-v2) на арендном сервере, WireGuard из пакетов Ubuntu; дома — свой образ Alpine + wireguard-tools | github.com/haproxy/haproxy (GPL-2.0 с исключениями), wireguard-tools (GPL-2.0), Caddy (Apache-2.0) | nginx stream (длиннее, PROXY только v1), Traefik TCP (лишняя сложность), caddy-l4 (своя сборка Caddy), linuxserver/docker-wireguard (GPL-3.0, много лишнего) |
 | Часовой пояс Москвы | `zoneinfo` стандартной библиотеки с данными пакета tzdata | github.com/python/tzdata, Apache-2.0 | фиксированное +3 (правила менялись в 2011 и 2014), системная база (может отсутствовать в образе) |

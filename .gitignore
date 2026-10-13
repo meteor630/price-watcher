@@ -18,6 +18,7 @@ htmlcov/
 !.env.example
 worker.env
 bot.env
+backup.env
 # Ключи туннеля WireGuard: закрытый ключ узла
 tunnel.conf
 wg0.conf

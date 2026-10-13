@@ -18,6 +18,7 @@ ARCHITECTURE_PACKAGES = {
     "media",
     "scheduler",
     "bot",
+    "backup",
     "observability",
     "bootstrap",
     "config",
