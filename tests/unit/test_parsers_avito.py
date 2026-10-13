@@ -82,6 +82,12 @@ def test_no_listing_data(html: str, status: int, code: ErrorCode) -> None:
     assert error(FakeBrowser(html, status)).code is code
 
 
+def test_listing_name_with_dot_is_valid() -> None:
+    # Настоящее объявление: точка из названия товара («G.Skill») остаётся в адресе.
+    raw = "https://www.avito.ru/moskva/tovary_dlya_kompyutera/g.skill_adata_ddr5_64_gb_8252608314?utm_source=soc_sharing"
+    assert canonical_url(normalize_url(raw)).url == "https://www.avito.ru/moskva/tovary_dlya_kompyutera/g.skill_adata_ddr5_64_gb_8252608314"
+
+
 @pytest.mark.parametrize("raw", ["https://www.avito.ru/", "https://www.avito.ru/sankt-peterburg?q=лампа", "https://www.avito.ru/sankt-peterburg/mebel_i_interer"])
 def test_address_without_listing_is_invalid(raw: str) -> None:
     with pytest.raises(PriceWatcherError) as caught:

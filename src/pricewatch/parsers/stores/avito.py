@@ -21,7 +21,7 @@ from pricewatch.parsers.generic import parse_html
 from pricewatch.parsers.urls import NormalizedUrl, normalize_url
 
 KEY = "avito"
-LISTING_PATH = re.compile(r"^/[a-z_-]+/[a-z_]+/[a-z0-9_-]+_\d{6,15}")
+LISTING_PATH = re.compile(r"^/[a-z_-]+/[a-z_]+/[a-z0-9._-]+_\d{6,15}")
 PRODUCT_JSON_LD = re.compile(r'<script type="application/ld\+json"[^>]*>[^<]*"@type":\s*"Product"')
 CLOSED_TEXTS = ("снято с публикации", "объявление закрыто")
 H1 = re.compile(r"<h1[^>]*>(.*?)</h1>", re.S)

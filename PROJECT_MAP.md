@@ -330,6 +330,8 @@
 - Тесты: `uv run pytest tests/unit/test_tools_deps.py`
 - Файлы: `tools/chrome_seccomp.py` — профиль seccomp для worker: стандартный профиль Docker (moby/profiles @ 6fe7deb) плюс правило для песочницы Chrome; вывод в UTF-8.
 - Тесты: `uv run pytest tests/unit/test_tools_chrome_seccomp.py`
+- Файлы: `tools/import_legacy.py` — одноразовый перенос данных старого сайта (SQLite) владельцу: категории, группы, товары, магазины, ссылки с окнами действия, запуски и проверки с ценой; одной транзакцией, повторный перенос отклоняется. Использует parsers.catalog и репозитории persistence (вне контрактов import-linter, как точка входа).
+- Тесты: `uv run pytest tests/unit/test_tools_import_legacy.py tests/integration/test_import_legacy.py`
 - Файлы: `tools/check_project_map.py` — проверка этой карты.
 - Тесты: `uv run pytest tests/unit/test_check_project_map.py`
 
