@@ -21,6 +21,7 @@ Playwright, у которого закрыты признаки управляе
 
 import shutil
 import time
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -47,6 +48,7 @@ CHROME_ARGS = (
     "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
 )
 NAVIGATION_TIMEOUT_MS = 45_000
+MAX_OPEN_PROFILES = 2
 WAIT_STEP_MS = 400
 CAPTURED_MAX_COUNT = 200
 CAPTURED_MAX_BYTES = 3_000_000
@@ -164,19 +166,27 @@ class StoreBrowser(Protocol):
 
 
 class BrowserFetcher:
-    """Один Chrome за раз; профиль переключается на магазин перед загрузкой."""
+    """Повторно использует два недавно открытых профиля магазинов в одном процессе Playwright."""
 
     def __init__(self, profiles_dir: Path, *, resolver: Resolver = system_resolver) -> None:
         self._profiles_dir = profiles_dir
         self._resolver = resolver
         self._proxy = EgressProxy(resolver=resolver)
         self._playwright: Playwright | None = None
-        self._context: BrowserContext | None = None
-        self._profile: Path | None = None
+        self._contexts: OrderedDict[Path, BrowserContext] = OrderedDict()
 
     def close(self) -> None:
-        self._close_browser()
-        self._proxy.close()
+        try:
+            for context in self._contexts.values():
+                context.close()
+        finally:
+            self._contexts.clear()
+            try:
+                if self._playwright is not None:
+                    self._playwright.stop()
+                    self._playwright = None
+            finally:
+                self._proxy.close()
 
     def fetch(
         self, url: NormalizedUrl, store_key: str, ready: Ready, timeout_s: float = 25.0, probe_js: str | None = None
@@ -208,18 +218,22 @@ class BrowserFetcher:
         if ready(page) or not looks_blocked(page):
             return page, tab
         tab.close()
-        self._reset_profile()
+        self._reset_profile(store_key)
         return self._open(url, store_key, ready, timeout_s, probe_js)
 
     def context(self, store_key: str) -> BrowserContext:
         """Chrome с профилем магазина; запускается при первом обращении."""
         profile = self._profiles_dir / store_key
-        if self._context is not None and profile == self._profile:
-            return self._context
-        self._close_browser()
-        self._profile = profile
-        self._playwright = sync_playwright().start()
-        self._context = self._playwright.chromium.launch_persistent_context(
+        active = self._contexts.pop(profile, None)
+        if active is not None and (active.browser is None or active.browser.is_connected()):
+            self._contexts[profile] = active
+            return active
+        if len(self._contexts) >= MAX_OPEN_PROFILES:
+            _, oldest = self._contexts.popitem(last=False)
+            oldest.close()
+        if self._playwright is None:
+            self._playwright = sync_playwright().start()
+        context = self._playwright.chromium.launch_persistent_context(
             str(profile),
             channel="chrome",
             headless=False,
@@ -229,7 +243,8 @@ class BrowserFetcher:
             no_viewport=True,
             accept_downloads=False,  # сайты пользователей не могут ничего скачать на worker
         )
-        return self._context
+        self._contexts[profile] = context
+        return context
 
     def _open(
         self, url: NormalizedUrl, store_key: str, ready: Ready, timeout_s: float, probe_js: str | None
@@ -240,7 +255,8 @@ class BrowserFetcher:
         tab.on("response", lambda response: _record(tab, response, result))
         deadline = time.monotonic() + timeout_s
         try:
-            tab.goto(url.url, wait_until="domcontentloaded", timeout=NAVIGATION_TIMEOUT_MS)
+            navigation_ms = max(1, min(NAVIGATION_TIMEOUT_MS, int(timeout_s * 1000)))
+            tab.goto(url.url, wait_until="domcontentloaded", timeout=navigation_ms)
             while True:
                 html = _snapshot(tab)
                 if html is not None:
@@ -256,21 +272,13 @@ class BrowserFetcher:
             raise PriceWatcherError(ErrorCode.TIMEOUT, {"reason": "browser_failed"}) from error
         return result, tab
 
-    def _close_browser(self) -> None:
-        if self._context is not None:
-            self._context.close()
-            self._context = None
-        if self._playwright is not None:
-            self._playwright.stop()
-            self._playwright = None
-
-    def _reset_profile(self) -> None:
-        """Стереть профиль текущего магазина вместе с меткой «робот»."""
-        profile = self._profile
-        self._close_browser()
-        self._profile = None
-        if profile is not None:
-            shutil.rmtree(profile, ignore_errors=True)
+    def _reset_profile(self, store_key: str) -> None:
+        """Стереть профиль магазина, не останавливая браузеры других магазинов."""
+        profile = self._profiles_dir / store_key
+        context = self._contexts.pop(profile, None)
+        if context is not None:
+            context.close()
+        shutil.rmtree(profile, ignore_errors=True)
 
 
 def _record(tab: Page, response: Response, result: BrowserPage) -> None:

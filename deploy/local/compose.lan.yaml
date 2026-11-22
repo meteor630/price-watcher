@@ -1,0 +1,5 @@
+# Add the computer's home Wi-Fi address. Keep loopback available to the worker.
+services:
+  app:
+    ports:
+      - "${PRICEWATCH_LAN_IP:?Set PRICEWATCH_LAN_IP to the computer home Wi-Fi address}:${PRICEWATCH_PORT:-8000}:8000"

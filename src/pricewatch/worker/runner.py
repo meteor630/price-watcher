@@ -95,6 +95,11 @@ class Runner:
             self._client.result(task.task_id, payload)
         except LeaseLost:
             logger.warning("Аренда задания истекла до отправки результата", extra={"task_id": task.task_id})
+        logger.info(
+            "Проверка ссылки завершена",
+            extra={"task_id": task.task_id, "store": task.store_host,
+                   "duration_ms": payload["duration_ms"], "result": payload["status"]},
+        )
         return True
 
     def _polite_pause(self, task: Task) -> None:

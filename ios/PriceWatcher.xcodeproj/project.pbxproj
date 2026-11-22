@@ -1,0 +1,47 @@
+// !$*UTF8*$!
+{
+archiveVersion = 1;
+classes = {};
+objectVersion = 77;
+objects = {
+DA1111110000000000000001 = { isa = PBXProject; buildConfigurationList = DA111111000000000000000A; compatibilityVersion = "Xcode 16.0"; developmentRegion = ru; knownRegions = (ru, en, Base); mainGroup = DA1111110000000000000002; productRefGroup = DA1111110000000000000003; projectDirPath = ""; projectRoot = ""; targets = (DA1111110000000000000014, DA1111110000000000000028, DA111111000000000000003C); attributes = { LastSwiftUpdateCheck = 2700; LastUpgradeCheck = 2700; TargetAttributes = { DA1111110000000000000028 = { TestTargetID = DA1111110000000000000014; }; DA111111000000000000003C = { TestTargetID = DA1111110000000000000014; }; }; }; };
+DA1111110000000000000002 = { isa = PBXGroup; children = (DA1111110000000000000015, DA1111110000000000000029, DA111111000000000000003D, DA1111110000000000000003); sourceTree = "<group>"; };
+DA1111110000000000000003 = { isa = PBXGroup; children = (DA1111110000000000000016, DA111111000000000000002A, DA111111000000000000003E); name = Products; sourceTree = "<group>"; };
+DA1111110000000000000004 = { isa = PBXFileSystemSynchronizedBuildFileExceptionSet; membershipExceptions = (Info.plist); target = DA1111110000000000000014; };
+DA111111000000000000000A = { isa = XCConfigurationList; buildConfigurations = (DA111111000000000000000B, DA111111000000000000000C); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+DA111111000000000000000B = { isa = XCBuildConfiguration; name = Debug; buildSettings = { CLANG_ENABLE_MODULES = YES; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = 1; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; ENABLE_TESTABILITY = YES; DEBUG_INFORMATION_FORMAT = dwarf; }; };
+DA111111000000000000000C = { isa = XCBuildConfiguration; name = Release; buildSettings = { CLANG_ENABLE_MODULES = YES; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SWIFT_VERSION = 6.0; TARGETED_DEVICE_FAMILY = 1; SWIFT_COMPILATION_MODE = wholemodule; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; }; };
+DA1111110000000000000014 = { isa = PBXNativeTarget; name = PriceWatcher; productName = PriceWatcher; productReference = DA1111110000000000000016; productType = "com.apple.product-type.application"; buildConfigurationList = DA111111000000000000001A; buildPhases = (DA1111110000000000000017, DA1111110000000000000018, DA1111110000000000000019); buildRules = (); dependencies = (); fileSystemSynchronizedGroups = (DA1111110000000000000015); };
+DA1111110000000000000015 = { isa = PBXFileSystemSynchronizedRootGroup; exceptions = (DA1111110000000000000004); path = PriceWatcher; sourceTree = "<group>"; };
+DA1111110000000000000016 = { isa = PBXFileReference; explicitFileType = wrapper.app; includeInIndex = 0; path = PriceWatcher.app; sourceTree = BUILT_PRODUCTS_DIR; };
+DA1111110000000000000017 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+DA1111110000000000000018 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+DA1111110000000000000019 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+DA111111000000000000001A = { isa = XCConfigurationList; buildConfigurations = (DA111111000000000000001B, DA111111000000000000001C); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+DA111111000000000000001B = { isa = XCBuildConfiguration; name = Debug; buildSettings = { PRODUCT_BUNDLE_IDENTIFIER = io.github.meteor630.pricewatcher; PRODUCT_NAME = "$(TARGET_NAME)"; CODE_SIGN_STYLE = Automatic; INFOPLIST_FILE = PriceWatcher/Info.plist; ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; MARKETING_VERSION = 1.0; CURRENT_PROJECT_VERSION = 1; SUPPORTS_MACCATALYST = NO; SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO; }; };
+DA111111000000000000001C = { isa = XCBuildConfiguration; name = Release; buildSettings = { PRODUCT_BUNDLE_IDENTIFIER = io.github.meteor630.pricewatcher; PRODUCT_NAME = "$(TARGET_NAME)"; CODE_SIGN_STYLE = Automatic; INFOPLIST_FILE = PriceWatcher/Info.plist; ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; MARKETING_VERSION = 1.0; CURRENT_PROJECT_VERSION = 1; SUPPORTS_MACCATALYST = NO; SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO; }; };
+DA1111110000000000000028 = { isa = PBXNativeTarget; name = PriceWatcherTests; productName = PriceWatcherTests; productReference = DA111111000000000000002A; productType = "com.apple.product-type.bundle.unit-test"; buildConfigurationList = DA111111000000000000002E; buildPhases = (DA111111000000000000002B, DA111111000000000000002C, DA111111000000000000002D); buildRules = (); dependencies = (DA1111110000000000000032); fileSystemSynchronizedGroups = (DA1111110000000000000029); };
+DA1111110000000000000029 = { isa = PBXFileSystemSynchronizedRootGroup;  path = PriceWatcherTests; sourceTree = "<group>"; };
+DA111111000000000000002A = { isa = PBXFileReference; explicitFileType = wrapper.cdi; includeInIndex = 0; path = PriceWatcherTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+DA111111000000000000002B = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+DA111111000000000000002C = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+DA111111000000000000002D = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+DA111111000000000000002E = { isa = XCConfigurationList; buildConfigurations = (DA111111000000000000002F, DA1111110000000000000030); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+DA111111000000000000002F = { isa = XCBuildConfiguration; name = Debug; buildSettings = { PRODUCT_BUNDLE_IDENTIFIER = io.github.meteor630.pricewatcher.tests; PRODUCT_NAME = "$(TARGET_NAME)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; BUNDLE_LOADER = "$(TEST_HOST)"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PriceWatcher.app/PriceWatcher"; }; };
+DA1111110000000000000030 = { isa = XCBuildConfiguration; name = Release; buildSettings = { PRODUCT_BUNDLE_IDENTIFIER = io.github.meteor630.pricewatcher.tests; PRODUCT_NAME = "$(TARGET_NAME)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; BUNDLE_LOADER = "$(TEST_HOST)"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PriceWatcher.app/PriceWatcher"; }; };
+DA1111110000000000000032 = { isa = PBXTargetDependency; target = DA1111110000000000000014; targetProxy = DA1111110000000000000033; };
+DA1111110000000000000033 = { isa = PBXContainerItemProxy; containerPortal = DA1111110000000000000001; proxyType = 1; remoteGlobalIDString = DA1111110000000000000014; remoteInfo = PriceWatcher; };
+DA111111000000000000003C = { isa = PBXNativeTarget; name = PriceWatcherUITests; productName = PriceWatcherUITests; productReference = DA111111000000000000003E; productType = "com.apple.product-type.bundle.ui-testing"; buildConfigurationList = DA1111110000000000000042; buildPhases = (DA111111000000000000003F, DA1111110000000000000040, DA1111110000000000000041); buildRules = (); dependencies = (DA1111110000000000000046); fileSystemSynchronizedGroups = (DA111111000000000000003D); };
+DA111111000000000000003D = { isa = PBXFileSystemSynchronizedRootGroup;  path = PriceWatcherUITests; sourceTree = "<group>"; };
+DA111111000000000000003E = { isa = PBXFileReference; explicitFileType = wrapper.cdi; includeInIndex = 0; path = PriceWatcherUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+DA111111000000000000003F = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+DA1111110000000000000040 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+DA1111110000000000000041 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+DA1111110000000000000042 = { isa = XCConfigurationList; buildConfigurations = (DA1111110000000000000043, DA1111110000000000000044); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+DA1111110000000000000043 = { isa = XCBuildConfiguration; name = Debug; buildSettings = { PRODUCT_BUNDLE_IDENTIFIER = io.github.meteor630.pricewatcher.uitests; PRODUCT_NAME = "$(TARGET_NAME)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; TEST_TARGET_NAME = PriceWatcher; }; };
+DA1111110000000000000044 = { isa = XCBuildConfiguration; name = Release; buildSettings = { PRODUCT_BUNDLE_IDENTIFIER = io.github.meteor630.pricewatcher.uitests; PRODUCT_NAME = "$(TARGET_NAME)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; TEST_TARGET_NAME = PriceWatcher; }; };
+DA1111110000000000000046 = { isa = PBXTargetDependency; target = DA1111110000000000000014; targetProxy = DA1111110000000000000047; };
+DA1111110000000000000047 = { isa = PBXContainerItemProxy; containerPortal = DA1111110000000000000001; proxyType = 1; remoteGlobalIDString = DA1111110000000000000014; remoteInfo = PriceWatcher; };
+};
+rootObject = DA1111110000000000000001;
+}

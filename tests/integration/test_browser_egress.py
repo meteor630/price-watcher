@@ -126,7 +126,7 @@ def run_with(fetcher: BrowserFetcher, monkeypatch: pytest.MonkeyPatch, pages: li
         return next(queue), FakeTab()
 
     monkeypatch.setattr(fetcher, "_open", fake_open)
-    monkeypatch.setattr(fetcher, "_reset_profile", lambda: events.append("reset"))
+    monkeypatch.setattr(fetcher, "_reset_profile", lambda store_key: events.append(f"reset:{store_key}"))
     monkeypatch.setattr("pricewatch.parsers.browser.public_address", lambda host, resolver: object())
     result = fetcher.fetch(normalize_url("https://shop.example/p"), "shop", lambda p: "товар" in p.html)
     return result, events
@@ -141,7 +141,7 @@ def test_ready_page_is_returned_at_once(fetcher: BrowserFetcher, monkeypatch: py
 def test_blocked_profile_is_reset_and_retried_once(fetcher: BrowserFetcher, monkeypatch: pytest.MonkeyPatch) -> None:
     result, events = run_with(fetcher, monkeypatch, [page(498, ""), page(498, "")])
 
-    assert events == ["open", "close", "reset", "open", "close"]  # каждая вкладка закрыта
+    assert events == ["open", "close", "reset:shop", "open", "close"]  # каждая вкладка закрыта
     assert result.status == 498  # вторая попытка — последняя; решение за адаптером
 
 

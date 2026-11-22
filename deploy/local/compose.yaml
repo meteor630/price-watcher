@@ -1,0 +1,70 @@
+name: pricewatch-local
+
+x-app: &app
+  build:
+    context: ../..
+    dockerfile: deploy/Dockerfile
+    target: app
+  image: pricewatch-local-app
+  environment: &app-env
+    PRICEWATCH_ENV: development
+    PRICEWATCH_PUBLIC_ORIGIN: "${PRICEWATCH_PUBLIC_ORIGIN:-http://localhost:8000}"
+    PRICEWATCH_DATABASE_URL: "postgresql://pricewatch:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/local/.env}@db:5432/pricewatch"
+    PRICEWATCH_SECRET_KEY: "${PRICEWATCH_SECRET_KEY:?Set PRICEWATCH_SECRET_KEY in deploy/local/.env}"
+    PRICEWATCH_MEDIA_DIR: /data/media
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  read_only: true
+  tmpfs: [/tmp]
+
+services:
+  db:
+    image: postgres:18@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+    environment:
+      POSTGRES_DB: pricewatch
+      POSTGRES_USER: pricewatch
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/local/.env}"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "pricewatch", "-d", "pricewatch"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  migrate:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    <<: *app
+    environment:
+      <<: *app-env
+      PRICEWATCH_LISTEN_HOST: 0.0.0.0
+      PRICEWATCH_LISTEN_PORT: "8000"
+    ports:
+      - "127.0.0.1:${PRICEWATCH_PORT:-8000}:8000"
+    volumes:
+      - media:/data/media
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4).close()"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  scheduler:
+    <<: *app
+    command: ["python", "-m", "pricewatch.bootstrap", "scheduler"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
+  media:
