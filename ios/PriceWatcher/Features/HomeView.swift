@@ -28,10 +28,9 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     header
-                    SelectionStrip(selection: $period, title: \.title)
+                    summary(dashboard?.period == period ? dashboard : nil)
                     if let error { LoadFailure(message: error) { Task { await load() } } }
                     if let dashboard, dashboard.period == period {
-                        summary(dashboard)
                         counts(dashboard)
                         if let run { runCard(run) }
                         SectionTitle("Категории")
@@ -49,8 +48,6 @@ struct HomeView: View {
                                 }
                             }
                         }
-                    } else if error == nil {
-                        ProgressView("Загружаем цены").frame(maxWidth: .infinity).padding(.vertical, 36)
                     }
                 }
                 .page()
@@ -90,40 +87,59 @@ struct HomeView: View {
         }
     }
 
-    private func summary(_ value: Dashboard) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private func summary(_ value: Dashboard?) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 22)
+        return VStack(alignment: .leading, spacing: 13) {
             Label("Общий итог", systemImage: "basket")
-                .font(.subheadline.weight(.semibold))
-            Text(value.totalText)
-                .font(.system(.largeTitle, design: .serif, weight: .semibold))
-                .monospacedDigit()
-                .accessibilityIdentifier("dashboard-total")
-            HStack {
-                Text("В итоге · \(value.inTotalCount)").font(.footnote.weight(.medium))
-                Spacer(minLength: 4)
-                if let change = value.change { PriceDelta(change: change, hero: true) }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(PW.muted)
+
+            if let value {
+                Text(value.totalText)
+                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundStyle(PW.text)
+                    .accessibilityIdentifier("dashboard-total")
+                ViewThatFits(in: .horizontal) {
+                    HStack {
+                        includedCount(value.inTotalCount)
+                        Spacer(minLength: 8)
+                        if let change = value.change { PriceDelta(change: change) }
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        includedCount(value.inTotalCount)
+                        if let change = value.change { PriceDelta(change: change) }
+                    }
+                }
+            } else if error == nil {
+                ProgressView("Загружаем цены").frame(minHeight: 54)
             }
+
+            SelectionStrip(selection: $period, title: \.title)
         }
-        .foregroundStyle(PW.ink)
-        .padding(20)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            RoundedRectangle(cornerRadius: 24)
-                .fill(LinearGradient(colors: [PW.accent, Color(red: 0.67, green: 0.84, blue: 0.35)],
-                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+            shape.fill(LinearGradient(colors: [PW.heroSurface, PW.surface],
+                                      startPoint: .topLeading, endPoint: .bottomTrailing))
         }
+        .overlay { shape.strokeBorder(PW.stroke).allowsHitTesting(false) }
+    }
+
+    private func includedCount(_ count: Int) -> some View {
+        Text("В итоге · \(count)").font(.footnote.weight(.medium)).foregroundStyle(PW.muted)
     }
 
     private func counts(_ value: Dashboard) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: 8) {
-                counter("Дешевле", symbol: "arrow.down.right", value: value.panels.cheaper, color: PW.accent)
-                counter("Дороже", symbol: "arrow.up.right", value: value.panels.pricier, color: PW.warning)
+                counter("Дешевле", symbol: "arrow.down.right", value: value.panels.cheaper, color: PW.decrease)
+                counter("Дороже", symbol: "arrow.up.right", value: value.panels.pricier, color: PW.increase)
                 counter("Нет в наличии", symbol: "minus.circle", value: value.panels.outOfStock, color: PW.muted)
             }
             VStack(spacing: 8) {
-                counter("Дешевле", symbol: "arrow.down.right", value: value.panels.cheaper, color: PW.accent)
-                counter("Дороже", symbol: "arrow.up.right", value: value.panels.pricier, color: PW.warning)
+                counter("Дешевле", symbol: "arrow.down.right", value: value.panels.cheaper, color: PW.decrease)
+                counter("Дороже", symbol: "arrow.up.right", value: value.panels.pricier, color: PW.increase)
                 counter("Нет в наличии", symbol: "minus.circle", value: value.panels.outOfStock, color: PW.muted)
             }
         }
@@ -137,7 +153,7 @@ struct HomeView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(PW.surface, in: RoundedRectangle(cornerRadius: 15))
+        .background(PW.surfaceRaised, in: RoundedRectangle(cornerRadius: 15))
         .accessibilityElement(children: .combine)
     }
 
@@ -146,7 +162,7 @@ struct HomeView: View {
             Image(systemName: "square.stack").font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(PW.accent)
                 .frame(width: 38, height: 38)
-                .background(PW.accent.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
+                .background(PW.accentSurface, in: RoundedRectangle(cornerRadius: 12))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 6) {
                 Text(category.name).font(.headline)

@@ -80,8 +80,8 @@ struct ProductView: View {
                 Text(fullName).font(.subheadline).foregroundStyle(PW.muted)
             }
             Text(product.unitPriceText ?? "Цена пока неизвестна")
-                .font(.system(.largeTitle, design: .serif, weight: .semibold))
-                .foregroundStyle(PW.accent).monospacedDigit()
+                .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                .foregroundStyle(PW.text).monospacedDigit()
             if let regular = product.regularPriceText {
                 Text("Без карты · \(regular)").font(.subheadline).foregroundStyle(PW.muted)
             }

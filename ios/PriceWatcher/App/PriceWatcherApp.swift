@@ -130,7 +130,7 @@ struct ConnectView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Цены под\nконтролем.").font(.system(.largeTitle, design: .serif, weight: .semibold))
+                    Text("Подключение к серверу").font(.system(.largeTitle, design: .rounded, weight: .bold))
                         .accessibilityAddTraits(.isHeader)
                     Text("Подключите iPhone к своему серверу, чтобы видеть цены и историю покупок.")
                         .foregroundStyle(PW.muted)
@@ -186,7 +186,7 @@ struct ConnectView: View {
                     Task { await session.connect(normalizedCode) }
                 } label: {
                     if session.busy {
-                        ProgressView().tint(PW.ink).frame(maxWidth: .infinity)
+                        ProgressView().tint(PW.accent).frame(maxWidth: .infinity)
                     } else {
                         Label("Подключить iPhone", systemImage: "arrow.right")
                             .frame(maxWidth: .infinity)

@@ -2,14 +2,28 @@ import Charts
 import SwiftUI
 
 enum PW {
-    static let canvas = Color(red: 0.06, green: 0.08, blue: 0.08)
-    static let surface = Color(red: 0.105, green: 0.13, blue: 0.13)
-    static let stroke = Color(red: 0.20, green: 0.24, blue: 0.23)
-    static let accent = Color(red: 0.81, green: 0.96, blue: 0.43)
-    static let ink = Color(red: 0.11, green: 0.15, blue: 0.065)
-    static let muted = Color(red: 0.67, green: 0.72, blue: 0.70)
-    static let warning = Color(red: 1, green: 0.75, blue: 0.58)
+    static let canvas = color(0x0C1017)
+    static let surface = color(0x141A24)
+    static let surfaceRaised = color(0x1B2431)
+    static let stroke = color(0x293546)
+    static let text = color(0xEDF2FA)
+    static let muted = color(0xA3AFC2)
+    static let accent = color(0xB4A7EF)
+    static let accentSurface = color(0x29263D)
+    static let accentStroke = color(0x4B4367)
+    static let heroSurface = color(0x1C2233)
+    static let decrease = color(0x85CCB5)
+    static let increase = color(0xEC9DA6)
+    static let warning = color(0xE3BD9D)
     static let pagePadding: CGFloat = 20
+
+    private static func color(_ rgb: UInt32) -> Color {
+        Color(
+            red: Double((rgb >> 16) & 0xFF) / 255,
+            green: Double((rgb >> 8) & 0xFF) / 255,
+            blue: Double(rgb & 0xFF) / 255
+        )
+    }
 }
 
 extension View {
@@ -36,9 +50,12 @@ struct BrandMark: View {
     var body: some View {
         Image(systemName: "chart.line.downtrend.xyaxis")
             .font(.system(size: size * 0.48, weight: .semibold))
-            .foregroundStyle(PW.ink)
+            .foregroundStyle(PW.accent)
             .frame(width: size, height: size)
-            .background(PW.accent, in: RoundedRectangle(cornerRadius: size * 0.28))
+            .background(PW.accentSurface, in: RoundedRectangle(cornerRadius: size * 0.28))
+            .overlay {
+                RoundedRectangle(cornerRadius: size * 0.28).strokeBorder(PW.accentStroke, lineWidth: 1)
+            }
             .accessibilityHidden(true)
     }
 }
@@ -47,10 +64,11 @@ struct PrimaryButton: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
 
     func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 14)
         configuration.label.font(.headline).padding(.vertical, 14).padding(.horizontal, 16)
-            .foregroundStyle(PW.ink)
-            .background(PW.accent.opacity(enabled ? (configuration.isPressed ? 0.78 : 1) : 0.45),
-                        in: RoundedRectangle(cornerRadius: 15))
+            .foregroundStyle(enabled ? PW.accent : PW.muted)
+            .background(enabled && !configuration.isPressed ? PW.accentSurface : PW.surface, in: shape)
+            .overlay { shape.strokeBorder(enabled ? PW.accentStroke : PW.stroke).allowsHitTesting(false) }
     }
 }
 
@@ -72,8 +90,12 @@ struct SelectionStrip<Value: CaseIterable & Hashable & Identifiable>: View where
                         .font(.subheadline.weight(.semibold))
                         .padding(.horizontal, 12)
                         .frame(minHeight: 44)
-                        .foregroundStyle(value == selection ? PW.ink : PW.muted)
-                        .background(value == selection ? PW.accent : PW.surface, in: Capsule())
+                        .foregroundStyle(value == selection ? PW.accent : PW.muted)
+                        .background(value == selection ? PW.accentSurface : PW.surface, in: Capsule())
+                        .overlay {
+                            Capsule().strokeBorder(value == selection ? PW.accentStroke : .clear)
+                                .allowsHitTesting(false)
+                        }
                         .buttonStyle(.plain)
                         .accessibilityAddTraits(value == selection ? .isSelected : [])
                 }
@@ -85,17 +107,19 @@ struct SelectionStrip<Value: CaseIterable & Hashable & Identifiable>: View where
 
 struct PriceDelta: View {
     let change: PriceChange
-    var hero = false
-
     var body: some View {
-        let symbol = change.direction == "down" ? "arrow.down.right" : change.direction == "up" ? "arrow.up.right" : "minus"
+        let (symbol, color): (String, Color) = switch change.direction {
+        case "down": ("arrow.down.right", PW.decrease)
+        case "up": ("arrow.up.right", PW.increase)
+        default: ("minus", PW.muted)
+        }
         Label {
             Text("\(change.changeText) · \(change.percentText)")
         } icon: {
             Image(systemName: symbol)
         }
         .font(.footnote.weight(.semibold))
-        .foregroundStyle(hero ? PW.ink : change.direction == "up" ? PW.warning : PW.accent)
+        .foregroundStyle(color)
     }
 }
 
