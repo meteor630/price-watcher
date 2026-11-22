@@ -38,6 +38,8 @@ tags:
   - name: reviews
   - name: notifications
   - name: client_errors
+  - name: catalog
+  - name: management
 
 paths:
   /auth/pair:
@@ -697,6 +699,572 @@ paths:
         "429":
           $ref: "#/components/responses/Error"
 
+
+  /catalog/categories:
+    get:
+      tags: [catalog]
+      summary: Категории, группы и их версии
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+    post:
+      tags: [catalog]
+      summary: Добавить категорию
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeNamed"}}}, "required": true}
+      responses:
+        "201":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /catalog/items:
+    get:
+      tags: [catalog]
+      summary: Товары, категории и порядок
+      parameters:
+        - {"name": "category_id", "in": "query", "required": false, "schema": {"anyOf": [{"type": "integer"}, {"type": "null"}], "title": "Category Id"}}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+    post:
+      tags: [catalog]
+      summary: Добавить товар
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeNewItem"}}}}
+      responses:
+        "201":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /catalog/categories/{category_id}:
+    patch:
+      tags: [catalog]
+      summary: Переименовать категорию
+      parameters:
+        - {"name": "category_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Category Id"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeRename"}}}}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /catalog/categories/{category_id}/remove:
+    post:
+      tags: [catalog]
+      summary: Удалить категорию или перенести её товары
+      parameters:
+        - {"name": "category_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Category Id"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeRemoveCategory"}}}}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /catalog/categories/{category_id}/groups:
+    post:
+      tags: [catalog]
+      summary: Создать группу
+      parameters:
+        - {"name": "category_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Category Id"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeNamed"}}}}
+      responses:
+        "201":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /catalog/groups/{group_id}:
+    patch:
+      tags: [catalog]
+      summary: Переименовать группу
+      parameters:
+        - {"name": "group_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Group Id"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeRename"}}}}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /catalog/groups/{group_id}/remove:
+    post:
+      tags: [catalog]
+      summary: Удалить группу
+      parameters:
+        - {"name": "group_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Group Id"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeRemoveGroup"}}}}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /catalog/categories/{category_id}/groups/order:
+    put:
+      tags: [catalog]
+      summary: Переставить группы
+      parameters:
+        - {"name": "category_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Category Id"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeOrder"}}}}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /catalog/items/{item_id}:
+    patch:
+      tags: [catalog]
+      summary: Изменить карточку товара
+      parameters:
+        - {"name": "item_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Item Id"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeEditItem"}}}}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /catalog/items/{item_id}/remove:
+    post:
+      tags: [catalog]
+      summary: Удалить товар
+      parameters:
+        - {"name": "item_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Item Id"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeVersion"}}}}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /catalog/items/order:
+    put:
+      tags: [catalog]
+      summary: Переставить товары
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeItemOrder"}}}, "required": true}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /catalog/items/{item_id}/links:
+    get:
+      tags: [catalog]
+      summary: Текущие ссылки товара
+      parameters:
+        - {"name": "item_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Item Id"}}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+    post:
+      tags: [catalog]
+      summary: Добавить ссылки магазинов
+      parameters:
+        - {"name": "item_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Item Id"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeLinkList"}}}}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /catalog/items/{item_id}/links/{link_id}:
+    delete:
+      tags: [catalog]
+      summary: Снять ссылку товара
+      parameters:
+        - {"name": "item_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Item Id"}}
+        - {"name": "link_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Link Id"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /catalog/items/{item_id}/purchase:
+    get:
+      tags: [catalog]
+      summary: Данные для записи покупки
+      parameters:
+        - {"name": "item_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Item Id"}}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+    post:
+      tags: [catalog]
+      summary: Записать покупку
+      parameters:
+        - {"name": "item_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Item Id"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativePurchaseFields"}}}}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /catalog/items/{item_id}/{transition}:
+    post:
+      tags: [catalog]
+      summary: Архивировать или вернуть товар
+      parameters:
+        - {"name": "item_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Item Id"}}
+        - {"name": "transition", "in": "path", "required": true, "schema": {"type": "string", "title": "Transition", "enum": ["archive", "return"]}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeVersion"}}}}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /catalog/undo:
+    post:
+      tags: [catalog]
+      summary: Отменить действие по токену
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeUndo"}}}, "required": true}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /catalog/reviews/{review_id}:
+    post:
+      tags: [catalog]
+      summary: Принять, отклонить или перепроверить изменение
+      parameters:
+        - {"name": "review_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Review Id"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeReviewAction"}}}}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /manage/stores:
+    get:
+      tags: [management]
+      summary: Магазины и доступные цвета
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /manage/stores/{store_id}:
+    patch:
+      tags: [management]
+      summary: Изменить название и цвет магазина
+      parameters:
+        - {"name": "store_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Store Id"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeStoreForm"}}}}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+    delete:
+      tags: [management]
+      summary: Удалить неиспользуемый магазин
+      parameters:
+        - {"name": "store_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Store Id"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /manage/stores/{store_id}/enabled:
+    put:
+      tags: [management]
+      summary: Включить или отключить магазин
+      parameters:
+        - {"name": "store_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Store Id"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeStoreState"}}}}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /manage/schedule:
+    get:
+      tags: [management]
+      summary: Время проверок и пороги предупреждений
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+    put:
+      tags: [management]
+      summary: Изменить расписание и параметры проверок
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeScheduleForm"}}}, "required": true}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /manage/users:
+    get:
+      tags: [management]
+      summary: Пользователи и действующие приглашения
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /manage/users/{user_id}:
+    post:
+      tags: [management]
+      summary: Изменить права или доступ пользователя
+      parameters:
+        - {"name": "user_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "User Id"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeUserAction"}}}}
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /manage/invites:
+    post:
+      tags: [management]
+      summary: Создать одноразовое приглашение
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativeInviteForm"}}}, "required": true}
+      responses:
+        "201":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /manage/invites/{invite_id}:
+    delete:
+      tags: [management]
+      summary: Удалить приглашение
+      parameters:
+        - {"name": "invite_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Invite Id"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /profile:
+    get:
+      tags: [management]
+      summary: Устройства пользователя и связь с Telegram
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /profile/pairing-code:
+    post:
+      tags: [management]
+      summary: Выпустить одноразовый код подключения
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /profile/telegram/code:
+    post:
+      tags: [management]
+      summary: Выпустить одноразовый код Telegram
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /profile/telegram:
+    delete:
+      tags: [management]
+      summary: Отвязать Telegram
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /profile/devices/{device_id}:
+    delete:
+      tags: [management]
+      summary: Отозвать доступ устройства
+      parameters:
+        - {"name": "device_id", "in": "path", "required": true, "schema": {"type": "integer", "maximum": 4611686018427387904, "minimum": 1, "title": "Device Id"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Данные для экрана или результат действия.
+          content:
+            application/json:
+              schema: {type: object}
+        default: {$ref: "#/components/responses/Error"}
+
+  /auth/password:
+    post:
+      tags: [auth]
+      summary: Сменить пароль с текущего устройства
+      requestBody:
+        {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/NativePasswordForm"}}}, "required": true}
+      responses:
+        "204": {description: "Успешно, без тела."}
+        default: {$ref: "#/components/responses/Error"}
+
+  /dashboard/chart:
+    get:
+      tags: [dashboard]
+      summary: Динамика общего итога по дням
+      parameters:
+        - $ref: "#/components/parameters/ChartRange"
+      responses:
+        "200": {$ref: "#/components/responses/Chart"}
+        default: {$ref: "#/components/responses/Error"}
+
 components:
   securitySchemes:
     bearer:
@@ -809,6 +1377,26 @@ components:
             $ref: "#/components/schemas/ErrorResponse"
 
   schemas:
+    NativeEditItem: {"properties": {"version": {"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 1.0}, "name": {"type": "string", "maxLength": 200}, "full_name": {"anyOf": [{"type": "string", "maxLength": 500}, {"type": "null"}]}, "category_id": {"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 1.0}, "group_id": {"anyOf": [{"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 1.0}, {"type": "null"}]}, "quantity": {"type": "integer", "maximum": 999.0, "minimum": 1.0}}, "additionalProperties": false, "type": "object", "required": ["version", "name", "category_id", "quantity"], "description": "Версия редактируемой записи."}
+    NativeInviteForm: {"properties": {"role": {"type": "string", "enum": ["user", "admin"]}}, "additionalProperties": false, "type": "object", "required": ["role"]}
+    NativeItemOrder: {"properties": {"version": {"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 1.0}, "ids": {"items": {"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 1.0}, "type": "array", "maxItems": 500, "minItems": 1}, "category_id": {"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 1.0}, "group_id": {"anyOf": [{"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 1.0}, {"type": "null"}]}}, "additionalProperties": false, "type": "object", "required": ["version", "ids", "category_id"]}
+    NativeLinkList: {"properties": {"links": {"items": {"type": "string", "maxLength": 4096}, "type": "array", "maxItems": 10, "minItems": 1}}, "additionalProperties": false, "type": "object", "required": ["links"]}
+    NativeNamed: {"properties": {"name": {"type": "string", "maxLength": 200}}, "additionalProperties": false, "type": "object", "required": ["name"]}
+    NativeNewItem: {"properties": {"name": {"type": "string", "maxLength": 200}, "full_name": {"anyOf": [{"type": "string", "maxLength": 500}, {"type": "null"}]}, "category_id": {"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 1.0}, "group_id": {"anyOf": [{"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 1.0}, {"type": "null"}]}, "quantity": {"type": "integer", "maximum": 999.0, "minimum": 1.0}, "links": {"items": {"type": "string", "maxLength": 4096}, "type": "array", "maxItems": 10}}, "additionalProperties": false, "type": "object", "required": ["name", "category_id", "quantity"]}
+    NativeOrder: {"properties": {"version": {"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 1.0}, "ids": {"items": {"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 1.0}, "type": "array", "maxItems": 500, "minItems": 1}}, "additionalProperties": false, "type": "object", "required": ["version", "ids"]}
+    NativePasswordForm: {"properties": {"current_password": {"type": "string", "maxLength": 128}, "password": {"type": "string", "maxLength": 128}, "password_repeat": {"type": "string", "maxLength": 128}}, "additionalProperties": false, "type": "object", "required": ["current_password", "password", "password_repeat"]}
+    NativePurchaseFields: {"properties": {"version": {"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 1.0}, "price": {"type": "string", "maxLength": 50}, "quantity": {"type": "integer", "maximum": 999.0, "minimum": 1.0}, "store_id": {"anyOf": [{"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 1.0}, {"type": "null"}]}, "day": {"type": "string", "format": "date"}}, "additionalProperties": false, "type": "object", "required": ["version", "price", "quantity", "day"]}
+    NativeRemoveCategory: {"properties": {"version": {"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 1.0}, "move_to": {"anyOf": [{"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 1.0}, {"type": "null"}]}}, "additionalProperties": false, "type": "object", "required": ["version"]}
+    NativeRemoveGroup: {"properties": {"version": {"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 1.0}, "keep_items": {"type": "boolean"}}, "additionalProperties": false, "type": "object", "required": ["version", "keep_items"]}
+    NativeRename: {"properties": {"name": {"type": "string", "maxLength": 200}, "version": {"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 1.0}}, "additionalProperties": false, "type": "object", "required": ["name", "version"], "description": "Версия редактируемой записи."}
+    NativeReviewAction: {"properties": {"action": {"type": "string", "enum": ["accept", "reject", "recheck"]}}, "additionalProperties": false, "type": "object", "required": ["action"]}
+    NativeScheduleForm: {"properties": {"times": {"items": {"type": "string", "maxLength": 5}, "type": "array", "maxItems": 3}, "stale_after_days": {"type": "integer", "maximum": 10000.0, "minimum": 0.0}, "title_similarity_percent": {"type": "integer", "maximum": 100.0, "minimum": 0.0}, "price_jump_percent": {"type": "integer", "maximum": 10000.0, "minimum": 0.0}, "versions": {"additionalProperties": {"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 0.0}, "type": "object", "maxProperties": 4}}, "additionalProperties": false, "type": "object", "required": ["times", "stale_after_days", "title_similarity_percent", "price_jump_percent", "versions"]}
+    NativeStoreForm: {"properties": {"name": {"type": "string", "maxLength": 200}, "color": {"type": "string", "maxLength": 40}}, "additionalProperties": false, "type": "object", "required": ["name", "color"]}
+    NativeStoreState: {"properties": {"enabled": {"type": "boolean"}}, "additionalProperties": false, "type": "object", "required": ["enabled"]}
+    NativeUndo: {"properties": {"token": {"type": "string", "maxLength": 500}}, "additionalProperties": false, "type": "object", "required": ["token"]}
+    NativeUserAction: {"properties": {"action": {"type": "string", "enum": ["block", "unblock", "demote"]}}, "additionalProperties": false, "type": "object", "required": ["action"]}
+    NativeVersion: {"properties": {"version": {"type": "integer", "maximum": 4.611686018427388e+18, "minimum": 1.0}}, "additionalProperties": false, "type": "object", "required": ["version"]}
+
     Id:
       type: integer
       format: int64

@@ -2,21 +2,22 @@ import SwiftUI
 
 private enum Route: Hashable {
     case category(Int, Period)
-    case product(Int)
 }
 
 struct HomeView: View {
-    let account: Account
     let client: APIClient
     @Environment(SessionModel.self) private var session
+    @Environment(WorkspaceNavigation.self) private var workspace
     @State private var period: Period = .day
+    @State private var chartRange: ChartRange = .month
+    @State private var chart: [PricePoint]?
+    @State private var chartError: String?
     @State private var dashboard: Dashboard?
     @State private var run: CheckRun?
     @State private var error: String?
     @State private var runError: String?
     @State private var runBusy = false
     @State private var pendingRun: PendingRun?
-    @State private var settings = false
 
     private struct PendingRun {
         let stopID: Int?
@@ -32,6 +33,21 @@ struct HomeView: View {
                     if let error { LoadFailure(message: error) { Task { await load() } } }
                     if let dashboard, dashboard.period == period {
                         counts(dashboard)
+                        if let count = dashboard.panels.tracked, count > 0 {
+                            NavigationLink {
+                                DashboardPanelView(client: client, panel: "tracked", title: "Отслеживаются", period: period)
+                            } label: {
+                                Label("Отслеживаются · \(count)", systemImage: "list.bullet.rectangle")
+                                    .font(.subheadline.weight(.medium)).foregroundStyle(PW.accent)
+                            }
+                        }
+                        if let count = dashboard.reviewsPending, count > 0 {
+                            NavigationLink {
+                                ReviewListView(client: client)
+                            } label: {
+                                Label("Требуют решения · \(count)", systemImage: "checkmark.bubble").font(.subheadline.weight(.medium))
+                            }
+                        }
                         if let run { runCard(run) }
                         SectionTitle("Категории")
                         if dashboard.categories.isEmpty {
@@ -48,6 +64,7 @@ struct HomeView: View {
                                 }
                             }
                         }
+                        priceHistory
                     }
                 }
                 .page()
@@ -57,13 +74,16 @@ struct HomeView: View {
             .navigationDestination(for: Route.self) { route in
                 switch route {
                 case let .category(id, period): CategoryView(id: id, initialPeriod: period, client: client)
-                case let .product(id): ProductView(id: id, client: client)
                 }
             }
-            .task(id: period) { await load() }
+            .task(id: "\(period.rawValue)-\(workspace.revision)") { await load() }
+            .task(id: "\(chartRange.rawValue)-\(workspace.revision)") { await loadHistory() }
             .task(id: run?.active == true) { await trackRun() }
-            .refreshable { await load() }
-            .sheet(isPresented: $settings, onDismiss: { Task { await load() } }) { accountSheet }
+            .refreshable {
+                async let summary: Void = load()
+                async let trend: Void = loadHistory()
+                _ = await (summary, trend)
+            }
         }
     }
 
@@ -78,7 +98,15 @@ struct HomeView: View {
                 }
             }
             Spacer()
-            Button { settings = true } label: {
+            Button {
+                workspace.open(dashboard?.categories.isEmpty == true ? .categories : .newItem(category: nil))
+            } label: {
+                Image(systemName: "plus").font(.body.weight(.semibold))
+                    .frame(width: 46, height: 46).background(PW.accent.opacity(0.16), in: Circle())
+            }
+            .accessibilityLabel("Добавить товар")
+            .accessibilityIdentifier("overview-add-item")
+            Button { workspace.open(.profile) } label: {
                 Image(systemName: "person.crop.circle").font(.title2)
                     .frame(width: 46, height: 46)
                     .background(PW.surface, in: Circle())
@@ -131,30 +159,55 @@ struct HomeView: View {
     }
 
     private func counts(_ value: Dashboard) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 8) {
-                counter("Дешевле", symbol: "arrow.down.right", value: value.panels.cheaper, color: PW.decrease)
-                counter("Дороже", symbol: "arrow.up.right", value: value.panels.pricier, color: PW.increase)
-                counter("Нет в наличии", symbol: "minus.circle", value: value.panels.outOfStock, color: PW.muted)
-            }
-            VStack(spacing: 8) {
-                counter("Дешевле", symbol: "arrow.down.right", value: value.panels.cheaper, color: PW.decrease)
-                counter("Дороже", symbol: "arrow.up.right", value: value.panels.pricier, color: PW.increase)
-                counter("Нет в наличии", symbol: "minus.circle", value: value.panels.outOfStock, color: PW.muted)
-            }
+        HStack(spacing: 8) {
+            counter("Дешевле", panel: "cheaper", symbol: "arrow.down.right", value: value.panels.cheaper, color: PW.decrease)
+            counter("Дороже", panel: "pricier", symbol: "arrow.up.right", value: value.panels.pricier, color: PW.increase)
+            counter("Нет в наличии", panel: "out_of_stock", symbol: "minus.circle", value: value.panels.outOfStock, color: PW.muted)
         }
     }
 
-    private func counter(_ title: String, symbol: String, value: Int, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Label(value.formatted(), systemImage: symbol)
-                .font(.subheadline.weight(.semibold)).foregroundStyle(color)
-            Text(title).font(.caption.weight(.medium)).foregroundStyle(PW.muted).fixedSize()
+    private func counter(_ title: String, panel: String, symbol: String, value: Int, color: Color) -> some View {
+        NavigationLink {
+            DashboardPanelView(client: client, panel: panel, title: title, period: period)
+        } label: {
+            VStack(alignment: .leading, spacing: 7) {
+                Label(value.formatted(), systemImage: symbol)
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(color)
+                Text(title).font(.caption.weight(.medium)).foregroundStyle(PW.muted)
+            }
+            .frame(maxWidth: .infinity, minHeight: 47, alignment: .leading)
+            .padding(10)
+            .background(PW.surfaceRaised, in: RoundedRectangle(cornerRadius: 14))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(PW.surfaceRaised, in: RoundedRectangle(cornerRadius: 15))
+        .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
+    }
+
+    private var priceHistory: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SectionTitle("Итог по дням")
+            SelectionStrip(selection: $chartRange, title: \.title)
+            if let chart {
+                PriceChart(points: chart).id(chartRange)
+            } else if let chartError {
+                LoadFailure(message: chartError) { Task { await loadHistory() } }
+            } else {
+                ProgressView().frame(maxWidth: .infinity, minHeight: 100)
+            }
+        }
+        .card()
+    }
+
+    private func loadHistory() async {
+        let requested = chartRange
+        chart = nil
+        chartError = nil
+        do {
+            let response: ChartResponse = try await client.get("dashboard/chart", query: ["range": requested.rawValue])
+            if !Task.isCancelled && requested == chartRange { chart = response.points }
+        } catch {
+            if !Task.isCancelled && requested == chartRange && !session.checkSession(error) { chartError = error.localizedDescription }
+        }
     }
 
     private func categoryCard(_ category: CategorySummary) -> some View {
@@ -225,30 +278,6 @@ struct HomeView: View {
         }
     }
 
-    private var accountSheet: some View {
-        NavigationStack {
-            Form {
-                Section("Учётная запись") {
-                    Text(account.displayName)
-                    Text(client.server.url.absoluteString).textSelection(.enabled)
-                    Link("Открыть профиль на сайте", destination: client.server.profile)
-                }
-                if let message = session.message {
-                    Section { Text(message).foregroundStyle(PW.warning) }
-                }
-                Section {
-                    Button("Выйти", role: .destructive) {
-                        Task { await session.logout() }
-                    }
-                    .disabled(session.busy)
-                }
-            }
-            .navigationTitle("Профиль")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Готово") { settings = false } } }
-        }
-    }
-
     private func load() async {
         let requested = period
         do {
@@ -305,6 +334,7 @@ struct CategoryView: View {
     let id: Int
     let client: APIClient
     @Environment(SessionModel.self) private var session
+    @Environment(WorkspaceNavigation.self) private var workspace
     @State private var period: Period
     @State private var range: ChartRange = .month
     @State private var category: CategoryDetail?
@@ -326,7 +356,7 @@ struct CategoryView: View {
                 if let category, category.period == period {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Итог категории").font(.subheadline).foregroundStyle(PW.muted)
-                        Text(category.totalText).font(.system(.largeTitle, design: .serif, weight: .semibold))
+                        Text(category.totalText).font(.system(.largeTitle, design: .rounded, weight: .semibold)).monospacedDigit()
                         if let change = category.change { PriceDelta(change: change) }
                     }
                     .card()
@@ -348,7 +378,10 @@ struct CategoryView: View {
                         VStack(alignment: .leading, spacing: 9) {
                             SectionTitle(group.name ?? "Товары")
                             ForEach(group.items) { item in
-                                NavigationLink(value: Route.product(item.id)) { productCard(item) }.buttonStyle(.plain)
+                                NavigationLink { ProductView(id: item.id, client: client) } label: {
+                                    productCard(item)
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
@@ -357,7 +390,7 @@ struct CategoryView: View {
                         VStack(alignment: .leading, spacing: 9) {
                             SectionTitle("Куплено")
                             ForEach(purchases) { purchase in
-                                NavigationLink(value: Route.product(purchase.itemId)) {
+                                NavigationLink { ProductView(id: purchase.itemId, client: client) } label: {
                                     HStack {
                                         VStack(alignment: .leading, spacing: 5) {
                                             Text(purchase.name).font(.headline)
@@ -384,8 +417,16 @@ struct CategoryView: View {
         .background(PW.canvas)
         .navigationTitle(category?.name ?? "Категория")
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: period) { await load() }
-        .task(id: range) { await loadChart() }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Добавить товар в категорию", systemImage: "plus") {
+                    workspace.open(.newItem(category: id))
+                }
+                .labelStyle(.iconOnly)
+            }
+        }
+        .task(id: "\(period.rawValue)-\(workspace.revision)") { await load() }
+        .task(id: "\(range.rawValue)-\(workspace.revision)") { await loadChart() }
         .refreshable {
             async let detail: Void = load()
             async let history: Void = loadChart()

@@ -3,6 +3,8 @@
 Откройте `PriceWatcher.xcodeproj` в Xcode. Цель `PriceWatcher` поддерживает iPhone с iOS 17 и новее. Для установки на телефон выберите свою команду в **Signing & Capabilities** и устройство в списке целей Xcode.
 Данные, история и правила расчёта приходят из существующего `/api/v1`. Пользователь подключается одноразовым кодом из **Настройки → Профиль → Получить код** на сайте.
 
+Вкладки **Обзор**, **Покупки** и **Управление** написаны на SwiftUI. Кнопка **+** в обзоре или категории открывает форму товара. Через многоточие в карточке товара можно изменить название, количество и ссылки, записать покупку, архивировать или удалить товар. В управлении доступны каталог, группы, проверка изменений и настройки. Вход по коду даёт доступ к функциям согласно роли аккаунта.
+
 ## Сервер в Docker
 
 Из корня репозитория. Если Terminal на Mac не видит команду Docker Desktop, добавьте его CLI для текущего сеанса командой `export PATH="$HOME/.docker/bin:$PATH"`.
@@ -13,6 +15,10 @@
 4. Для пустой базы создайте администратора командой `docker compose -f deploy/local/compose.yaml exec app python -m pricewatch.bootstrap create-admin --login ВАШ_ЛОГИН`. Откройте адрес сервера на сайте и найдите код в профиле. В приложении введите тот же адрес и код.
 
 Для запуска здесь же по расписанию добавьте сервис `scheduler` в команду запуска. Парсер использует существующие команды из `deploy/windows`: выпустите токен через `docker compose -f deploy/local/compose.yaml exec app python -m pricewatch.bootstrap create-worker --name home`, заполните локальный `worker.env` и запустите `deploy/windows/start-worker.ps1`. При стандартном порте адрес worker — `http://127.0.0.1:8000`; публикация в Wi‑Fi оставляет этот адрес доступным.
+
+## Подключение через мобильный интернет
+
+Код из профиля привязывает iPhone к введённому адресу. Чтобы открыть PriceWatcher из другой сети, сначала запустите тот же сервер с доступным извне HTTPS-адресом. Для схемы с домашним компьютером и VPS конфигурация лежит в `deploy/home` и `deploy/vps`. Пересоберите Docker на публичном сервере с этой версией проекта. Откройте HTTPS-адрес на iPhone через мобильную сеть и проверьте, что загружается форма входа. Затем войдите на сайт по этому адресу, получите новый код в профиле и введите HTTPS-адрес и код в приложении. Для смены адреса с уже подключённого телефона откройте **Обзор → Профиль → Выйти**.
 
 ## Первый запуск на Windows в домашней сети
 
@@ -73,12 +79,26 @@ if ($LASTEXITCODE -ne 0) { throw 'Сайт не запустился.' }
 Invoke-RestMethod 'http://localhost:8000/healthz'
 ```
 
-Должно появиться `status ok`. На компьютере откройте адрес `http://IPv4-компьютера:8000` со своим адресом и войдите прежним логином и паролем. Дамп и локальный `.env` храните вне Git. [Восстановление PostgreSQL](https://www.postgresql.org/docs/18/app-pgrestore.html)
+Должно появиться `status ok`. Для входа и выдачи кода на новом Windows-сервере используйте локальную форму из шага 4. Дамп и локальный `.env` храните вне Git. [Восстановление PostgreSQL](https://www.postgresql.org/docs/18/app-pgrestore.html)
 
 ### 4. Переключите iPhone на Windows
 
 1. Держите Mac доступным, пока переключаете iPhone. В приложении откройте **Профиль → Выйти**, чтобы завершить сессию на Mac.
-2. На Windows откройте сайт по его локальному IP. В PriceWatcher на сайте выберите **Настройки → Профиль → Получить код**.
+2. Откройте форму входа на самом Windows-компьютере. В PowerShell из папки проекта временно запустите сайт с адресом `localhost`, чтобы браузер принял защищённую веб-сессию.
+
+   ```powershell
+   $compose = @('-f', 'deploy/local/compose.yaml', '-f', 'deploy/local/compose.lan.yaml')
+   $env:PRICEWATCH_PUBLIC_ORIGIN = 'http://localhost:8000'
+   docker compose @compose up -d --wait app
+   ```
+
+   В браузере откройте `http://localhost:8000`, войдите и выберите **Настройки → Профиль → Получить код**. Сразу верните адрес из `deploy/local/.env`.
+
+   ```powershell
+   Remove-Item Env:PRICEWATCH_PUBLIC_ORIGIN
+   docker compose @compose up -d --wait app
+   ```
+
 3. На iPhone в той же сети введите адрес **Windows** в PriceWatcher и этот одноразовый код. Если iPhone не открывает адрес Windows, проверьте, что домашняя сеть в Windows имеет профиль **Частная**. Если порт заблокирован брандмауэром, откройте его только для локальной подсети из PowerShell от администратора. [Правила брандмауэра Windows](https://learn.microsoft.com/en-us/powershell/module/netsecurity/new-netfirewallrule?view=windowsdefender)
 
 ```powershell
@@ -113,7 +133,7 @@ powershell -ExecutionPolicy Bypass -File deploy\windows\install-worker.ps1
 powershell -ExecutionPolicy Bypass -File deploy\windows\start-worker.ps1
 ```
 
-При следующем запуске компьютера откройте Docker Desktop и выполните команды ниже. Существующий том PostgreSQL содержит восстановленные данные. Для проверок по расписанию добавьте `scheduler` после `app` в команду запуска.
+При следующем запуске компьютера откройте Docker Desktop и выполните команды ниже. После обновления проекта через GitHub Desktop добавьте `--build` к команде Docker, чтобы пересобрать сервер. Существующий том PostgreSQL содержит восстановленные данные. Для проверок по расписанию добавьте `scheduler` после `app` в команду запуска.
 
 ```powershell
 Set-Location "$env:USERPROFILE\PriceWatcher"
@@ -147,4 +167,4 @@ docker compose -p pricewatch-migration -f deploy/local/compose.yaml run --rm --n
 
 ## Проверки
 
-В схеме `PriceWatcher` есть тесты декодирования контракта, адреса сервера и Keychain, а также сценарии входа на симуляторе. Для сквозного теста на отдельном Docker-проекте передайте в среду тестового раннера `PRICEWATCH_TEST_CODE` и при необходимости `PRICEWATCH_TEST_SERVER`, `PRICEWATCH_TEST_CATEGORY` и `PRICEWATCH_TEST_PRODUCT`. Используйте тестовую учётную запись. Сценарий сохраняет изменение отметки товара в базе и отзывает устройство на выходе.
+В схеме `PriceWatcher` есть тесты декодирования контракта, адреса сервера и Keychain, а также сценарии входа на симуляторе. Для сквозного теста на отдельном Docker-проекте передайте в среду тестового раннера `PRICEWATCH_TEST_CODE` и при необходимости `PRICEWATCH_TEST_SERVER`, `PRICEWATCH_TEST_CATEGORY` и `PRICEWATCH_TEST_PRODUCT`. Используйте тестовую учётную запись. Сценарий сохраняет изменение отметки товара в базе и отзывает устройство на выходе. Чтобы проверить нативное добавление и удаление товара, передайте `PRICEWATCH_TEST_MANAGEMENT=1` для тестовой учётной записи с категорией.

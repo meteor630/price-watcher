@@ -12,7 +12,7 @@ struct PriceWatcherApp: App {
                     ProgressView("Подключаемся к PriceWatcher")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let account = session.account, let client = session.client {
-                    HomeView(account: account, client: client)
+                    PriceWatcherTabs(account: account, client: client)
                         .id(client.server.url)
                 } else {
                     ConnectView()

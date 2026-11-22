@@ -146,8 +146,30 @@ def test_sum_chart_uses_todays_quantities_for_past_days() -> None:
 
     points = sum_chart([lamp, chair], ChartRange.WEEK, NOW)
 
-    assert [p.value_minor for p in points[-4:]] == [200_000, 250_000, 210_000, 210_000]
+    assert [p.value_minor for p in points[-4:]] == [None, 250_000, 210_000, 210_000]
     assert points[-1].label == f"6 окт · 2 100{NBSP}₽"
+
+
+def test_sum_chart_does_not_treat_missing_stock_as_a_price_drop() -> None:
+    lamp = item(bound(seen(day_at(3), 100_000), seen(day_at(1), 90_000)))
+    chair = item(bound(seen(day_at(3), 900_000), seen(day_at(2), None), seen(day_at(0), 900_000)), item_id=2)
+
+    points = sum_chart([lamp, chair], ChartRange.WEEK, NOW)
+
+    assert [point.value_minor for point in points[-4:]] == [1_000_000, None, None, 990_000]
+
+
+def test_sum_chart_uses_one_basket_after_inclusion_changes() -> None:
+    lamp = item(bound(seen(day_at(3), 100_000), seen(day_at(1), 90_000)))
+    chair = item(bound(seen(day_at(2), 900_000)), item_id=2)
+    ignored = item(*chair.bindings, item_id=2, in_total=False)
+
+    assert [p.value_minor for p in sum_chart([lamp, chair], ChartRange.WEEK, NOW)[-4:]] == [
+        None, 1_000_000, 990_000, 990_000,
+    ]
+    assert [p.value_minor for p in sum_chart([lamp, ignored], ChartRange.WEEK, NOW)[-4:]] == [
+        100_000, 100_000, 90_000, 90_000,
+    ]
 
 
 def test_sum_chart_skips_watching_purchased_and_disabled_stores() -> None:

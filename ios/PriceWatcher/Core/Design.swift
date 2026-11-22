@@ -146,7 +146,6 @@ struct PriceChart: View {
     private struct Mark: Identifiable {
         let index: Int
         let segment: Int
-        let point: PricePoint
         let value: Int
         var id: Int { index }
     }
@@ -158,58 +157,90 @@ struct PriceChart: View {
                 segment += 1
                 return nil
             }
-            return Mark(index: index, segment: segment, point: point, value: value)
+            return Mark(index: index, segment: segment, value: value)
         }
     }
 
     var body: some View {
-        let marks = marks
-        if !marks.isEmpty {
+        let values = marks
+        if !values.isEmpty {
             if compact {
-                chart(marks).chartXAxis(.hidden).chartYAxis(.hidden)
-                    .frame(height: 34).accessibilityHidden(true)
+                plot(values).chartXAxis(.hidden).chartYAxis(.hidden)
+                    .frame(height: 30).accessibilityHidden(true)
             } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    chart(marks)
-                        .chartXSelection(value: $selected)
-                        .chartXAxis(.hidden)
-                        .chartYAxis(.hidden)
-                        .frame(height: 126)
-                        .accessibilityLabel("График цен")
-                    HStack {
-                        if let first = points.first { Text(Prices.date(first.date)) }
-                        Spacer()
-                        if let last = points.last { Text(Prices.date(last.date)) }
+                VStack(alignment: .leading, spacing: 10) {
+                    let focus = selected.flatMap { points.indices.contains($0) ? $0 : nil } ?? values.last?.index
+                    if let focus {
+                        Text(points[focus].label)
+                            .font(.subheadline.weight(.medium)).monospacedDigit()
+                            .contentTransition(.numericText())
                     }
-                    .font(.caption).foregroundStyle(PW.muted)
-                    Text(points.indices.contains(selected ?? -1) ? points[selected ?? 0].label : marks.last?.point.label ?? "")
-                        .font(.subheadline.weight(.semibold))
+                    plot(values)
+                        .chartXSelection(value: $selected)
+                        .chartXAxis {
+                            AxisMarks(values: axisDays) { value in
+                                if let index = value.as(Int.self), points.indices.contains(index) {
+                                    AxisValueLabel { Text(Prices.date(points[index].date)).font(.caption2) }
+                                }
+                            }
+                        }
+                        .chartYAxis {
+                            AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                                AxisGridLine().foregroundStyle(PW.stroke)
+                                if let minor = value.as(Int.self) {
+                                    AxisValueLabel { Text((minor / 100).formatted(.number.locale(Locale(identifier: "ru_RU")))).font(.caption2) }
+                                }
+                            }
+                        }
+                        .frame(height: 164)
+                        .accessibilityIdentifier("native-price-chart")
+                        .accessibilityLabel("График цен")
+                    if values.first?.segment != values.last?.segment {
+                        Text("Пунктир между датами без цены").font(.caption).foregroundStyle(PW.muted)
+                    }
                 }
             }
         } else if !compact {
-            Label("Истории пока нет", systemImage: "chart.xyaxis.line")
-                .font(.subheadline).foregroundStyle(PW.muted).padding(.vertical, 12)
+            Label("За этот период пока нет цен", systemImage: "chart.xyaxis.line")
+                .font(.subheadline).foregroundStyle(PW.muted).padding(.vertical, 18)
         }
     }
 
-    private func chart(_ marks: [Mark]) -> some View {
-        Chart {
-            ForEach(marks) { mark in
-                LineMark(x: .value("День", mark.index), y: .value("Цена в копейках", mark.value),
-                         series: .value("Период", mark.segment))
+    private var axisDays: [Int] {
+        let end = points.count - 1
+        return end > 2 ? [0, end / 2, end] : Array(points.indices)
+    }
+
+    private func plot(_ values: [Mark]) -> some View {
+        let gaps = zip(values, values.dropFirst()).filter { $0.1.segment != $0.0.segment }
+        let counts = Dictionary(grouping: values, by: \.segment).mapValues(\.count)
+        return Chart {
+            ForEach(Array(gaps), id: \.0.id) { start, end in
+                ForEach([start, end]) { mark in
+                    LineMark(x: .value("День", mark.index), y: .value("Цена", mark.value),
+                             series: .value("Период", "gap-\(start.id)"))
+                        .foregroundStyle(PW.accent.opacity(0.5))
+                        .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [4, 5]))
+                        .accessibilityHidden(true)
+                }
+            }
+            ForEach(values) { mark in
+                LineMark(x: .value("День", mark.index), y: .value("Цена", mark.value),
+                         series: .value("Период", "price-\(mark.segment)"))
+                    .interpolationMethod(.monotone)
                     .foregroundStyle(PW.accent)
                     .lineStyle(StrokeStyle(lineWidth: compact ? 2 : 2.5, lineCap: .round))
-                    .accessibilityLabel(mark.point.label)
-                if !compact || marks.count == 1 {
-                    PointMark(x: .value("День", mark.index), y: .value("Цена в копейках", mark.value))
-                        .symbolSize(compact ? 18 : 10)
+                    .accessibilityLabel(points[mark.index].label)
+                if selected == mark.index || counts[mark.segment] == 1 {
+                    PointMark(x: .value("День", mark.index), y: .value("Цена", mark.value))
+                        .symbolSize(selected == mark.index ? 38 : 14)
                         .foregroundStyle(PW.accent)
                         .accessibilityHidden(true)
                 }
             }
             if !compact, let selected, points.indices.contains(selected) {
-                RuleMark(x: .value("Выбранный день", selected)).foregroundStyle(PW.muted.opacity(0.6))
-                    .accessibilityHidden(true)
+                RuleMark(x: .value("Выбранный день", selected))
+                    .foregroundStyle(PW.muted.opacity(0.45)).accessibilityHidden(true)
             }
         }
         .chartXScale(domain: 0...max(1, points.count - 1))

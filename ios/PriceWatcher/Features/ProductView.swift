@@ -4,6 +4,7 @@ struct ProductView: View {
     let id: Int
     let client: APIClient
     @Environment(SessionModel.self) private var session
+    @Environment(WorkspaceNavigation.self) private var workspace
     @State private var product: ProductDetail?
     @State private var points: [PricePoint]?
     @State private var selectedStore: Int?
@@ -54,7 +55,15 @@ struct ProductView: View {
         .background(PW.canvas)
         .navigationTitle("Товар")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await load() }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Действия с товаром", systemImage: "ellipsis.circle") {
+                    workspace.open(.item(id))
+                }
+                .labelStyle(.iconOnly)
+            }
+        }
+        .task(id: workspace.revision) { await load() }
         .task(id: selection) { await loadChart() }
         .refreshable {
             await load()

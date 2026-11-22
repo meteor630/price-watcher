@@ -3,6 +3,7 @@
 import dataclasses
 import logging
 from collections.abc import Mapping
+from datetime import date
 from enum import Enum
 from types import MappingProxyType
 
@@ -93,6 +94,8 @@ def _jsonable(value: object) -> object:
         return {str(key): _jsonable(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_jsonable(item) for item in value]
+    if isinstance(value, date):
+        return value.isoformat()
     if isinstance(value, Enum):
         return value.value
     return value

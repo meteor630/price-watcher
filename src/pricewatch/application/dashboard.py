@@ -164,6 +164,13 @@ def dashboard(uow: UnitOfWork, user: User, period: Period, now: datetime) -> Das
     )
 
 
+def dashboard_chart(uow: UnitOfWork, user: User, chart_range: ChartRange, now: datetime) -> list[ChartPoint]:
+    first_day, _ = chart_days(chart_range, now)[0]
+    with uow:
+        priced = load(uow, user.id, Period.DAY, now, day_start(first_day))
+    return sum_chart([row.total_item for row in priced.rows], chart_range, now)
+
+
 def panel_items(uow: UnitOfWork, user: User, panel: Panel, period: Period, now: datetime, offset: int, limit: int) -> PanelPage:
     if offset < 0 or not 1 <= limit <= PANEL_LIMIT_MAX:
         raise PriceWatcherError(ErrorCode.VALIDATION_ERROR, {"fields": {"cursor" if offset < 0 else "limit": "invalid"}})

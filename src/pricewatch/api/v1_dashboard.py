@@ -15,7 +15,8 @@ from pricewatch.api.app_auth import app_user
 from pricewatch.api.context import get_context
 from pricewatch.api.v1_json import change_json, offset_from_cursor, point_json, store_json, utc_iso
 from pricewatch.application.app_auth import DeviceUser
-from pricewatch.application.dashboard import CategoryCard, Dashboard, ItemChangeView, Panel, RunView, dashboard, panel_items
+from pricewatch.application.dashboard import CategoryCard, Dashboard, ItemChangeView, Panel, RunView, dashboard, dashboard_chart, panel_items
+from pricewatch.domain.charts import ChartRange
 from pricewatch.domain.days import Period
 
 router = APIRouter(prefix="/api/v1")
@@ -31,6 +32,15 @@ def dashboard_route(request: Request, period: Period = Period.DAY, user: DeviceU
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers={"ETag": etag, "Cache-Control": PRIVATE})
     return JSONResponse(body, headers={"ETag": etag, "Cache-Control": PRIVATE})
+
+
+@router.get("/dashboard/chart")
+def chart_route(
+    request: Request, range: ChartRange = ChartRange.MONTH, user: DeviceUser = Depends(app_user)  # noqa: A002
+) -> JSONResponse:
+    context = get_context(request)
+    points = dashboard_chart(context.unit_of_work(), user.user, range, context.clock())
+    return JSONResponse({"range": range.value, "points": [point_json(point) for point in points]}, headers={"Cache-Control": PRIVATE})
 
 
 @router.get("/dashboard/items")

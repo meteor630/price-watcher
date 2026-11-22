@@ -7,8 +7,8 @@
   к товару на конец дня; замена ссылки того же магазина продолжает линию.
   Это история самого магазина, поэтому его выключение точки не прячет.
 - График суммы — «сколько стоил бы нынешний список»: сегодняшние количества
-  и отметки, цены каждого дня по правилам итога. Выключенный магазин не
-  учитывается и в прошлом; после включения его цены возвращаются.
+  и отметки. В корзину сравнения входят товары с ценой хотя бы за один день
+  диапазона. Сумма появляется только за дни, когда цены есть у всей корзины.
 
 Если ни в одной точке нет значения, график пуст: истории ещё нет.
 """
@@ -21,6 +21,7 @@ from enum import StrEnum
 from pricewatch.domain.days import date_label, day_start, moscow_date
 from pricewatch.domain.money import format_rub
 from pricewatch.domain.pricing import LinkInput, PriceStatus, link_price
+from pricewatch.domain.shopping import ItemState
 from pricewatch.domain.totals import BEFORE, TotalItem, counted_unit_price, item_price_at
 
 
@@ -63,21 +64,32 @@ def store_chart(item: TotalItem, store_id: int, chart_range: ChartRange, now: da
 
 
 def sum_chart(items: Sequence[TotalItem], chart_range: ChartRange, now: datetime) -> list[ChartPoint]:
-    points = []
-    for day, moment in chart_days(chart_range, now):
-        value = 0
-        counted = stale = False
-        for item in items:
-            price = item_price_at(item, moment)
-            unit = counted_unit_price(item, price)
+    days = chart_days(chart_range, now)
+    sums = [0] * len(days)
+    known = [0] * len(days)
+    stale = [False] * len(days)
+    basket_size = 0
+    for item in items:
+        if item.state is not ItemState.ACTIVE or not item.in_total:
+            continue
+        prices = [item_price_at(item, moment) for _, moment in days]
+        units = [counted_unit_price(item, price) for price in prices]
+        if all(unit is None for unit in units):
+            continue
+        basket_size += 1
+        for index, unit in enumerate(units):
             if unit is not None:
-                value += unit * item.quantity
-                counted = True
-            elif price.status is PriceStatus.STALE:
-                stale = True
-        if counted:
+                sums[index] += unit * item.quantity
+                known[index] += 1
+            elif prices[index].status is PriceStatus.STALE:
+                stale[index] = True
+
+    points = []
+    for index, (day, _) in enumerate(days):
+        if basket_size and known[index] == basket_size:
+            value = sums[index]
             points.append(ChartPoint(day, value, f"{date_label(day)} · {format_rub(value)}", PointStatus.OK))
-        elif stale:
+        elif stale[index]:
             points.append(ChartPoint(day, None, f"{date_label(day)} · цена не актуальна", PointStatus.STALE))
         else:
             points.append(_no_data(day))

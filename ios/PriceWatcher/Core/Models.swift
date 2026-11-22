@@ -48,11 +48,13 @@ struct Dashboard: Decodable, Sendable {
     let change: PriceChange?
     let inTotalCount: Int
     let watchingCount: Int
+    let reviewsPending: Int?
     let categories: [CategorySummary]
     let panels: Panels
     let run: CheckRun
 
     struct Panels: Decodable, Sendable {
+        let tracked: Int?
         let cheaper: Int
         let pricier: Int
         let outOfStock: Int
@@ -85,6 +87,7 @@ struct ProductGroup: Decodable, Identifiable, Sendable {
 
 struct ProductRow: Decodable, Identifiable, Sendable {
     let id: Int
+    let version: Int?
     let name: String
     let quantity: Int
     let inTotal: Bool
@@ -101,6 +104,8 @@ struct ProductDetail: Decodable, Sendable {
     let version: Int
     let name: String
     let fullName: String?
+    let category: NamedID?
+    let group: NamedID?
     let quantity: Int
     let inTotal: Bool
     let photoUrl: String?
@@ -139,6 +144,7 @@ struct Purchase: Decodable, Identifiable, Sendable {
     let name: String
     let purchasedAt: String
     let totalText: String
+    let store: Store?
 
     var id: Int { itemId }
 }

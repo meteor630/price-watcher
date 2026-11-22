@@ -33,7 +33,19 @@ def change_password(
     uow: UnitOfWork, hasher: PasswordHasher, session: SessionUser, *, current: str, new: str, repeat: str, ip: str | None, now: datetime
 ) -> None:
     """VALIDATION_ERROR по полям: current_password (wrong), password (правила), password_repeat (mismatch)."""
-    user = session.user
+    _change_password(uow, hasher, session.user, session.session.id, current=current, new=new, repeat=repeat, ip=ip, now=now)
+
+
+def change_device_password(
+    uow: UnitOfWork, hasher: PasswordHasher, user: User, *, current: str, new: str, repeat: str, ip: str | None, now: datetime
+) -> None:
+    _change_password(uow, hasher, user, None, current=current, new=new, repeat=repeat, ip=ip, now=now)
+
+
+def _change_password(
+    uow: UnitOfWork, hasher: PasswordHasher, user: User, keep_session: int | None, *,
+    current: str, new: str, repeat: str, ip: str | None, now: datetime,
+) -> None:
     subject = login_key(user.login)
     with uow:
         ensure_login_not_limited(uow, subject, ip, now)
@@ -48,7 +60,8 @@ def change_password(
         if new != repeat:
             raise PriceWatcherError(ErrorCode.VALIDATION_ERROR, {"fields": {"password_repeat": "mismatch"}})
         uow.users.set_password_hash(user.id, hasher.hash(password))
-        sessions = uow.sessions.revoke_others(user.id, session.session.id, now)
+        sessions = (uow.sessions.revoke_all(user.id, now) if keep_session is None
+                    else uow.sessions.revoke_others(user.id, keep_session, now))
         revoked_devices = uow.devices.revoke_all(user.id, now)
         uow.auth_failures.clear_subject(LOGIN_FAILURE, subject)
         uow.audit.add(AuditEvent(user.id, "password_changed", "user", user.id, None, {"sessions_revoked": sessions, "devices_revoked": revoked_devices}, now))

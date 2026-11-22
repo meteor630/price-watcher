@@ -127,8 +127,23 @@ actor APIClient {
         return try decode(await authorized(path, method: "POST", key: key))
     }
 
-    private func get<T: Decodable>(_ path: String, query: [String: String] = [:]) async throws -> T {
+    func get<T: Decodable & Sendable>(_ path: String, query: [String: String] = [:]) async throws -> T {
         try decode(await authorized(path, query: query))
+    }
+
+    func changePassword(current: String, new: String, repeat confirmation: String) async throws {
+        struct Body: Encodable { let currentPassword: String; let password: String; let passwordRepeat: String }
+        let payload = try encoder.encode(Body(currentPassword: current, password: new, passwordRepeat: confirmation))
+        _ = try await authorized("auth/password", method: "POST", body: payload)
+        try clear()
+    }
+
+    func send<Response: Decodable & Sendable>(
+        _ path: String, method: String = "POST", body: some Encodable & Sendable,
+        key: UUID = UUID()
+    ) async throws -> Response {
+        let data = try encoder.encode(body)
+        return try decode(await authorized(path, method: method, body: data, key: key))
     }
 
     private func authorized(

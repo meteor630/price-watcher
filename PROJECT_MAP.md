@@ -94,7 +94,7 @@
 - Файлы: `src/pricewatch/domain/money.py` — целые копейки, строки «12 990 ₽», «−652 ₽», процент с одним знаком (половины вверх), изменение Change; разбор введённой суммы и вид суммы для поля ввода.
 - Файлы: `src/pricewatch/domain/pricing.py` — наблюдение, действующая цена, участие ссылки (меньше 7 суток), статус ссылки и товара по порядку раздела 6, лучшая цена, «на проверке»; расчёт на любой момент (проверки отсортированы один раз, граница — двоичным поиском).
 - Файлы: `src/pricewatch/domain/totals.py` — привязки ссылок [valid_from, valid_to), цена товара на момент, отметка «в итоге» при устаревшей цене, итог, изменение «только из-за цен», минимум периода.
-- Файлы: `src/pricewatch/domain/charts.py` — точки по московским дням (7/30/365), график магазина (цена за штуку, продолжение при замене ссылки), график суммы по сегодняшнему составу.
+- Файлы: `src/pricewatch/domain/charts.py` — точки по московским дням (7/30/365), график магазина (цена за штуку, продолжение при замене ссылки), график суммы по сегодняшнему составу с разрывами при неполном наборе цен.
 - Файлы: `src/pricewatch/domain/review.py` — смена названия (схожесть ниже 85 %) и скачок цены (больше 30 %) точно, в целых числах; вердикт, автоматическое закрытие ценового подозрения, пороги; что засчитано конкретному пользователю по его решениям (каждый решает за свои товары); пороги из настроек с допустимыми диапазонами.
 - Файлы: `src/pricewatch/domain/client_errors.py` — отчёт приложения: вырезать из текста адресные параметры, Bearer, чувствительные пары и строки-токены; лимит 20 в час, хранение 90 суток.
 - Файлы: `src/pricewatch/domain/schedule.py` — расписание: времена «ЧЧ:ММ» (1–3, по умолчанию 09:00 по Москве), ключ слота, последний наступивший слот промежутка, момент следующего слота (UTC).
@@ -173,7 +173,8 @@
 - Файлы: `src/pricewatch/api/errors.py` — HTTP-статус каждого кода ошибки, тело по схеме ErrorResponse; на путях сайта (/ и /web) — HTML через web_errors; записи domain в деталях (актуальное состояние при конфликте) — словарями.
 - Файлы: `src/pricewatch/api/context.py` — ApiContext (единицы работы, ключ, хешер, часы, каталог фото, распознавание ссылок) от bootstrap; IP посетителя из request.state.
 - Файлы: `src/pricewatch/api/web_auth.py` — cookie pw_session (HttpOnly, Secure, SameSite=Lax), зависимость web_user: только cookie; для изменяющих — Origin и X-CSRF-Token.
-- Файлы: `src/pricewatch/api/v1_dashboard.py` — GET /api/v1/dashboard (ETag, 304) и /dashboard/items (непрозрачный курсор) по OpenAPI.
+- Файлы: `src/pricewatch/api/v1_dashboard.py` — GET /api/v1/dashboard (ETag, 304), /dashboard/chart и /dashboard/items (непрозрачный курсор) по OpenAPI.
+- Файлы: `src/pricewatch/api/v1_catalog.py` и `src/pricewatch/api/v1_management.py` — нативные операции каталога, покупок, архива и настроек. Общие сценарии `src/pricewatch/application`, версии записей и ключ идемпотентности.
 - Файлы: `src/pricewatch/api/web_home.py` — главная сайта: страница, смена периода тем же адресом (htmx заменяет цифры и карточки), фрагмент списка панели страницами по 20.
 - Файлы: `src/pricewatch/api/v1_json.py` — общие части ответов /api/v1: изменение, точка графика, магазин, строка товара, время UTC; курсор страниц (смещение).
 - Файлы: `src/pricewatch/api/v1_categories.py` — GET /api/v1/categories/{id} (ETag, 304), /chart?range= и PUT /categories/order, /groups/{id}/items/order (ключ повтора, конфликт с актуальным порядком) по OpenAPI.
@@ -327,7 +328,9 @@
 ## Приложение iPhone
 
 - Проект: `ios/PriceWatcher.xcodeproj`, схема PriceWatcher; настройки Docker и установки — `ios/README.md`.
-- Файлы: `ios/PriceWatcher/App/PriceWatcherApp.swift` — подключение по pairing-коду, восстановление сессии и переход к главной.
+- Файлы: `ios/PriceWatcher/App/PriceWatcherApp.swift` — подключение по pairing-коду, восстановление сессии и вкладки приложения.
+- Файл: `ios/PriceWatcher/Features/ManagementView.swift` — нативные вкладки обзора, покупок и управления, роутинг форм и обновление экранов после записи.
+- Файлы: `ios/PriceWatcher/Features/ProductEditor.swift`, `ios/PriceWatcher/Features/CategoryManager.swift`, `ios/PriceWatcher/Features/ActivityViews.swift` и `ios/PriceWatcher/Features/AccountViews.swift` — формы каталога, покупки, архив, уведомления и настройки SwiftUI.
 - Файлы: `ios/PriceWatcher/Core/APIClient.swift`, `ios/PriceWatcher/Core/Models.swift`, `ios/PriceWatcher/Core/ServerAddress.swift`, `ios/PriceWatcher/Core/Keychain.swift` — JSON-контракт `openapi/v1.yaml`, сессия и адрес сервера.
 - Файлы: `ios/PriceWatcher/Features/HomeView.swift`, `ios/PriceWatcher/Features/ProductView.swift`, `ios/PriceWatcher/Core/Design.swift` — итог, категории, товары, Swift Charts, редактирование количества и отметки, статус и управление запуском.
 - Тесты: `ios/PriceWatcherTests/ContractTests.swift`, `ios/PriceWatcherUITests/ConnectionTests.swift`; команда `xcodebuild test -project ios/PriceWatcher.xcodeproj -scheme PriceWatcher -destination 'platform=iOS Simulator,name=iPhone 18 Pro'`.
