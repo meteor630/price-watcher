@@ -159,11 +159,8 @@ jobs:
           export PRICEWATCH_BACKUP_ENV="$RUNNER_TEMP/backup.env" BACKUP_HOST_DIR="$RUNNER_TEMP/backups"
           docker compose config -q
           docker compose build
-          # Конфигурации туннеля: Caddy дома и HAProxy на арендном сервере (теми же образами, что в работе).
+          # Конфигурация Caddy дома (тем же образом, что в работе).
           docker run --rm -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" "$(docker compose config --images | grep '^caddy')" caddy validate --config /etc/caddy/Caddyfile
-          # bot.env арендного сервера в CI нет; для разбора Compose хватит пустого.
-          touch ../vps/bot.env
-          docker run --rm -v "$PWD/../vps/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro" "$(docker compose -f ../vps/compose.yaml config --images | grep '^haproxy')" haproxy -c -f /usr/local/etc/haproxy/haproxy.cfg
           docker compose up -d --wait db app scheduler
           curl -fsS http://127.0.0.1:8000/healthz
           # Резервная копия тем же образом и с теми же ограничениями: копия → отправка на сервер копий → расшифровка
@@ -201,13 +198,17 @@ jobs:
           test "$(docker compose exec -T db psql -U pricewatch -d pricewatch -tAc "SELECT status FROM backup_runs")" = ok
           docker compose down -v
 
-      - name: Запуск HAProxy арендного сервера
+      - name: Арендный сервер — разбор Compose, Caddyfile и setup.sh
         working-directory: deploy/vps
         run: |
-          touch bot.env
-          # Здоров — значит, открыл порты 80 и 443 от своего пользователя без прав root.
-          docker compose up -d --wait --wait-timeout 60 haproxy
-          docker compose down
+          # Секреты сервера живут в /srv/secrets/pricewatch; для разбора хватит тестовых.
+          sudo install -d -m 755 /srv/secrets/pricewatch
+          printf 'POSTGRES_PASSWORD=ci-only-not-secret\n' | sudo tee /srv/secrets/pricewatch/compose.env > /dev/null
+          printf 'PRICEWATCH_ENV=production\n' | sudo tee /srv/secrets/pricewatch/server.env > /dev/null
+          docker compose --env-file /srv/secrets/pricewatch/compose.env config -q
+          docker run --rm -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" "$(docker compose --env-file /srv/secrets/pricewatch/compose.env config --images | grep '^caddy')" caddy validate --config /etc/caddy/Caddyfile
+          sh -n setup.sh
+          sh -n up.sh
 
   secrets:
     name: Секреты во всей истории (gitleaks)

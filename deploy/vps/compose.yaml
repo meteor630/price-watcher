@@ -1,58 +1,132 @@
-# Арендный сервер: пересылка в туннель (HAProxy) и Telegram-бот.
-# Код: git clone git@github-price-watcher:meteor630/price-watcher.git /opt/price-watcher (ключ развёртывания только
-# на чтение); обновление: git pull && docker compose up -d --build. Запуск из этой папки: docker compose up -d --build
-# Настройки бота — bot.env рядом (образец ../../bot.env.example; в Git не попадает).
-# HAProxy — в своей сети Docker: принимает 80 и 443 сервера и обращается к дому по адресу туннеля 10.66.0.2.
+# Арендный сервер (Aeza, prices.meteor630.ru): весь Price Watcher, кроме парсинга.
+# Worker с Chrome — дома (deploy/windows), ходит сюда по HTTPS /worker/v1; сервер в дом не ходит никогда.
+# Установка с нуля: deploy/vps/setup.sh. Обновление: cd /opt/price-watcher && git pull && sh deploy/vps/up.sh
+# Секреты — вне Git, в /srv/secrets/pricewatch (права 600):
+#   compose.env — POSTGRES_PASSWORD (подставляется в адрес базы);
+#   server.env  — настройки сайта (PRICEWATCH_SECRET_KEY и др., образец ../../.env.example).
+# Сети: база видна только сайту и планировщику (backend); снаружи открыт только Caddy на 443 (edge).
 
-name: pricewatch-vps
+name: pricewatch
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-server: &server
+  build:
+    context: ../..
+    dockerfile: deploy/Dockerfile
+    target: app
+  image: pricewatch-app
+  env_file: /srv/secrets/pricewatch/server.env
+  environment: &server-env
+    PRICEWATCH_DATABASE_URL: "postgresql://pricewatch:${POSTGRES_PASSWORD:?нет POSTGRES_PASSWORD в /srv/secrets/pricewatch/compose.env}@db:5432/pricewatch"
+    PRICEWATCH_MEDIA_DIR: /data/media
+  logging: *logging
+  restart: unless-stopped
+  networks: [backend]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  read_only: true
+  tmpfs: [/tmp]
 
 services:
-  haproxy:
-    image: haproxy:3.2-alpine@sha256:5d97434a423c2533cfeb42874d45cf6d69a840b60334582dfbfd5008e94c80be
-    # Своя сеть Docker, а не сеть хоста: в ней порты от 0 открываются без прав, а образ работает не от root
-    # (право NET_BIND_SERVICE пользователю haproxy Docker не передаёт). К дому 10.66.0.2 — через хост, адрес отправителя
-    # Docker подменяет на адрес wg0 10.66.0.1, его и ждёт Caddy дома.
+  db:
+    image: postgres:18@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
+    environment:
+      POSTGRES_USER: pricewatch
+      POSTGRES_DB: pricewatch
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?нет POSTGRES_PASSWORD в /srv/secrets/pricewatch/compose.env}"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "pricewatch", "-d", "pricewatch"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    mem_limit: 768m
+    logging: *logging
+    restart: unless-stopped
+    networks: [backend]
+
+  migrate:
+    <<: *server
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    <<: *server
+    command: ["python", "-m", "pricewatch.bootstrap", "serve"]
+    environment:
+      <<: *server-env
+      PRICEWATCH_LISTEN_HOST: 0.0.0.0
+      PRICEWATCH_LISTEN_PORT: "8000"
+      # X-Forwarded-For с IP посетителя — только от Caddy.
+      PRICEWATCH_TRUSTED_PROXIES: 172.31.250.2/32
+    volumes:
+      - media:/data/media
+    networks:
+      backend:
+      edge:
+        ipv4_address: 172.31.250.3
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5).status != 200)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    mem_limit: 768m
+
+  scheduler:
+    <<: *server
+    command: ["python", "-m", "pricewatch.bootstrap", "scheduler"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    mem_limit: 384m
+
+  caddy:
+    image: caddy:2.10-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    # Только 443: сертификат выпускается проверкой TLS-ALPN-01 на этом же порту, порт 80 не нужен.
     ports:
-      - "80:80"
       - "443:443"
     volumes:
-      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
     cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    read_only: true
-    healthcheck:
-      # Порты заняты: если HAProxy не смог их открыть, он перезапускается по кругу.
-      test: ["CMD-SHELL", "nc -z 127.0.0.1 80 && nc -z 127.0.0.1 443"]
-      interval: 30s
-      timeout: 5s
-      start_period: 10s
-      start_interval: 1s
-      retries: 3
-    mem_limit: 128m
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
-    restart: unless-stopped
-
-  bot:
-    build:
-      context: ../..
-      dockerfile: deploy/Dockerfile
-      target: app
-    image: pricewatch-bot
-    command: ["python", "-m", "pricewatch.bot"]
-    # Адрес сайта — публичный https://prices.meteor630.ru: бот заодно видит, открывается ли сайт снаружи.
-    env_file: bot.env
-    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
     security_opt: [no-new-privileges:true]
     read_only: true
     tmpfs: [/tmp]
-    mem_limit: 256m
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
+    networks:
+      edge:
+        ipv4_address: 172.31.250.2
+    depends_on:
+      app:
+        condition: service_healthy
+    mem_limit: 128m
+    logging: *logging
     restart: unless-stopped
+
+networks:
+  backend:
+    internal: true
+  edge:
+    ipam:
+      config:
+        - subnet: 172.31.250.0/29
+
+volumes:
+  pgdata:
+  media:
+  caddy_data:
+  caddy_config:

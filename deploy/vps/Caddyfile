@@ -1,0 +1,15 @@
+# Caddy арендного сервера: HTTPS для prices.meteor630.ru → app.
+# Только порт 443: сертификат — проверкой TLS-ALPN-01, HTTP-проверка и перенаправление с 80 выключены.
+# Сертификат и его ключ — в томе caddy_data. Имя не из списка или голый IP — TLS-рукопожатие не проходит.
+{
+	auto_https disable_redirects
+}
+
+prices.meteor630.ru {
+	tls {
+		issuer acme {
+			disable_http_challenge
+		}
+	}
+	reverse_proxy app:8000
+}
