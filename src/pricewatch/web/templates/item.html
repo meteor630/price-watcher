@@ -18,6 +18,7 @@
     <h1 id="item-title" class="hero__name">{{ detail.name }}</h1>
     {% if detail.full_name %}<p class="item-hero__full">{{ detail.full_name }}</p>{% endif %}
 
+    <div id="hero-price">
     <div class="item-hero__price">
       {% if detail.unit_price_text %}
       <span class="item-hero__figure num">{{ detail.unit_price_text | figure }}</span>
@@ -38,6 +39,7 @@
     <p class="alert alert--warn">Нет ссылок на магазины — добавьте ссылку, чтобы следить за ценой. История и графики сохранены.</p>
     {% endif %}
     {% if detail.failure_reason %}<p class="item-hero__failure">Последняя проверка: {{ detail.failure_reason }}</p>{% endif %}
+    </div>
 
     {% if detail.state.value == "active" %}
     <div class="item-hero__controls">
@@ -48,6 +50,7 @@
       {{ quantity_stepper(detail.item_id, detail.version, detail.quantity, detail.name, "item", period_day) }}
       {% if detail.line_price_text and detail.quantity > 1 %}<span class="item-hero__line num">{{ detail.quantity }} шт · {{ detail.line_price_text }}</span>{% endif %}
       <a class="btn btn--ghost btn--small" href="/web/settings/items?edit={{ detail.item_id }}">Изменить</a>
+      {% with item_id=detail.item_id, compact=False, state=check, problem=None, done=False, price_text=None %}{% include "fragments/item_check.html" %}{% endwith %}
       {% if detail.offers %}
       <details class="menu">
         <summary class="btn btn--ghost btn--small">Открыть в магазине</summary>

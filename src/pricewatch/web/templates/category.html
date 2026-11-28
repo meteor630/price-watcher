@@ -51,6 +51,7 @@
             <span class="row__qty num">шт{% if row.unit_price_text %} × {{ row.unit_price_text }}{% endif %}</span>
             {{ price_flags(row) }}
           </p>
+          {% with item_id=row.item_id, compact=True, state=None, problem=None, done=False, price_text=None %}{% include "fragments/item_check.html" %}{% endwith %}
         </div>
         <div class="row__price num">
           {% if row.line_price_text %}<span class="row__line">{{ row.line_price_text }}</span>{% else %}<span class="row__line row__line--none">—</span>{% endif %}

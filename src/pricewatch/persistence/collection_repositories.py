@@ -613,6 +613,13 @@ class SqlQueueRepository:
     def active_task(self, tracked_link_id: int) -> int | None:
         return self._active_task(tracked_link_id)
 
+    def prioritize(self, task_id: int) -> None:
+        self.connection.execute(
+            update(check_tasks)
+            .where(check_tasks.c.id == task_id, check_tasks.c.status == "queued", check_tasks.c.priority < ON_ADD_PRIORITY)
+            .values(priority=ON_ADD_PRIORITY)
+        )
+
     def cancel_queued(self, task_id: int, now: datetime) -> bool:
         run_id = self.connection.execute(
             update(check_tasks).where(check_tasks.c.id == task_id, check_tasks.c.status == "queued")

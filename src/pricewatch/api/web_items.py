@@ -26,6 +26,7 @@ from pricewatch.api.web_settings_items import settings_items_page
 from pricewatch.application.category import category_chart, category_detail
 from pricewatch.application.dashboard import run_status
 from pricewatch.application.item import item_chart, item_detail, update_item_settings
+from pricewatch.application.manual_checks import item_check_state
 from pricewatch.application.ports import UNCHANGED
 from pricewatch.application.purchases import archive_item, purchase_form, purchase_item, return_to_list
 from pricewatch.application.web_auth import SessionUser
@@ -228,9 +229,10 @@ def _item_page(request: Request, session: SessionUser, item_id: int, flash: str 
     detail = item_detail(context.unit_of_work(), session.user, item_id, now)
     store_id = detail.best_store.store_id if detail.best_store else (detail.chart_stores[0].store_id if detail.chart_stores else None)
     points = [] if store_id is None else item_chart(context.unit_of_work(), session.user, item_id, store_id, ChartRange.MONTH, now)
+    check = item_check_state(context.unit_of_work(), session.user, item_id, now)
     return render(
         "item.html", session_user=session, header_run=run_status(context.unit_of_work(), session.user, context.clock()), detail=detail,
-        store_id=store_id, chart_range=ChartRange.MONTH, points=points, flash_message=flash, toast=toast, undo_token=undo_token,
+        store_id=store_id, chart_range=ChartRange.MONTH, points=points, flash_message=flash, toast=toast, undo_token=undo_token, check=check,
     )
 
 

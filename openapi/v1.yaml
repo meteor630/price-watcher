@@ -373,6 +373,61 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
 
+  /items/{item_id}/check:
+    post:
+      tags: [items]
+      summary: Проверить цену товара сейчас
+      description: >
+        Ставит в очередь проверку всех действующих ссылок товара во включённых магазинах с повышенным приоритетом:
+        она обгоняет плановую проверку, даже идущую. Повтор, пока проверка идёт, дубля не ставит (задание уже в очереди).
+        Не больше 20 ручных проверок в час на пользователя. Если домашний узел не на связи, задание всё равно
+        ставится и выполнится, когда он вернётся (`worker_online: false`). Ход проверки — GET этого же адреса.
+      parameters:
+        - $ref: "#/components/parameters/ItemId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "202":
+          description: Проверка поставлена в очередь (или уже стояла).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemCheck"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "422":
+          description: "`VALIDATION_ERROR` с полем `links`: у товара нет ссылок, которые можно проверить."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: "`RATE_LIMITED`: лимит ручных проверок; в `details.retry_after_seconds` — через сколько можно снова."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    get:
+      tags: [items]
+      summary: Ход проверки цены товара
+      description: >
+        `checking: true` — проверка какой-то ссылки ещё идёт (показывать «Проверяю…» и спрашивать снова через несколько
+        секунд). После неё новая цена — в карточке товара (GET /items/{item_id}), причина неудачи — в её `failure_reason`.
+      parameters:
+        - $ref: "#/components/parameters/ItemId"
+      responses:
+        "200":
+          description: Состояние проверки.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ItemCheck"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
   /purchases:
     get:
       tags: [purchases]
@@ -2034,6 +2089,29 @@ components:
         version:
           $ref: "#/components/schemas/Version"
 
+    ItemCheck:
+      type: object
+      required: [checking, queued_tasks, worker_online, last_checked_at, best_price_minor]
+      properties:
+        checking:
+          type: boolean
+          description: Проверка какой-то ссылки товара ещё идёт.
+        queued_tasks:
+          type: integer
+          minimum: 0
+          description: Сколько заданий поставил этот запрос (у GET — 0; уже стоявшие задания не считаются).
+        worker_online:
+          type: boolean
+          description: "`false` — домашний узел не на связи: проверка ждёт его возвращения."
+        last_checked_at:
+          type: [string, "null"]
+          format: date-time
+          description: Когда закончилась последняя проверка какой-то ссылки товара; `null` — ещё не проверялся.
+        best_price_minor:
+          oneOf:
+            - $ref: "#/components/schemas/MoneyMinor"
+            - type: "null"
+          description: Лучшая цена по последним успешным проверкам ссылок; `null` — цены нет.
     RunStatus:
       type: object
       required: [id, kind, status, total, done, failed, started_at, finished_at, can_start, can_stop]

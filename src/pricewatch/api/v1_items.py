@@ -18,6 +18,7 @@ from pricewatch.api.idempotency import idempotent
 from pricewatch.api.v1_json import point_json, purchase_json, store_json, utc_iso
 from pricewatch.application.app_auth import DeviceUser
 from pricewatch.application.item import ItemDetail, item_chart, item_detail, update_item_settings
+from pricewatch.application.manual_checks import ItemCheckState, check_item, item_check_state
 from pricewatch.application.ports import UNCHANGED
 from pricewatch.domain.charts import ChartRange
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
@@ -124,3 +125,30 @@ def item_json(detail: ItemDetail) -> dict[str, Any]:
         "cheaper_now_text": detail.cheaper_now_text,
         "archived_at": None if detail.archived_at is None else utc_iso(detail.archived_at),
     }
+
+
+def _check_json(state: ItemCheckState, queued_tasks: int) -> dict[str, object]:
+    return {
+        "checking": state.checking, "queued_tasks": queued_tasks, "worker_online": state.worker_online,
+        "last_checked_at": utc_iso(state.last_checked_at) if state.last_checked_at is not None else None,
+        "best_price_minor": state.best_price_minor,
+    }
+
+
+@router.post("/items/{item_id}/check", status_code=202)
+def item_check_route(request: Request, item_id: EntityId, user: DeviceUser = Depends(app_user)) -> JSONResponse:
+    """«Проверить цену»: те же правила, что на сайте (application.manual_checks)."""
+    context = get_context(request)
+
+    def run() -> dict[str, object]:
+        queued = check_item(context.unit_of_work(), user.user, item_id, context.clock())
+        return _check_json(item_check_state(context.unit_of_work(), user.user, item_id, context.clock()), len(queued.new_task_ids))
+
+    return idempotent(request, user.user.id, {"item_id": item_id}, run, status=202)
+
+
+@router.get("/items/{item_id}/check")
+def item_check_state_route(request: Request, item_id: EntityId, user: DeviceUser = Depends(app_user)) -> JSONResponse:
+    context = get_context(request)
+    state = item_check_state(context.unit_of_work(), user.user, item_id, context.clock())
+    return JSONResponse(_check_json(state, 0), headers={"Cache-Control": PRIVATE})

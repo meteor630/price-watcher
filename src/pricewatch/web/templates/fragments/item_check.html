@@ -1,0 +1,16 @@
+{#- Кнопка «Проверить цену» у товара. compact — на плитке в списке, иначе — в карточке товара.
+    Пока проверка идёт, фрагмент сам опрашивает состояние раз в 3 с (как статус прогонов). В карточке опрашивается сама
+    страница товара: вместе с кнопкой обновляются цена (#hero-price) и цены по магазинам (#page-rest) — без перезагрузки. -#}
+{% set base = "/web/items/" ~ item_id ~ "/check" ~ ("?compact=1" if compact else "") %}
+<div id="item-check-{{ item_id }}" class="item-check{% if compact %} item-check--compact{% endif %}"
+     {% if state and state.checking %}{% if compact %}hx-get="{{ base }}"{% else %}hx-get="/web/items/{{ item_id }}" hx-select="#item-check-{{ item_id }}" hx-select-oob="#hero-price,#page-rest"{% endif %} hx-trigger="every 3s" hx-swap="outerHTML"{% endif %} aria-live="polite">
+  {% if state and state.checking %}
+  <button class="btn btn--ghost btn--small" type="button" disabled aria-busy="true">Проверяю…</button>
+  {% if not state.worker_online %}<p class="item-check__note">Домашний узел сейчас не на связи — проверка выполнится, когда он вернётся.</p>{% endif %}
+  {% else %}
+  <button class="btn btn--ghost btn--small" type="button" hx-post="{{ base }}" hx-target="#item-check-{{ item_id }}" hx-swap="outerHTML"
+          hx-disabled-elt="this">Проверить цену</button>
+  {% if problem %}<p class="item-check__note item-check__note--error" role="alert">{{ problem }}</p>
+  {% elif state and state.last_checked_at and (done or not compact) %}<p class="item-check__note">Проверено {{ moscow_moment(state.last_checked_at) }}{% if price_text %} · <span class="num">{{ price_text }}</span>{% endif %}</p>{% endif %}
+  {% endif %}
+</div>

@@ -768,6 +768,9 @@ class QueueRepository(Protocol):
     def active_task(self, tracked_link_id: int) -> int | None:
         """Ждущее или выданное задание ссылки, если есть."""
         ...
+    def prioritize(self, task_id: int) -> None:
+        """Задание ещё в очереди с обычным приоритетом — поднять до приоритета ручной проверки; иначе ничего."""
+        ...
     def cancel_queued(self, task_id: int, now: datetime) -> bool:
         """Отменить задание, которое worker ещё не взял; запуск без активных заданий завершается. False — уже взято или закрыто."""
         ...

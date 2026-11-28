@@ -8,7 +8,8 @@ from sqlalchemy import Engine, text
 from test_dashboard import DAY, NOW, World
 from test_user_decisions import suspicious, watch
 
-from pricewatch.application.reviews import RECHECKS_PER_HOUR, decide, recheck, review_cards
+from pricewatch.application.manual_checks import MANUAL_CHECKS_PER_HOUR as RECHECKS_PER_HOUR
+from pricewatch.application.reviews import decide, recheck, review_cards
 from pricewatch.application.shopping import undo_delete
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.review import Decision, ReviewKind

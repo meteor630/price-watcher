@@ -11,10 +11,10 @@
 - Каждое действие пишется в журнал (audit_events).
 """
 
-import math
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 
+from pricewatch.application.manual_checks import ensure_manual_check_allowed, queue_manual_checks
 from pricewatch.application.ports import AuditEvent, LinkBinding, UnitOfWork
 from pricewatch.application.price_view import StoreView, review_thresholds, user_contexts
 from pricewatch.domain.accounts import User
@@ -24,8 +24,6 @@ from pricewatch.domain.review import Decision, OpenReview, ReviewKind, open_revi
 from pricewatch.domain.shopping import ItemState
 from pricewatch.domain.undo import UndoKind, issue_undo
 
-RECHECKS_PER_HOUR = 20
-RECHECK_WINDOW = timedelta(hours=1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,16 +102,12 @@ def recheck(uow: UnitOfWork, key: bytes, user: User, review_id: int, now: dateti
         card = _open_card(uow, user, review_id, now)
         if ReviewKind.PRICE_JUMP not in card.kinds:
             raise PriceWatcherError(ErrorCode.VALIDATION_ERROR, {"fields": {"action": "recheck_needs_price_jump"}})
-        recent = uow.audit.recent(user.id, "price_recheck", now - RECHECK_WINDOW)
-        if len(recent) >= RECHECKS_PER_HOUR:
-            oldest = recent[len(recent) - RECHECKS_PER_HOUR]
-            raise PriceWatcherError(ErrorCode.RATE_LIMITED, {"retry_after_seconds": max(1, math.ceil((oldest + RECHECK_WINDOW - now).total_seconds()))})
-        if uow.queue.active_task(card.tracked_link_id) is not None:
-            return Recheck(None)
-        task_id = uow.queue.enqueue_on_add(card.tracked_link_id, now)
-        uow.audit.add(AuditEvent(user.id, "price_recheck", "tracked_link", card.tracked_link_id, None, {"task_id": task_id, "review_id": review_id}, now))
+        ensure_manual_check_allowed(uow, user.id, now)
+        queued = queue_manual_checks(uow, user.id, [card.tracked_link_id], ("tracked_link", card.tracked_link_id), {"review_id": review_id}, now)
         uow.commit()
-    return Recheck(issue_undo(key, user.id, UndoKind.RECHECK, task_id, now))
+    if not queued.new_task_ids:
+        return Recheck(None)
+    return Recheck(issue_undo(key, user.id, UndoKind.RECHECK, queued.new_task_ids[0], now))
 
 
 def undo_decision(uow: UnitOfWork, user: User, decision_id: int, now: datetime) -> None:
