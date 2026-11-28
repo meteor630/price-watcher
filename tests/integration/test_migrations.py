@@ -58,6 +58,9 @@ def test_upgrade_downgrade_upgrade(empty_database_url: str) -> None:
 
     command.upgrade(config, "head")
     assert tables(empty_database_url) == TABLES
+    assert revision(empty_database_url) == "0017"
+
+    command.downgrade(config, "0016")
     assert revision(empty_database_url) == "0016"
 
     command.downgrade(config, "0015")

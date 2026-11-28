@@ -61,7 +61,20 @@ def test_without_settings_exits_with_config_code(tmp_path: Path) -> None:
     assert any("PRICEWATCH_WORKER_TOKEN" in record["message"] for record in records)
 
 
+def test_without_allowlist_exits_with_config_code_and_asks_nothing(tmp_path: Path, rejecting_server: str) -> None:
+    Rejecting.paths.clear()
+    done = run_worker(
+        tmp_path, PRICEWATCH_WORKER_API_URL=rejecting_server, PRICEWATCH_WORKER_TOKEN=TOKEN, PRICEWATCH_WORKER_PROFILES_DIR=str(tmp_path / "profiles")
+    )
+
+    assert done.returncode == 2, done.stdout + done.stderr
+    assert Rejecting.paths == []
+    assert any("Список доменов" in record["message"] for record in json_lines(done.stdout + done.stderr))
+
+
 def test_rejected_token_exits_and_token_not_logged(tmp_path: Path, rejecting_server: str) -> None:
+    Rejecting.paths.clear()
+    (tmp_path / "allowlist.txt").write_text("ozon.ru\n", encoding="utf-8")
     done = run_worker(
         tmp_path, PRICEWATCH_WORKER_API_URL=rejecting_server, PRICEWATCH_WORKER_TOKEN=TOKEN, PRICEWATCH_WORKER_PROFILES_DIR=str(tmp_path / "profiles")
     )

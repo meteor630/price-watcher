@@ -14,6 +14,7 @@ class ErrorCode(StrEnum):
     # Сбор цен и общие сбои
     INVALID_URL = "INVALID_URL"
     STORE_NOT_ALLOWED = "STORE_NOT_ALLOWED"
+    DOMAIN_NOT_ALLOWED = "DOMAIN_NOT_ALLOWED"
     BLOCKED = "BLOCKED"
     CAPTCHA = "CAPTCHA"
     TIMEOUT = "TIMEOUT"
@@ -48,6 +49,7 @@ SAFE_MESSAGES: Mapping[ErrorCode, str] = MappingProxyType(
     {
         ErrorCode.INVALID_URL: "Ссылка не похожа на адрес страницы товара. Проверьте её.",
         ErrorCode.STORE_NOT_ALLOWED: "Этот сайт отключён администратором.",
+        ErrorCode.DOMAIN_NOT_ALLOWED: "Домен не разрешён на домашнем узле: добавьте магазин в его список командой pw-allow.",
         ErrorCode.BLOCKED: "Магазин временно ограничил доступ. Проверка повторится позже.",
         ErrorCode.CAPTCHA: "Магазин запросил проверку «я не робот». Проверка повторится позже.",
         ErrorCode.TIMEOUT: "Магазин не ответил вовремя. Проверка повторится позже.",

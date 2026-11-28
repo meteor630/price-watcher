@@ -25,6 +25,8 @@ from datetime import datetime, timedelta
 from pricewatch.application.ports import AuditEvent, ClaimedTask, ImageStore, LeasedTask, NewObservation, UnitOfWork
 from pricewatch.application.price_view import review_thresholds
 from pricewatch.application.runs import configured_times
+from pricewatch.domain.accounts import FAILURE_WINDOW, retry_after_seconds
+from pricewatch.domain.days import MOSCOW
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.names import clean_name
 from pricewatch.domain.pricing import Availability, Confirmation
@@ -35,6 +37,9 @@ from pricewatch.domain.tokens import Purpose, keyed_hash, new_token
 
 LEASE = timedelta(minutes=2)
 WORKER_NAME_MAX = 80
+WORKER_FAILURE = "worker"
+DOMAIN_REFUSED_KIND = "worker_domain_refused"
+WORKER_FAILURES_PER_IP = 20
 TITLE_MAX = 500
 SITE_NAME_MAX = 100
 DURATION_MAX_MS = 10 * 60 * 1000
@@ -45,7 +50,7 @@ SOURCES = frozenset({"site_data", "page"})
 # Ошибки сбора цен, которые может прислать worker (как в таблицах наблюдений и заданий).
 FETCH_ERRORS = frozenset(
     {
-        ErrorCode.INVALID_URL, ErrorCode.STORE_NOT_ALLOWED, ErrorCode.BLOCKED, ErrorCode.CAPTCHA, ErrorCode.TIMEOUT,
+        ErrorCode.INVALID_URL, ErrorCode.STORE_NOT_ALLOWED, ErrorCode.DOMAIN_NOT_ALLOWED, ErrorCode.BLOCKED, ErrorCode.CAPTCHA, ErrorCode.TIMEOUT,
         ErrorCode.LAYOUT_CHANGED, ErrorCode.PRICE_NOT_FOUND, ErrorCode.REGION_MISMATCH, ErrorCode.UNSUPPORTED_CURRENCY,
         ErrorCode.INTERNAL_ERROR,
     }
@@ -86,12 +91,17 @@ def rotate_worker_token(uow: UnitOfWork, key: bytes, name: str) -> str:
     return token
 
 
-def authenticate_worker(uow: UnitOfWork, key: bytes, token: str | None, now: datetime) -> int:
-    if not token:
-        raise PriceWatcherError(ErrorCode.AUTH_REQUIRED)
+def authenticate_worker(uow: UnitOfWork, key: bytes, token: str | None, now: datetime, ip: str | None = None) -> int:
+    """Токен worker; неверный — неудача по IP, после 20 за 15 минут — RATE_LIMITED (перебор токена)."""
     with uow:
-        auth = uow.workers.find_by_token(keyed_hash(key, Purpose.WORKER, token))
+        if ip is not None:
+            window = uow.auth_failures.window_for_ip(WORKER_FAILURE, ip, now - FAILURE_WINDOW)
+            if window.count >= WORKER_FAILURES_PER_IP and window.oldest is not None:
+                raise PriceWatcherError(ErrorCode.RATE_LIMITED, {"retry_after_seconds": retry_after_seconds(window.oldest, now)})
+        auth = uow.workers.find_by_token(keyed_hash(key, Purpose.WORKER, token)) if token else None
         if auth is None or auth.disabled:
+            uow.auth_failures.record(WORKER_FAILURE, None, ip, now)
+            uow.commit()
             raise PriceWatcherError(ErrorCode.AUTH_REQUIRED)
         if auth.used_next_token:
             uow.workers.promote_next_token(auth.worker_id)
@@ -155,6 +165,10 @@ def submit_result(uow: UnitOfWork, worker_id: int, task_id: int, result: WorkerR
                 checked.availability, checked.title, task.region_code, confirmation.value, checked.source,
             )
         )
+        if checked.status == ErrorCode.DOMAIN_NOT_ALLOWED.value:
+            # Домашний worker не пустил домен: магазина нет в его списке — или сервер выдал чужую ссылку.
+            day = now.astimezone(MOSCOW).date().isoformat()
+            uow.notifications.notify_admins(DOMAIN_REFUSED_KIND, f"{DOMAIN_REFUSED_KIND}:{task.store_id}:{day}", {"store_id": task.store_id}, now)
         if exhausted:
             uow.queue.finish_exhausted(task, checked.status, checked.duration_ms, now)
         else:

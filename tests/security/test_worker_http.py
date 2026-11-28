@@ -229,3 +229,38 @@ def test_bad_image_is_refused(client: TestClient, engine: Engine, tmp_path: Path
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
     assert image_path(engine, task_id) is None
     assert list(tmp_path.iterdir()) == []
+
+
+# --- перебор токена worker и отказ домашнего узла открыть домен ---
+
+
+def test_repeated_wrong_worker_tokens_are_rate_limited(engine: Engine, tmp_path: Path) -> None:
+    from pricewatch.application.worker_protocol import WORKER_FAILURES_PER_IP
+
+    settings = Settings(env="test", public_origin="https://prices.example.ru", database_url="postgresql://u@h/d", secret_key=KEY, _env_file=None)  # type: ignore[call-arg]
+    context = ApiContext(lambda: SqlUnitOfWork(engine), KEY.encode(), PasswordHasher(time_cost=1, memory_cost=8192), lambda: NOW, MediaStore(tmp_path), LinkCatalog())
+    ip = f"203.0.113.{uuid.uuid4().int % 200 + 20}"
+    with engine.begin() as db:
+        db.execute(text("DELETE FROM auth_failures WHERE kind = 'worker'"))
+    attacker = TestClient(create_app(settings, context), base_url="https://testserver", client=(ip, 50000))
+    for _ in range(WORKER_FAILURES_PER_IP):
+        assert attacker.post("/worker/v1/claim", headers=bearer("z" * 43)).status_code == 401
+    limited = attacker.post("/worker/v1/claim", headers=bearer(worker_token(engine)))
+    assert limited.status_code == 429
+    assert limited.json()["error"]["code"] == "RATE_LIMITED"
+
+
+def test_domain_refused_by_home_worker_is_recorded_and_admins_notified_once_a_day(client: TestClient, engine: Engine) -> None:
+    queued_link(engine)
+    with engine.begin() as db:
+        db.execute(text("DELETE FROM notifications WHERE kind = 'worker_domain_refused'"))
+        db.execute(text("INSERT INTO users (login, password_hash, role, display_name) VALUES (:l, 'h', 'admin', 'A')"), {"l": f"a{uuid.uuid4().hex[:10]}"})
+    token = worker_token(engine)
+    task = claim(client, token)["task"]
+    response = client.post("/worker/v1/result", json={"task_id": task["task_id"], "status": "DOMAIN_NOT_ALLOWED"}, headers=bearer(token))
+    assert response.status_code == 204, response.text
+    with engine.connect() as db:
+        status = db.execute(text("SELECT status FROM price_observations WHERE task_id = :t"), {"t": task["task_id"]}).scalar_one()
+        notes = db.execute(text("SELECT count(DISTINCT dedup_key) FROM notifications WHERE kind = 'worker_domain_refused'")).scalar_one()
+    assert status == "DOMAIN_NOT_ALLOWED"
+    assert notes == 1

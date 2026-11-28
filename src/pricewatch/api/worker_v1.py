@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
 
 from pricewatch.api.app_auth import bearer_token
-from pricewatch.api.context import get_context
+from pricewatch.api.context import client_ip, get_context
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.media.images import MAX_INPUT_BYTES
 from pricewatch.application.worker_protocol import (
@@ -37,7 +37,7 @@ Price = Annotated[int, Field(ge=1, le=PRICE_MAX)]
 
 def current_worker(request: Request) -> int:
     context = get_context(request)
-    return authenticate_worker(context.unit_of_work(), context.secret_key, bearer_token(request), context.clock())
+    return authenticate_worker(context.unit_of_work(), context.secret_key, bearer_token(request), context.clock(), client_ip(request))
 
 
 class TaskOut(BaseModel):

@@ -17,6 +17,8 @@ htmlcov/
 .env.*
 !.env.example
 worker.env
+# Список доменов домашнего worker: только у владельца на домашнем узле
+allowlist.txt
 bot.env
 backup.env
 pull.env

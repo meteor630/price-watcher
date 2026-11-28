@@ -91,10 +91,25 @@ class ShopImages:
         return to_webp(out.getvalue())
 
 
+class OpenGate:
+    """Пропуск адресов worker разрешает всё: список доменов и резолв проверяются в test_worker_allowlist."""
+
+    def check(self, url: str) -> None:
+        return None
+
+
+class NoLimit:
+    def ensure_room(self) -> None:
+        return None
+
+    def taken(self) -> None:
+        return None
+
+
 def worker(server: TestClient, engine: Engine, parsers: FakeParsers, images: ShopImages | None = None) -> Runner:
     token = create_worker(SqlUnitOfWork(engine), KEY.encode(), f"w-{uuid.uuid4().hex[:8]}", NOW)
     images = images or ShopImages()
-    return Runner(ApiClient(server, token), parsers, images, poll_seconds=1, wait=lambda seconds: False)
+    return Runner(ApiClient(server, token), parsers, images, gate=OpenGate(), limit=NoLimit(), poll_seconds=1, wait=lambda seconds: False)
 
 
 def test_added_link_is_checked_and_price_lands_in_history(server: TestClient, engine: Engine) -> None:
@@ -166,7 +181,7 @@ def test_empty_queue(server: TestClient, engine: Engine) -> None:
 
 
 def test_wrong_token_stops_worker(server: TestClient) -> None:
-    work = Runner(ApiClient(server, "w" * 43), FakeParsers(None), ShopImages(), poll_seconds=1, wait=lambda seconds: False)
+    work = Runner(ApiClient(server, "w" * 43), FakeParsers(None), ShopImages(), gate=OpenGate(), limit=NoLimit(), poll_seconds=1, wait=lambda seconds: False)
 
     with pytest.raises(WorkerRejected):
         work.step()

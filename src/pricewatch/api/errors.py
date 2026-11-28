@@ -23,6 +23,7 @@ HTTP_STATUS: Mapping[ErrorCode, int] = MappingProxyType(
     {
         ErrorCode.INVALID_URL: 422,
         ErrorCode.STORE_NOT_ALLOWED: 403,
+        ErrorCode.DOMAIN_NOT_ALLOWED: 403,
         ErrorCode.BLOCKED: 502,
         ErrorCode.CAPTCHA: 502,
         ErrorCode.TIMEOUT: 504,

@@ -339,7 +339,7 @@ class AuthFailureRow(Base):
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (
-        CheckConstraint("kind IN ('login', 'pairing', 'backup')", name="kind"),
+        CheckConstraint("kind IN ('login', 'pairing', 'backup', 'worker')", name="kind"),
         CheckConstraint("subject IS NULL OR char_length(subject) BETWEEN 1 AND 64", name="subject_length"),
         Index("ix_auth_failures_kind_subject_created_at", "kind", "subject", "created_at"),
         Index("ix_auth_failures_kind_ip_created_at", "kind", "ip", "created_at"),
@@ -356,7 +356,7 @@ RUN_SLOT_INDEX = "uq_parse_runs_slot_key"
 ACTIVE_TASK_INDEX = "uq_check_tasks_tracked_link_id_active"
 TASK_OBSERVATION_INDEX = "uq_price_observations_task_id"
 FETCH_STATUSES = (
-    "'ok', 'INVALID_URL', 'STORE_NOT_ALLOWED', 'BLOCKED', 'CAPTCHA', 'TIMEOUT', 'LAYOUT_CHANGED', "
+    "'ok', 'INVALID_URL', 'STORE_NOT_ALLOWED', 'DOMAIN_NOT_ALLOWED', 'BLOCKED', 'CAPTCHA', 'TIMEOUT', 'LAYOUT_CHANGED', "
     "'PRICE_NOT_FOUND', 'REGION_MISMATCH', 'UNSUPPORTED_CURRENCY', 'INTERNAL_ERROR'"
 )
 

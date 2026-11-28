@@ -21,7 +21,7 @@ while ($true) {
     # Через cmd: журнал пишется байтами как есть (UTF-8 JSON), без перекодировки PowerShell.
     cmd /c "uv run --no-dev --locked python -m pricewatch.worker >> ""$log"" 2>&1"
     $code = $LASTEXITCODE
-    if ($code -in 0, 2, 4) {
+    if ($code -in 0, 2, 4, 5, 6) {
         Write-Host "Worker завершился с кодом $code; журнал: $log"
         exit $code
     }

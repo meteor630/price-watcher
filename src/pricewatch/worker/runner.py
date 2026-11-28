@@ -8,6 +8,9 @@
 - Фото скачивается, только если сервер отметил в задании, что его у ссылки нет, и проверка удалась.
   Сбой фото пишется в журнал и не мешает цене: результат уходит как обычно.
 - Сервер не принял токен — worker останавливается: без токена работать нельзя.
+- Сервер может быть захвачен: перед проверкой адрес задания проходит локальный пропуск (allowlist.EgressGate —
+  домен из списка домашнего узла, публичный адрес); отказ уходит на сервер кодом DOMAIN_NOT_ALLOWED или INVALID_URL.
+  Перед каждым вопросом серверу — суточный лимит заданий (limits.DailyTaskLimit); исчерпан — worker останавливается.
 - Остановка (stop) дожидается конца текущей проверки: результат не теряется.
 """
 
@@ -46,6 +49,17 @@ class ImageSource(Protocol):
     def load(self, image_url: str) -> bytes: ...
 
 
+class Gate(Protocol):
+    def check(self, url: str) -> None:
+        """Адрес можно открывать; иначе PriceWatcherError с кодом для сервера."""
+        ...
+
+
+class Limit(Protocol):
+    def ensure_room(self) -> None: ...
+    def taken(self) -> None: ...
+
+
 class Runner:
     def __init__(
         self,
@@ -53,6 +67,8 @@ class Runner:
         parsers: Parser,
         images: ImageSource,
         *,
+        gate: Gate,
+        limit: Limit,
         poll_seconds: float,
         clock: Callable[[], float] = time.monotonic,
         wait: Callable[[float], bool] | None = None,
@@ -62,6 +78,8 @@ class Runner:
         self._client = client
         self._parsers = parsers
         self._images = images
+        self._gate = gate
+        self._limit = limit
         self._poll_seconds = poll_seconds
         self._clock = clock
         self._stopping = threading.Event()
@@ -79,7 +97,8 @@ class Runner:
             self.step()
 
     def step(self) -> bool:
-        """Одно задание; False — очередь пуста или сервер недоступен (worker подождал)."""
+        """Одно задание; False — очередь пуста или сервер недоступен (worker подождал). Лимит суток — DailyLimitReached."""
+        self._limit.ensure_room()
         try:
             task = self._client.claim()
         except ServerUnavailable as error:
@@ -89,6 +108,7 @@ class Runner:
         if task is None:
             self._wait(self._poll_seconds)
             return False
+        self._limit.taken()
         self._polite_pause(task)
         payload = self._check(task)
         try:
@@ -128,6 +148,7 @@ class Runner:
 
     def _parse(self, task: Task) -> tuple[dict[str, Any], str | None]:
         try:
+            self._gate.check(task.url)
             parsed = self._parsers.parse(task.url, task.region_code, task.parser_key, task.store_host, task.fetch_method)
         except PriceWatcherError as error:
             return {"status": error.code.value}, None

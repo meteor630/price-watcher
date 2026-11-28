@@ -126,7 +126,8 @@ def load_settings(env_file: Path | None = Path(".env")) -> Settings:
 
 
 class WorkerSettings(BaseSettings):
-    """Настройки процесса worker: адрес сервера, токен worker, папка профилей браузера."""
+    """Настройки процесса worker: адрес сервера, токен worker, папка профилей браузера, локальный список доменов
+    и суточный лимит заданий (их задаёт владелец на домашнем узле, сервер их не видит)."""
 
     model_config = SettingsConfigDict(env_prefix=WORKER_PREFIX, env_file_encoding="utf-8", extra="forbid", frozen=True)
 
@@ -136,6 +137,10 @@ class WorkerSettings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     # Пауза между вопросами «есть ли задание», когда очередь пуста.
     poll_seconds: int = Field(default=10, ge=1, le=600)
+    # Домены, которые worker может открывать (pricewatch.worker.allow); нет файла — worker не берёт заданий.
+    allowlist: Path = Path("allowlist.txt")
+    # Сколько заданий в сутки worker возьмёт (≈ 3 × активных ссылок); больше — останавливается.
+    daily_task_limit: int = Field(default=300, ge=1, le=100_000)
 
     @field_validator("api_url")
     @classmethod

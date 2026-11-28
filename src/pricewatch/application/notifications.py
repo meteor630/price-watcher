@@ -109,6 +109,8 @@ def notification_text(kind: str, payload: dict[str, object]) -> tuple[str, str |
         since = datetime.fromisoformat(str(payload["since"])).astimezone(MOSCOW)
         what = "Удачной резервной копии нет с" if payload["ever_ok"] else "Ни одной удачной резервной копии с первой попытки"
         return f"{what} {since:%d.%m в %H:%M}: проверьте планировщик на сервере.", None
+    if kind == "worker_domain_refused":
+        return "Домашний worker отказался открыть магазин: домена нет в его списке. Добавьте домен командой pw-allow — или проверьте сервер, если магазин не ваш.", "/web/settings/stores"
     if kind == "backup_not_pulled":
         since = datetime.fromisoformat(str(payload["since"])).astimezone(MOSCOW)
         what = "Домашний узел не забирал резервные копии с" if payload["ever_pulled"] else "Домашний узел ни разу не забрал резервную копию с"

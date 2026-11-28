@@ -1,4 +1,5 @@
-"""Цикл worker с подменёнными клиентом сервера, парсерами и загрузкой фото: результат, ошибки, паузы магазинов, аренда, фото."""
+"""Цикл worker с подменёнными клиентом сервера, парсерами и загрузкой фото: результат, ошибки, паузы магазинов, аренда, фото,
+локальный пропуск адреса (домен не из списка — отказ без парсера) и суточный лимит заданий (исчерпан — до вопроса серверу)."""
 
 import logging
 import threading
@@ -12,11 +13,39 @@ from pricewatch.parsers.contract import ParsedProduct, PriceSource
 from pricewatch.media.images import ImageRejected
 from pricewatch.worker.client import ImageRefused, LeaseLost, ServerUnavailable, Task, WorkerRejected
 from pricewatch.worker.parsing import Parsed
+from pricewatch.worker.limits import DailyLimitReached
 from pricewatch.worker.runner import SERVER_RETRY_S, Runner
 
 
 def task(task_id: int = 1, host: str = "shop.example", delay_ms: int = 2000, need_image: bool = False) -> Task:
     return Task(task_id, f"https://{host}/p/{task_id}", "spb", host, "universal", None, delay_ms, need_image)
+
+
+class OpenGate:
+    """Пропуск адресов: всё разрешено, кроме заданных хостов (отказ — заданным кодом)."""
+
+    def __init__(self, refuse: dict[str, ErrorCode] | None = None) -> None:
+        self.refuse = refuse or {}
+        self.urls: list[str] = []
+
+    def check(self, url: str) -> None:
+        self.urls.append(url)
+        for host, code in self.refuse.items():
+            if f"//{host}/" in url:
+                raise PriceWatcherError(code)
+
+
+class CountingLimit:
+    def __init__(self, limit: int = 1000) -> None:
+        self.limit = limit
+        self.count = 0
+
+    def ensure_room(self) -> None:
+        if self.count >= self.limit:
+            raise DailyLimitReached(str(self.limit))
+
+    def taken(self) -> None:
+        self.count += 1
 
 
 class FakeClient:
@@ -95,9 +124,15 @@ class Clock:
         return False
 
 
-def runner(client: FakeClient, parsers: FakeParsers, clock: Clock | None = None, images: FakeImages | None = None, **kwargs: Any) -> Runner:
+def runner(
+    client: FakeClient, parsers: FakeParsers, clock: Clock | None = None, images: FakeImages | None = None, *,
+    gate: OpenGate | None = None, limit: CountingLimit | None = None, **kwargs: Any,
+) -> Runner:
     clock = clock or Clock()
-    return Runner(client, parsers, images or FakeImages(), poll_seconds=10, clock=clock, wait=clock.wait, jitter=lambda limit: 1000, **kwargs)
+    return Runner(
+        client, parsers, images or FakeImages(), gate=gate or OpenGate(), limit=limit or CountingLimit(),
+        poll_seconds=10, clock=clock, wait=clock.wait, jitter=lambda limit: 1000, **kwargs,
+    )
 
 
 def test_success_result_payload() -> None:
@@ -176,7 +211,7 @@ def test_lease_is_kept_alive_during_long_check() -> None:
     release = threading.Event()
     client = FakeClient([task()])
     parsers = FakeParsers(block=release)
-    work = Runner(client, parsers, FakeImages(), poll_seconds=10, heartbeat_every_s=0.01)
+    work = Runner(client, parsers, FakeImages(), gate=OpenGate(), limit=CountingLimit(), poll_seconds=10, heartbeat_every_s=0.01)
 
     beaten = threading.Event()
     original = client.heartbeat
@@ -292,3 +327,49 @@ def test_unexpected_image_error_is_logged_with_trace(caplog: pytest.LogCaptureFi
     record = next(r for r in caplog.records if r.getMessage() == "Неожиданная ошибка загрузки фото")
     assert record.exc_info is not None
     assert client.results[0][1]["status"] == "ok"
+
+
+# --- слой 1 изоляции: локальный пропуск адреса и суточный лимит ---
+
+
+def test_domain_not_in_home_list_is_refused_without_parser() -> None:
+    client = FakeClient([task(host="evil.example")])
+    parsers = FakeParsers()
+    gate = OpenGate({"evil.example": ErrorCode.DOMAIN_NOT_ALLOWED})
+
+    runner(client, parsers, gate=gate).step()
+
+    assert parsers.calls == []
+    assert client.results[0][1]["status"] == "DOMAIN_NOT_ALLOWED"
+
+
+def test_private_address_is_refused_as_invalid_url() -> None:
+    client = FakeClient([task(host="rebind.example")])
+    parsers = FakeParsers()
+
+    runner(client, parsers, gate=OpenGate({"rebind.example": ErrorCode.INVALID_URL})).step()
+
+    assert parsers.calls == []
+    assert client.results[0][1]["status"] == "INVALID_URL"
+
+
+def test_daily_limit_stops_before_asking_server() -> None:
+    client = FakeClient([task(1), task(2), task(3)])
+    limit = CountingLimit(limit=2)
+    work = runner(client, FakeParsers(), limit=limit)
+
+    work.step()
+    work.step()
+    with pytest.raises(DailyLimitReached):
+        work.step()
+
+    assert len(client.tasks) == 1  # третье задание сервер так и не выдал
+    assert limit.count == 2
+
+
+def test_empty_queue_does_not_spend_daily_limit() -> None:
+    limit = CountingLimit(limit=1)
+    work = runner(FakeClient([None, None]), FakeParsers(), limit=limit)
+    work.step()
+    work.step()
+    assert limit.count == 0
