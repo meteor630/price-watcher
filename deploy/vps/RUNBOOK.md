@@ -54,7 +54,7 @@
   Дом не забирал копии 36 часов — уведомление администраторам. Приёмник ничего не распаковывает.
 - Токен приёмника (один раз; сразу в `pull.env` дома, в чат и журнал не попадает):
   ```
-  ssh pw-edge 'cd /opt/price-watcher/deploy/vps && sudo docker compose --env-file /srv/secrets/pricewatch/compose.env run --rm --no-deps app python -m pricewatch.bootstrap create-backup-reader --name home' | tail -n 1
+  ssh pw-edge 'cd /opt/price-watcher/deploy/vps && sudo docker compose --env-file /srv/secrets/pricewatch/compose.env exec -T app python -m pricewatch.bootstrap create-backup-reader --name home' | tail -n 1
   ```
   Ротация с перекрытием — `rotate-backup-reader-token --name home`: старый действует, пока приёмник не придёт с новым.
 - Проверка восстановления — раз в месяц вручную на ПК владельца (ключ age — только у владельца, никуда не копируется):
