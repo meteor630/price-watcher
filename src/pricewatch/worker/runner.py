@@ -1,17 +1,18 @@
-"""Цикл worker: взять задание → выдержать паузу магазина → проверить ссылку → (фото) → отправить результат.
+"""Обработка одного взятого задания worker: выдержать паузу магазина → проверить ссылку → (фото) → отправить результат.
 
+Задания берёт диспетчер (lanes.py): у каждого магазина своя полоса со своим Runner.
 - Пока идёт проверка, аренда продлевается каждые 30 секунд (аренда — 2 минуты).
 - Между запросами к одному магазину — его пауза из задания; у браузерных магазинов (пауза от 5 с)
   к ней добавляются случайные 0–4 с: так ходит человек, а не робот (решение 06.10.2026).
+- Магазин отказал (BLOCKED, CAPTCHA) — следующая пауза дольше: пауза × 2^(отказов подряд), не больше 10 минут;
+  удачная проверка сбрасывает счётчик. Остановку магазина на прогон после серии отказов делает сервер (пауза магазина).
 - Ошибка магазина уходит на сервер своим кодом. Неожиданная ошибка парсера записывается в журнал
   с трассировкой и уходит как INTERNAL_ERROR: одна сломанная ссылка не останавливает worker.
 - Фото скачивается, только если сервер отметил в задании, что его у ссылки нет, и проверка удалась.
   Сбой фото пишется в журнал и не мешает цене: результат уходит как обычно.
-- Сервер не принял токен — worker останавливается: без токена работать нельзя.
 - Сервер может быть захвачен: перед проверкой адрес задания проходит локальный пропуск (allowlist.EgressGate —
   домен из списка домашнего узла, публичный адрес); отказ уходит на сервер кодом DOMAIN_NOT_ALLOWED или INVALID_URL.
-  Перед каждым вопросом серверу — суточный лимит заданий (limits.DailyTaskLimit); исчерпан — worker останавливается.
-- Остановка (stop) дожидается конца текущей проверки: результат не теряется.
+  Список доменов не читается — AllowlistUnusable поднимается дальше, и worker останавливается.
 """
 
 import logging
@@ -23,6 +24,7 @@ from typing import Any, Protocol
 
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.media.images import ImageRejected
+from pricewatch.worker.allowlist import AllowlistUnusable
 from pricewatch.worker.client import ImageRefused, LeaseLost, ServerUnavailable, Task
 from pricewatch.worker.parsing import Parsed
 
@@ -32,6 +34,8 @@ HEARTBEAT_EVERY_S = 30.0
 BROWSER_DELAY_MS = 5_000
 JITTER_MAX_MS = 4_000
 SERVER_RETRY_S = 15.0
+BACKOFF_MAX_MS = 600_000
+REFUSALS = frozenset({ErrorCode.BLOCKED.value, ErrorCode.CAPTCHA.value})
 
 
 class Client(Protocol):
@@ -56,6 +60,8 @@ class Gate(Protocol):
 
 
 class Limit(Protocol):
+    """Суточный лимит заданий: проверить перед вопросом серверу, отметить взятое (limits.DailyTaskLimit)."""
+
     def ensure_room(self) -> None: ...
     def taken(self) -> None: ...
 
@@ -68,8 +74,6 @@ class Runner:
         images: ImageSource,
         *,
         gate: Gate,
-        limit: Limit,
-        poll_seconds: float,
         clock: Callable[[], float] = time.monotonic,
         wait: Callable[[float], bool] | None = None,
         heartbeat_every_s: float = HEARTBEAT_EVERY_S,
@@ -79,51 +83,37 @@ class Runner:
         self._parsers = parsers
         self._images = images
         self._gate = gate
-        self._limit = limit
-        self._poll_seconds = poll_seconds
         self._clock = clock
-        self._stopping = threading.Event()
-        # Ожидание прерывается остановкой: worker не досиживает паузу, когда его останавливают.
-        self._wait = wait or self._stopping.wait
+        # Ожидание паузы; диспетчер передаёт своё — оно прерывается остановкой worker.
+        self._wait = wait or threading.Event().wait
         self._heartbeat_every_s = heartbeat_every_s
         self._jitter = jitter
         self._last_visit: dict[str, float] = {}
+        self._refusals: dict[str, int] = {}
 
-    def stop(self) -> None:
-        self._stopping.set()
-
-    def run(self) -> None:
-        while not self._stopping.is_set():
-            self.step()
-
-    def step(self) -> bool:
-        """Одно задание; False — очередь пуста или сервер недоступен (worker подождал). Лимит суток — DailyLimitReached."""
-        self._limit.ensure_room()
-        try:
-            task = self._client.claim()
-        except ServerUnavailable as error:
-            logger.warning("Сервер недоступен, повтор позже", extra={"reason": str(error)})
-            self._wait(SERVER_RETRY_S)
-            return False
-        if task is None:
-            self._wait(self._poll_seconds)
-            return False
-        self._limit.taken()
+    def process(self, task: Task) -> None:
+        """Взятое задание: пауза магазина → проверка → (фото) → результат."""
         self._polite_pause(task)
         payload = self._check(task)
         try:
             self._client.result(task.task_id, payload)
         except LeaseLost:
             logger.warning("Аренда задания истекла до отправки результата", extra={"task_id": task.task_id})
+        if payload["status"] in REFUSALS:
+            self._refusals[task.store_host] = self._refusals.get(task.store_host, 0) + 1
+        else:
+            self._refusals.pop(task.store_host, None)
         logger.info(
             "Проверка ссылки завершена",
             extra={"task_id": task.task_id, "store": task.store_host,
                    "duration_ms": payload["duration_ms"], "result": payload["status"]},
         )
-        return True
 
     def _polite_pause(self, task: Task) -> None:
         delay_ms = task.min_delay_ms + (self._jitter(JITTER_MAX_MS) if task.min_delay_ms >= BROWSER_DELAY_MS else 0)
+        refusals = self._refusals.get(task.store_host, 0)
+        if refusals:
+            delay_ms = min(BACKOFF_MAX_MS, delay_ms * 2**refusals)
         last = self._last_visit.get(task.store_host)
         if last is not None:
             remaining = delay_ms / 1000 - (self._clock() - last)
@@ -152,6 +142,8 @@ class Runner:
             parsed = self._parsers.parse(task.url, task.region_code, task.parser_key, task.store_host, task.fetch_method)
         except PriceWatcherError as error:
             return {"status": error.code.value}, None
+        except AllowlistUnusable:
+            raise  # без списка доменов работать нельзя: worker останавливается
         except Exception:
             # Неожиданная ошибка парсера: трассировка — в журнал, на сервер — общий код, worker живёт дальше.
             logger.exception("Неожиданная ошибка проверки ссылки", extra={"task_id": task.task_id, "store": task.store_host})

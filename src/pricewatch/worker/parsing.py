@@ -5,6 +5,7 @@
 парсер начинает с него и сообщает, какой сработал на этот раз.
 """
 
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,9 +30,9 @@ class Parsed:
 
 
 class Parsers:
-    def __init__(self, profiles_dir: Path) -> None:
+    def __init__(self, profiles_dir: Path, tabs: threading.Semaphore | None = None) -> None:
         self._fetcher = SafeFetcher()
-        self._browser = BrowserFetcher(profiles_dir)
+        self._browser = BrowserFetcher(profiles_dir, tabs=tabs)
         self._adapters = {
             "wildberries": WildberriesParser(self._browser),
             "regard": RegardParser(self._fetcher),

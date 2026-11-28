@@ -20,6 +20,7 @@ Playwright, у которого закрыты признаки управляе
 """
 
 import shutil
+import threading
 import time
 from collections import OrderedDict
 from collections.abc import Callable
@@ -49,6 +50,9 @@ CHROME_ARGS = (
 )
 NAVIGATION_TIMEOUT_MS = 45_000
 MAX_OPEN_PROFILES = 2
+# Вкладок одновременно на все магазины (домашний компьютер) и сколько ждать свободной.
+MAX_TABS = 3
+TAB_WAIT_S = 300.0
 WAIT_STEP_MS = 400
 CAPTURED_MAX_COUNT = 200
 CAPTURED_MAX_BYTES = 3_000_000
@@ -127,19 +131,24 @@ def _snapshot(tab: Page) -> str | None:
 
 
 class OpenPage:
-    """Открытая страница магазина: из неё можно запрашивать JSON с cookies магазина. Закрывается `with`."""
+    """Открытая страница магазина: из неё можно запрашивать JSON с cookies магазина. Закрывается `with`;
+    закрытие освобождает место в общем лимите вкладок."""
 
-    def __init__(self, page: BrowserPage, tab: Page | None) -> None:
+    def __init__(self, page: BrowserPage, tab: Page | None, release: Callable[[], None] = lambda: None) -> None:
         self.page = page
         self._tab = tab
+        self._release = release
 
     def __enter__(self) -> "OpenPage":
         return self
 
     def __exit__(self, *exc_info: object) -> None:
         if self._tab is not None:
-            self._tab.close()
-            self._tab = None
+            try:
+                self._tab.close()
+            finally:
+                self._tab = None
+                self._release()
 
     def fetch_json(self, requests: list[NormalizedUrl], headers: dict[str, str] | None = None) -> list[JsonReply]:
         """Запросы изнутри страницы — тот же источник, cookies магазина, тот же проверяющий прокси.
@@ -166,11 +175,16 @@ class StoreBrowser(Protocol):
 
 
 class BrowserFetcher:
-    """Повторно использует два недавно открытых профиля магазинов в одном процессе Playwright."""
+    """Повторно использует два недавно открытых профиля магазинов в одном процессе Playwright.
 
-    def __init__(self, profiles_dir: Path, *, resolver: Resolver = system_resolver) -> None:
+    Синхронный Playwright привязан к потоку: один BrowserFetcher используется только из одного потока (у worker —
+    своя «полоса» на магазин, pricewatch.worker.lanes). `tabs` — общий для всех полос лимит одновременно открытых
+    вкладок: домашний компьютер не тянет много Chrome сразу; ждать места можно не дольше TAB_WAIT_S."""
+
+    def __init__(self, profiles_dir: Path, *, resolver: Resolver = system_resolver, tabs: threading.Semaphore | None = None) -> None:
         self._profiles_dir = profiles_dir
         self._resolver = resolver
+        self._tabs = tabs or threading.BoundedSemaphore(MAX_TABS)
         self._proxy = EgressProxy(resolver=resolver)
         self._playwright: Playwright | None = None
         self._contexts: OrderedDict[Path, BrowserContext] = OrderedDict()
@@ -206,8 +220,14 @@ class BrowserFetcher:
 
         `probe_js` выполняется в странице на каждом опросе; результат — в `BrowserPage.probe`.
         """
-        page, tab = self._load(url, store_key, ready, timeout_s, probe_js)
-        return OpenPage(page, tab)
+        if not self._tabs.acquire(timeout=TAB_WAIT_S):
+            raise PriceWatcherError(ErrorCode.TIMEOUT, {"reason": "no_free_tab"})
+        try:
+            page, tab = self._load(url, store_key, ready, timeout_s, probe_js)
+        except BaseException:
+            self._tabs.release()
+            raise
+        return OpenPage(page, tab, self._tabs.release)
 
     def _load(
         self, url: NormalizedUrl, store_key: str, ready: Ready, timeout_s: float, probe_js: str | None

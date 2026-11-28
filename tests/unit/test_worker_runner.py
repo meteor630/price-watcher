@@ -1,5 +1,6 @@
-"""Цикл worker с подменёнными клиентом сервера, парсерами и загрузкой фото: результат, ошибки, паузы магазинов, аренда, фото,
-локальный пропуск адреса (домен не из списка — отказ без парсера) и суточный лимит заданий (исчерпан — до вопроса серверу)."""
+"""Обработка взятого задания с подменёнными клиентом сервера, парсерами и загрузкой фото: результат, ошибки, паузы магазинов
+(и дольше после отказа), аренда, фото, локальный пропуск адреса (домен не из списка — отказ без парсера). Выдача заданий,
+суточный лимит и остановка — в test_worker_lanes."""
 
 import logging
 import threading
@@ -11,10 +12,9 @@ from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 from pricewatch.domain.pricing import Availability
 from pricewatch.parsers.contract import ParsedProduct, PriceSource
 from pricewatch.media.images import ImageRejected
-from pricewatch.worker.client import ImageRefused, LeaseLost, ServerUnavailable, Task, WorkerRejected
+from pricewatch.worker.client import ImageRefused, LeaseLost, ServerUnavailable, Task
 from pricewatch.worker.parsing import Parsed
-from pricewatch.worker.limits import DailyLimitReached
-from pricewatch.worker.runner import SERVER_RETRY_S, Runner
+from pricewatch.worker.runner import BACKOFF_MAX_MS, Runner
 
 
 def task(task_id: int = 1, host: str = "shop.example", delay_ms: int = 2000, need_image: bool = False) -> Task:
@@ -33,19 +33,6 @@ class OpenGate:
         for host, code in self.refuse.items():
             if f"//{host}/" in url:
                 raise PriceWatcherError(code)
-
-
-class CountingLimit:
-    def __init__(self, limit: int = 1000) -> None:
-        self.limit = limit
-        self.count = 0
-
-    def ensure_room(self) -> None:
-        if self.count >= self.limit:
-            raise DailyLimitReached(str(self.limit))
-
-    def taken(self) -> None:
-        self.count += 1
 
 
 class FakeClient:
@@ -126,19 +113,16 @@ class Clock:
 
 def runner(
     client: FakeClient, parsers: FakeParsers, clock: Clock | None = None, images: FakeImages | None = None, *,
-    gate: OpenGate | None = None, limit: CountingLimit | None = None, **kwargs: Any,
+    gate: OpenGate | None = None, **kwargs: Any,
 ) -> Runner:
     clock = clock or Clock()
-    return Runner(
-        client, parsers, images or FakeImages(), gate=gate or OpenGate(), limit=limit or CountingLimit(),
-        poll_seconds=10, clock=clock, wait=clock.wait, jitter=lambda limit: 1000, **kwargs,
-    )
+    return Runner(client, parsers, images or FakeImages(), gate=gate or OpenGate(), clock=clock, wait=clock.wait, jitter=lambda limit: 1000, **kwargs)
 
 
 def test_success_result_payload() -> None:
     client = FakeClient([task()])
 
-    assert runner(client, FakeParsers()).step() is True
+    runner(client, FakeParsers()).process(client.claim())
 
     (task_id, payload), = client.results
     assert task_id == 1
@@ -151,7 +135,7 @@ def test_success_result_payload() -> None:
 def test_store_error_goes_with_its_code() -> None:
     client = FakeClient([task()])
 
-    runner(client, FakeParsers(PriceWatcherError(ErrorCode.CAPTCHA))).step()
+    runner(client, FakeParsers(PriceWatcherError(ErrorCode.CAPTCHA))).process(client.claim())
 
     assert client.results[0][1] == {"status": "CAPTCHA", "duration_ms": 0}
 
@@ -162,26 +146,12 @@ def test_unexpected_parser_error_is_logged_and_reported(caplog: pytest.LogCaptur
 
     with caplog.at_level(logging.ERROR):
         work = runner(client, parsers)
-        work.step()
-        work.step()  # worker жив и берёт следующее
+        work.process(client.claim())
+        work.process(client.claim())  # worker жив и берёт следующее
 
     assert [payload["status"] for _, payload in client.results] == ["INTERNAL_ERROR", "INTERNAL_ERROR"]
     record = next(r for r in caplog.records if r.getMessage() == "Неожиданная ошибка проверки ссылки")
     assert record.exc_info is not None
-
-
-def test_empty_queue_waits_poll_interval() -> None:
-    clock = Clock()
-
-    assert runner(FakeClient([None]), FakeParsers(), clock).step() is False
-    assert clock.waits == [10]
-
-
-def test_server_down_waits_and_retries_later() -> None:
-    clock = Clock()
-
-    assert runner(FakeClient([ServerUnavailable("down")]), FakeParsers(), clock).step() is False
-    assert clock.waits == [SERVER_RETRY_S]
 
 
 def test_polite_pause_between_requests_to_same_store() -> None:
@@ -189,9 +159,9 @@ def test_polite_pause_between_requests_to_same_store() -> None:
     client = FakeClient([task(1, "a.example"), task(2, "b.example"), task(3, "a.example")])
     work = runner(client, FakeParsers(), clock)
 
-    work.step()
-    work.step()  # другой магазин — без паузы
-    work.step()  # снова a.example: 2 с минус прошедшее время (0 по поддельным часам)
+    work.process(client.claim())
+    work.process(client.claim())  # другой магазин — без паузы
+    work.process(client.claim())  # снова a.example: 2 с минус прошедшее время (0 по поддельным часам)
 
     assert clock.waits == [2.0]
 
@@ -201,8 +171,8 @@ def test_browser_stores_get_random_extra_pause() -> None:
     client = FakeClient([task(1, "a.example", 5000), task(2, "a.example", 5000)])
     work = runner(client, FakeParsers(), clock)
 
-    work.step()
-    work.step()
+    work.process(client.claim())
+    work.process(client.claim())
 
     assert clock.waits == [6.0]  # 5 с + 1 с случайной добавки
 
@@ -211,7 +181,7 @@ def test_lease_is_kept_alive_during_long_check() -> None:
     release = threading.Event()
     client = FakeClient([task()])
     parsers = FakeParsers(block=release)
-    work = Runner(client, parsers, FakeImages(), gate=OpenGate(), limit=CountingLimit(), poll_seconds=10, heartbeat_every_s=0.01)
+    work = Runner(client, parsers, FakeImages(), gate=OpenGate(), heartbeat_every_s=0.01)
 
     beaten = threading.Event()
     original = client.heartbeat
@@ -221,7 +191,7 @@ def test_lease_is_kept_alive_during_long_check() -> None:
         beaten.set()
 
     client.heartbeat = heartbeat  # type: ignore[method-assign]
-    thread = threading.Thread(target=work.step)
+    thread = threading.Thread(target=work.process, args=(client.claim(),))
     thread.start()
     assert beaten.wait(5), "аренда не продлевалась во время долгой проверки"
     release.set()
@@ -237,32 +207,10 @@ def test_lost_lease_on_result_does_not_stop_worker(caplog: pytest.LogCaptureFixt
     work = runner(client, FakeParsers())
 
     with caplog.at_level(logging.WARNING):
-        assert work.step() is True
-        assert work.step() is True
+        work.process(client.claim())
+        work.process(client.claim())
 
     assert any(r.getMessage() == "Аренда задания истекла до отправки результата" for r in caplog.records)
-
-
-def test_rejected_token_stops_worker() -> None:
-    work = runner(FakeClient([WorkerRejected("/worker/v1/claim")]), FakeParsers())
-
-    with pytest.raises(WorkerRejected):
-        work.run()
-
-
-def test_stop_ends_loop_after_current_step() -> None:
-    client = FakeClient([task(), task(2)])
-    work = runner(client, FakeParsers())
-    original = client.result
-
-    def result_then_stop(task_id: int, payload: dict[str, Any]) -> None:
-        original(task_id, payload)
-        work.stop()
-
-    client.result = result_then_stop  # type: ignore[method-assign]
-    work.run()
-
-    assert [task_id for task_id, _ in client.results] == [1]
 
 
 # --- фото ---
@@ -271,7 +219,7 @@ def test_stop_ends_loop_after_current_step() -> None:
 def test_image_is_sent_before_result_when_server_needs_it() -> None:
     client, images = FakeClient([task(need_image=True)]), FakeImages(b"RIFF-webp")
 
-    runner(client, FakeParsers(), images=images).step()
+    runner(client, FakeParsers(), images=images).process(client.claim())
 
     assert images.urls == ["https://img.example/1.jpg"]
     assert client.images == [(1, b"RIFF-webp")]
@@ -282,7 +230,7 @@ def test_image_is_sent_before_result_when_server_needs_it() -> None:
 def test_image_not_loaded_when_link_already_has_one() -> None:
     client, images = FakeClient([task(need_image=False)]), FakeImages()
 
-    runner(client, FakeParsers(), images=images).step()
+    runner(client, FakeParsers(), images=images).process(client.claim())
 
     assert images.urls == [] and client.calls == ["result"]
 
@@ -290,7 +238,7 @@ def test_image_not_loaded_when_link_already_has_one() -> None:
 def test_failed_check_does_not_load_image() -> None:
     client, images = FakeClient([task(need_image=True)]), FakeImages()
 
-    runner(client, FakeParsers(PriceWatcherError(ErrorCode.CAPTCHA)), images=images).step()
+    runner(client, FakeParsers(PriceWatcherError(ErrorCode.CAPTCHA)), images=images).process(client.claim())
 
     assert images.urls == []
 
@@ -311,7 +259,7 @@ def test_image_failure_is_logged_and_price_still_sent(
     client.image_error = client_error
 
     with caplog.at_level(logging.WARNING):
-        runner(client, FakeParsers(), images=FakeImages(loader)).step()
+        runner(client, FakeParsers(), images=FakeImages(loader)).process(client.claim())
 
     record = next(r for r in caplog.records if r.getMessage() == "Фото не загружено")
     assert record.reason == reason  # type: ignore[attr-defined]
@@ -322,7 +270,7 @@ def test_unexpected_image_error_is_logged_with_trace(caplog: pytest.LogCaptureFi
     client = FakeClient([task(need_image=True)])
 
     with caplog.at_level(logging.ERROR):
-        runner(client, FakeParsers(), images=FakeImages(MemoryError())).step()
+        runner(client, FakeParsers(), images=FakeImages(MemoryError())).process(client.claim())
 
     record = next(r for r in caplog.records if r.getMessage() == "Неожиданная ошибка загрузки фото")
     assert record.exc_info is not None
@@ -337,7 +285,7 @@ def test_domain_not_in_home_list_is_refused_without_parser() -> None:
     parsers = FakeParsers()
     gate = OpenGate({"evil.example": ErrorCode.DOMAIN_NOT_ALLOWED})
 
-    runner(client, parsers, gate=gate).step()
+    runner(client, parsers, gate=gate).process(client.claim())
 
     assert parsers.calls == []
     assert client.results[0][1]["status"] == "DOMAIN_NOT_ALLOWED"
@@ -347,29 +295,33 @@ def test_private_address_is_refused_as_invalid_url() -> None:
     client = FakeClient([task(host="rebind.example")])
     parsers = FakeParsers()
 
-    runner(client, parsers, gate=OpenGate({"rebind.example": ErrorCode.INVALID_URL})).step()
+    runner(client, parsers, gate=OpenGate({"rebind.example": ErrorCode.INVALID_URL})).process(client.claim())
 
     assert parsers.calls == []
     assert client.results[0][1]["status"] == "INVALID_URL"
 
 
-def test_daily_limit_stops_before_asking_server() -> None:
-    client = FakeClient([task(1), task(2), task(3)])
-    limit = CountingLimit(limit=2)
-    work = runner(client, FakeParsers(), limit=limit)
-
-    work.step()
-    work.step()
-    with pytest.raises(DailyLimitReached):
-        work.step()
-
-    assert len(client.tasks) == 1  # третье задание сервер так и не выдал
-    assert limit.count == 2
 
 
-def test_empty_queue_does_not_spend_daily_limit() -> None:
-    limit = CountingLimit(limit=1)
-    work = runner(FakeClient([None, None]), FakeParsers(), limit=limit)
-    work.step()
-    work.step()
-    assert limit.count == 0
+def test_refusal_makes_next_pause_longer_and_success_resets_it() -> None:
+    clock = Clock()
+    client = FakeClient([task(1, "a.example"), task(2, "a.example"), task(3, "a.example"), task(4, "a.example")])
+    parsers = FakeParsers(PriceWatcherError(ErrorCode.BLOCKED))
+    work = runner(client, parsers, clock)
+
+    work.process(client.claim())  # первая — без паузы, магазин отказал
+    work.process(client.claim())  # 2 с × 2
+    parsers.outcome = Parsed(PRODUCT, "browser")
+    work.process(client.claim())  # 2 с × 4 (второй отказ подряд), теперь удача
+    work.process(client.claim())  # счётчик сброшен — обычные 2 с
+
+    assert clock.waits == [4.0, 8.0, 2.0]
+
+
+def test_backoff_has_upper_bound() -> None:
+    clock = Clock()
+    client = FakeClient([task(i, "a.example", 60_000) for i in range(1, 9)])
+    work = runner(client, FakeParsers(PriceWatcherError(ErrorCode.CAPTCHA)), clock)
+    for _ in range(8):
+        work.process(client.claim())
+    assert max(clock.waits) == BACKOFF_MAX_MS / 1000

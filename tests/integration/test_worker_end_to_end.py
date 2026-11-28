@@ -9,6 +9,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -30,7 +31,8 @@ from pricewatch.parsers.catalog import LinkCatalog
 from pricewatch.parsers.contract import ParsedProduct, PriceSource
 from pricewatch.persistence.database import create_db_engine
 from pricewatch.persistence.unit_of_work import SqlUnitOfWork
-from pricewatch.worker.client import ApiClient, WorkerRejected
+from pricewatch.worker.client import ApiClient, Task, WorkerRejected
+from pricewatch.worker.lanes import Dispatcher
 from pricewatch.worker.parsing import Parsed
 from pricewatch.worker.runner import Runner
 
@@ -106,10 +108,57 @@ class NoLimit:
         return None
 
 
-def worker(server: TestClient, engine: Engine, parsers: FakeParsers, images: ShopImages | None = None) -> Runner:
-    token = create_worker(SqlUnitOfWork(engine), KEY.encode(), f"w-{uuid.uuid4().hex[:8]}", NOW)
-    images = images or ShopImages()
-    return Runner(ApiClient(server, token), parsers, images, gate=OpenGate(), limit=NoLimit(), poll_seconds=1, wait=lambda seconds: False)
+class UntilEmpty:
+    """Настоящий клиент протокола; пустая очередь останавливает диспетчер — тест проверяет всё, что было в очереди."""
+
+    def __init__(self, api: ApiClient) -> None:
+        self.api = api
+        self.dispatcher: Dispatcher | None = None
+        self.claimed = 0
+
+    def claim(self) -> Task | None:
+        task = self.api.claim()
+        if task is None and self.dispatcher is not None:
+            self.dispatcher.stop()
+        self.claimed += task is not None
+        return task
+
+    def heartbeat(self, task_id: int) -> None:
+        self.api.heartbeat(task_id)
+
+    def image(self, task_id: int, webp: bytes) -> None:
+        self.api.image(task_id, webp)
+
+    def result(self, task_id: int, payload: dict[str, Any]) -> None:
+        self.api.result(task_id, payload)
+
+
+class Lane:
+    def __init__(self, runner: Runner) -> None:
+        self.runner = runner
+
+    def process(self, task: Task) -> None:
+        self.runner.process(task)
+
+    def close(self) -> None:
+        return None
+
+
+def check_queue(server: TestClient, parsers: FakeParsers, images: ShopImages | None = None, *, token: str) -> int:
+    """Worker как в работе: диспетчер → полоса магазина → Runner → настоящий /worker/v1; сколько заданий проверено."""
+    client = UntilEmpty(ApiClient(server, token))
+    shop_images = images or ShopImages()
+    dispatcher = Dispatcher(
+        client, lambda wait: Lane(Runner(client, parsers, shop_images, gate=OpenGate(), wait=lambda seconds: False)),
+        NoLimit(), lanes=2, poll_seconds=0.01,
+    )
+    client.dispatcher = dispatcher
+    dispatcher.run()
+    return client.claimed
+
+
+def worker_token(engine: Engine) -> str:
+    return create_worker(SqlUnitOfWork(engine), KEY.encode(), f"w-{uuid.uuid4().hex[:8]}", NOW)
 
 
 def test_added_link_is_checked_and_price_lands_in_history(server: TestClient, engine: Engine) -> None:
@@ -117,7 +166,7 @@ def test_added_link_is_checked_and_price_lands_in_history(server: TestClient, en
     product = ParsedProduct("Лампа настольная", 129_900, None, Availability.IN_STOCK, None, "spb", PriceSource.SITE_DATA, "Магазин Ламп")
     parsers = FakeParsers(Parsed(product, "http"))
 
-    assert worker(server, engine, parsers).step() is True
+    assert check_queue(server, parsers, token=worker_token(engine)) == 1
 
     assert parsers.urls == [url]
     with engine.connect() as db:
@@ -132,7 +181,7 @@ def test_photo_of_new_link_is_stored_once(server: TestClient, engine: Engine, tm
     product = ParsedProduct("Лампа", 129_900, None, Availability.IN_STOCK, "https://img.example/lamp.jpg", "spb")
     images = ShopImages()
 
-    worker(server, engine, FakeParsers(Parsed(product, "http")), images).step()
+    check_queue(server, FakeParsers(Parsed(product, "http")), images, token=worker_token(engine))
 
     with engine.connect() as db:
         stored = db.execute(text("SELECT image_path FROM tracked_links WHERE id = :l"), {"l": link_id}).scalar_one()
@@ -143,14 +192,14 @@ def test_photo_of_new_link_is_stored_once(server: TestClient, engine: Engine, tm
     with SqlUnitOfWork(engine) as work:  # следующая проверка этой ссылки фото уже не скачивает
         work.queue.enqueue_on_add(link_id, NOW)
         work.commit()
-    worker(server, engine, FakeParsers(Parsed(product, "http")), images).step()
+    check_queue(server, FakeParsers(Parsed(product, "http")), images, token=worker_token(engine))
     assert images.urls == ["https://img.example/lamp.jpg"]
 
 
 def test_store_error_lands_in_history_with_its_code(server: TestClient, engine: Engine) -> None:
     link_id, _ = added_link(engine)
 
-    worker(server, engine, FakeParsers(PriceWatcherError(ErrorCode.PRICE_NOT_FOUND))).step()
+    check_queue(server, FakeParsers(PriceWatcherError(ErrorCode.PRICE_NOT_FOUND)), token=worker_token(engine))
 
     with engine.connect() as db:
         assert db.execute(text("SELECT status FROM price_observations WHERE tracked_link_id = :l"), {"l": link_id}).scalar_one() == "PRICE_NOT_FOUND"
@@ -159,7 +208,7 @@ def test_store_error_lands_in_history_with_its_code(server: TestClient, engine: 
 def test_captcha_pauses_store_and_task_waits(server: TestClient, engine: Engine) -> None:
     link_id, _ = added_link(engine)
 
-    worker(server, engine, FakeParsers(PriceWatcherError(ErrorCode.CAPTCHA))).step()
+    check_queue(server, FakeParsers(PriceWatcherError(ErrorCode.CAPTCHA)), token=worker_token(engine))
 
     with engine.connect() as db:
         assert db.execute(text("SELECT count(*) FROM price_observations WHERE tracked_link_id = :l"), {"l": link_id}).scalar_one() == 0
@@ -176,12 +225,10 @@ def test_empty_queue(server: TestClient, engine: Engine) -> None:
         db.execute(text("UPDATE check_tasks SET status = 'cancelled', lease_until = NULL, finished_at = now() WHERE status IN ('queued', 'leased')"))
     parsers = FakeParsers(RuntimeError("пустая очередь не должна доходить до парсера"))
 
-    assert worker(server, engine, parsers).step() is False
+    assert check_queue(server, parsers, token=worker_token(engine)) == 0
     assert parsers.urls == []
 
 
 def test_wrong_token_stops_worker(server: TestClient) -> None:
-    work = Runner(ApiClient(server, "w" * 43), FakeParsers(None), ShopImages(), gate=OpenGate(), limit=NoLimit(), poll_seconds=1, wait=lambda seconds: False)
-
     with pytest.raises(WorkerRejected):
-        work.step()
+        check_queue(server, FakeParsers(None), token="w" * 43)

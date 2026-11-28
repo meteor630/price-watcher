@@ -141,6 +141,10 @@ class WorkerSettings(BaseSettings):
     allowlist: Path = Path("allowlist.txt")
     # Сколько заданий в сутки worker возьмёт (≈ 3 × активных ссылок); больше — останавливается.
     daily_task_limit: int = Field(default=300, ge=1, le=100_000)
+    # Сколько магазинов проверяется одновременно (у каждого своя полоса и свой профиль Chrome).
+    lanes: int = Field(default=4, ge=1, le=8)
+    # Сколько вкладок браузера открыто одновременно на все магазины (домашний компьютер).
+    browser_tabs: int = Field(default=2, ge=1, le=3)
 
     @field_validator("api_url")
     @classmethod
