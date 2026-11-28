@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException
 from starlette.staticfiles import StaticFiles
 
+from pricewatch.api.backups_v1 import router as backups_v1_router
 from pricewatch.api.context import ApiContext
 from pricewatch.api.edge import REQUEST_ID_HEADER, EdgeMiddleware
 from pricewatch.api.errors import handle_http_exception, handle_project_error, handle_validation_error
@@ -48,6 +49,8 @@ def create_app(settings: Settings, context: ApiContext | None = None) -> FastAPI
     app.state.context = context
     app.state.public_origin = settings.public_origin
     app.state.telegram_bot = settings.telegram_bot_username
+    # Папка копий для домашнего приёмника (/backups/v1); не задана — выдачи копий нет (404).
+    app.state.backups_dir = settings.backups_dir
     app.add_exception_handler(PriceWatcherError, handle_project_error)
     app.add_exception_handler(RequestValidationError, handle_validation_error)
     app.add_exception_handler(HTTPException, handle_http_exception)
@@ -65,6 +68,7 @@ def create_app(settings: Settings, context: ApiContext | None = None) -> FastAPI
     app.include_router(v1_client_errors_router)
     app.include_router(worker_v1_router)
     app.include_router(internal_v1_router)
+    app.include_router(backups_v1_router)
     app.include_router(web_pages_router)
     app.include_router(web_home_router)
     app.include_router(web_categories_router)

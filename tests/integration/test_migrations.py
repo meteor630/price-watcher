@@ -25,7 +25,7 @@ AUTH_TABLES = {
 COLLECTION_TABLES = AUTH_TABLES | {
     "stores", "tracked_links", "item_links", "parse_runs", "check_tasks", "workers", "price_observations", "settings",
 }
-TABLES = COLLECTION_TABLES | {"notifications", "idempotency_keys", "price_decisions", "audit_events", "client_error_reports", "services", "telegram_link_codes", "backup_runs"}
+TABLES = COLLECTION_TABLES | {"notifications", "idempotency_keys", "price_decisions", "audit_events", "client_error_reports", "services", "telegram_link_codes", "backup_runs", "backup_readers"}
 
 
 def tables(url: str) -> set[str]:
@@ -58,6 +58,10 @@ def test_upgrade_downgrade_upgrade(empty_database_url: str) -> None:
 
     command.upgrade(config, "head")
     assert tables(empty_database_url) == TABLES
+    assert revision(empty_database_url) == "0016"
+
+    command.downgrade(config, "0015")
+    assert "backup_readers" not in tables(empty_database_url)
     assert revision(empty_database_url) == "0015"
 
     command.downgrade(config, "0014")

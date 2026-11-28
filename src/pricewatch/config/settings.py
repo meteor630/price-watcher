@@ -23,6 +23,8 @@ ENV_PREFIX = "PRICEWATCH_"
 WORKER_PREFIX = "PRICEWATCH_WORKER_"
 BOT_PREFIX = "PRICEWATCH_BOT_"
 BACKUP_PREFIX = "PRICEWATCH_BACKUP_"
+PULL_PREFIX = "PRICEWATCH_PULL_"
+PULL_MAX_BYTES = 2 * 1024**3
 # Открытый ключ age (bech32): им копии шифруются, расшифровать им нельзя.
 AGE_RECIPIENT_PATTERN = r"^age1[02-9ac-hj-np-z]{58}$"
 WORKER_TOKEN_MIN_CHARS = 40
@@ -52,10 +54,12 @@ class Settings(BaseSettings):
     listen_host: str = "127.0.0.1"
     listen_port: int = Field(default=8000, ge=1, le=65535)
     media_dir: Path = Path("media")
+    # Папка копий сервера, которую сайт отдаёт домашнему приёмнику (/backups/v1, только чтение); не задана — не отдаёт.
+    backups_dir: Path | None = None
     # Имя Telegram-бота без @: страница профиля даёт ссылку t.me/<имя>?start=<код>; не задано — только команда /start <код>.
     telegram_bot_username: Annotated[str, Field(pattern=r"^[A-Za-z0-9_]{5,32}$")] | None = None
 
-    @field_validator("telegram_bot_username", mode="before")
+    @field_validator("telegram_bot_username", "backups_dir", mode="before")
     @classmethod
     def _empty_is_unset(cls, value: object) -> object:
         return None if value == "" else value
@@ -109,7 +113,7 @@ def load_settings(env_file: Path | None = Path(".env")) -> Settings:
     """Прочитать настройки или остановиться с понятной ошибкой."""
     unknown = sorted(
         name for name in os.environ
-        if name.startswith(ENV_PREFIX) and not name.startswith((WORKER_PREFIX, BOT_PREFIX, BACKUP_PREFIX)) and not _is_field(name)
+        if name.startswith(ENV_PREFIX) and not name.startswith((WORKER_PREFIX, BOT_PREFIX, BACKUP_PREFIX, PULL_PREFIX)) and not _is_field(name)
     )
     if unknown:
         raise ConfigError("Неизвестные переменные окружения: " + ", ".join(unknown))
@@ -222,19 +226,14 @@ def load_bot_settings(env_file: Path | None = Path("bot.env")) -> BotSettings:
 
 
 class BackupSettings(BaseSettings):
-    """Настройки службы резервных копий: папка копий, открытый ключ age, время копии по Москве, куда отправлять копии
-    на арендный сервер (пользователь, который может только дописывать). База и папка картинок — из настроек сервера."""
+    """Настройки копий на сервере: папка копий, открытый ключ age, время копии по Москве.
+    База и папка картинок — из настроек сервера. Копии забирает домашний приёмник, сервер их никуда не отправляет."""
 
     model_config = SettingsConfigDict(env_prefix=BACKUP_PREFIX, env_file_encoding="utf-8", extra="forbid", frozen=True)
 
     dir: Path
     recipient: Annotated[str, Field(pattern=AGE_RECIPIENT_PATTERN)]
     time: time_of_day = time_of_day(4, 30)
-    remote: Annotated[str, Field(pattern=r"^[a-z_][a-z0-9_-]{0,31}@[A-Za-z0-9.-]{1,253}$")]
-    ssh_port: int = Field(default=22, ge=1, le=65535)
-    # Закрытый ключ SSH службы копий и строка ключа арендного сервера для строгой сверки.
-    ssh_key: Path
-    known_hosts: Path
 
 
 def load_backup_settings(env_file: Path | None = Path("backup.env")) -> BackupSettings:
@@ -249,6 +248,47 @@ def load_backup_settings(env_file: Path | None = Path("backup.env")) -> BackupSe
         return BackupSettings(_env_file=env_file)  # type: ignore[call-arg]
     except ValidationError as error:
         raise ConfigError(_describe(error, BACKUP_PREFIX)) from None
+
+
+class PullSettings(BaseSettings):
+    """Настройки домашнего приёмника копий: адрес сервера, токен приёмника (только чтение копий), папка копий дома,
+    лимит размера одной копии, время ежедневного забора по Москве (и сразу при старте)."""
+
+    model_config = SettingsConfigDict(env_prefix=PULL_PREFIX, env_file_encoding="utf-8", extra="forbid", frozen=True)
+
+    api_url: str
+    token: SecretStr
+    dir: Path
+    max_bytes: int = Field(default=PULL_MAX_BYTES, ge=1)
+    time: time_of_day = time_of_day(7, 0)
+
+    @field_validator("api_url")
+    @classmethod
+    def _api_origin(cls, value: str) -> str:
+        return api_origin(value)
+
+    @field_validator("token")
+    @classmethod
+    def _token_long_enough(cls, value: SecretStr) -> SecretStr:
+        if len(value.get_secret_value()) < WORKER_TOKEN_MIN_CHARS:
+            raise ValueError(f"нужно не меньше {WORKER_TOKEN_MIN_CHARS} символов; токен выдаёт команда create-backup-reader")
+        return value
+
+
+def load_pull_settings(env_file: Path | None = Path("pull.env")) -> PullSettings:
+    """Настройки приёмника копий или понятная ошибка; токен не попадает в журнал."""
+    unknown = sorted(
+        name for name in os.environ
+        if name.startswith(PULL_PREFIX) and name.removeprefix(PULL_PREFIX).lower() not in PullSettings.model_fields
+    )
+    if unknown:
+        raise ConfigError("Неизвестные переменные окружения: " + ", ".join(unknown))
+    try:
+        settings = PullSettings(_env_file=env_file)  # type: ignore[call-arg]
+    except ValidationError as error:
+        raise ConfigError(_describe(error, PULL_PREFIX)) from None
+    register_secret(settings.token.get_secret_value())
+    return settings
 
 
 def api_origin(value: str) -> str:

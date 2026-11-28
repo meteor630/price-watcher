@@ -17,10 +17,12 @@ from typing import TextIO
 from sqlalchemy import Engine
 
 from pricewatch.application.accounts import create_admin
+from pricewatch.application.backup_readers import create_backup_reader, rotate_backup_reader_token
 from pricewatch.application.passwords import PasswordHasher
 from pricewatch.application.services import create_service, rotate_service_token
 from pricewatch.application.worker_protocol import create_worker, rotate_worker_token
 from pricewatch.bootstrap.backups import run_backups
+from pricewatch.bootstrap.pull import run_pull
 from pricewatch.bootstrap.scheduling import run_scheduler
 from pricewatch.bootstrap.server import EXIT_CONFIG, EXIT_DATABASE, check_database, serve
 from pricewatch.config.settings import ConfigError, load_settings
@@ -47,7 +49,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m pricewatch.bootstrap")
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("serve", help="запустить сервер (по умолчанию)")
-    commands.add_parser("scheduler", help="запустить планировщик плановых проверок")
+    scheduler = commands.add_parser("scheduler", help="запустить планировщик плановых проверок")
+    scheduler.add_argument("--backups", action="store_true", help="заодно делать ежедневную резервную копию (настройки — backup.env)")
     backup = commands.add_parser("backup", help="запустить службу резервных копий")
     backup.add_argument("--once", action="store_true", help="одна копия сейчас и выход")
     admin = commands.add_parser("create-admin", help="создать администратора")
@@ -62,12 +65,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     service.add_argument("--name", required=True)
     rotate_service = commands.add_parser("rotate-service-token", help="выпустить новый токен сервиса; старый действует до первого входа с новым")
     rotate_service.add_argument("--name", required=True)
+    reader = commands.add_parser("create-backup-reader", help="зарегистрировать домашний приёмник копий и выпустить его токен")
+    reader.add_argument("--name", required=True)
+    rotate_reader = commands.add_parser("rotate-backup-reader-token", help="выпустить новый токен приёмника копий; старый действует до первого входа с новым")
+    rotate_reader.add_argument("--name", required=True)
+    pull = commands.add_parser("pull-backups", help="домашний приёмник: забирать копии с сервера (настройки — pull.env)")
+    pull.add_argument("--once", action="store_true", help="забрать новые копии сейчас и выйти")
     args = parser.parse_args(argv)
 
     if args.command in (None, "serve"):
         return serve()
     if args.command == "scheduler":
-        return run_scheduler()
+        return run_scheduler(backups=args.backups)
+    if args.command == "pull-backups":
+        return run_pull(args.once)
     if args.command == "backup":
         return run_backups(args.once)
     if args.command == "create-worker":
@@ -78,6 +89,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return worker_token_command(args.name, rotate=False, kind="service")
     if args.command == "rotate-service-token":
         return worker_token_command(args.name, rotate=True, kind="service")
+    if args.command == "create-backup-reader":
+        return worker_token_command(args.name, rotate=False, kind="backup-reader")
+    if args.command == "rotate-backup-reader-token":
+        return worker_token_command(args.name, rotate=True, kind="backup-reader")
     return create_admin_command(args.login, args.name or args.login, args.password_stdin)
 
 
@@ -137,6 +152,7 @@ def _create_admin(
 TOKEN_KINDS: Mapping[str, tuple[Callable[..., str], Callable[..., str], str]] = {
     "worker": (create_worker, rotate_worker_token, "worker «{name}» (показывается один раз, сохраните в PRICEWATCH_WORKER_TOKEN worker)"),
     "service": (create_service, rotate_service_token, "сервиса «{name}» (показывается один раз, сохраните в PRICEWATCH_BOT_SERVICE_TOKEN бота)"),
+    "backup-reader": (create_backup_reader, rotate_backup_reader_token, "приёмника копий «{name}» (показывается один раз, сохраните в PRICEWATCH_PULL_TOKEN приёмника)"),
 }
 
 

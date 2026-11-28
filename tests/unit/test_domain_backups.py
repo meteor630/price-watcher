@@ -4,7 +4,19 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from pricewatch.domain.backups import KEEP, STALE_AFTER, backup_name, created_at, expired, stale_since
+from pricewatch.domain.backups import (
+    KEEP,
+    SPACE_RESERVE,
+    STALE_AFTER,
+    backup_name,
+    checksum_name,
+    created_at,
+    expired,
+    latest,
+    space_needed,
+    stale_since,
+    surplus,
+)
 
 NOW = datetime(2026, 10, 14, 1, 30, tzinfo=UTC)
 
@@ -70,3 +82,30 @@ def test_without_any_success_counts_from_first_attempt() -> None:
 
 def test_without_attempts_backups_are_not_set_up() -> None:
     assert stale_since(None, None, NOW) is None
+
+
+# --- хранение на сервере: две последние, место перед копией ---
+
+
+def test_surplus_keeps_two_newest() -> None:
+    names = [backup_name(NOW - timedelta(days=days)) for days in (3, 1, 2)] + ["notes.txt"]
+    assert surplus(names) == [backup_name(NOW - timedelta(days=3))]
+
+
+def test_surplus_with_two_or_fewer_copies_is_empty() -> None:
+    assert surplus([backup_name(NOW), backup_name(NOW - timedelta(days=1)), "x.tar.age"]) == []
+    assert surplus([]) == []
+
+
+def test_latest_is_newest_copy_or_none() -> None:
+    assert latest([backup_name(NOW - timedelta(days=1)), backup_name(NOW), "notes.txt"]) == backup_name(NOW)
+    assert latest(["notes.txt"]) is None
+
+
+def test_space_needed_is_one_and_half_last_size_plus_reserve() -> None:
+    assert space_needed(1000) == 1500 + SPACE_RESERVE
+    assert space_needed(None) == SPACE_RESERVE
+
+
+def test_checksum_name_sits_next_to_copy() -> None:
+    assert checksum_name(backup_name(NOW)) == backup_name(NOW) + ".sha256"

@@ -1,186 +1,34 @@
-# Домашний узел (DEVELOPMENT_ARCHITECTURE.md, раздел 1): база, миграции, сайт и API, планировщик, резервные копии.
-# Worker с Chrome — не здесь, а программой Windows (deploy/windows): Chrome под Linux в Docker защита Ozon не пускает.
+# Домашний узел: только приёмник копий. Сайт, база и планировщик — на арендном сервере (deploy/vps).
+# Worker с Chrome — программой Windows (deploy/windows), ходит на сервер по HTTPS.
 # Запуск из этой папки: docker compose up -d --build
-# Настройки: ../../.env (сервер), ../../backup.env (копии), .env рядом (пароль базы, папка копий), tunnel.conf рядом (ключ туннеля).
-# Все они в Git не попадают.
-# Другие пути к файлам настроек — переменные PRICEWATCH_SERVER_ENV и PRICEWATCH_BACKUP_ENV.
-# Порядок старта: база здорова → миграции прошли → сайт, планировщик и копии.
-# Сети: база видна только серверу (backend); туннель с Caddy видят только сайт (edge).
-# Снаружи сайт открывается так: арендный сервер → туннель WireGuard → Caddy → app; worker — на 127.0.0.1:8000 этого ПК.
+# Настройки: ../../pull.env (адрес сервера, токен приёмника), .env рядом (BACKUP_HOST_DIR — папка копий на ПК).
+# Оба файла в Git не попадают. Путь к pull.env можно задать переменной PRICEWATCH_PULL_ENV.
+# Приёмник при старте (ПК мог быть выключен) и ежедневно забирает с сервера новые копии, сверяет sha256 и размер,
+# хранит 30 суток. Входящих портов нет: соединения только исходящие. Ничего не распаковывает и не запускает.
 
-name: pricewatch
-
-x-logging: &logging
-  driver: json-file
-  options:
-    max-size: "10m"
-    max-file: "5"
-
-x-server: &server
-  build:
-    context: ../..
-    dockerfile: deploy/Dockerfile
-    target: app
-  image: pricewatch-app
-  env_file: ${PRICEWATCH_SERVER_ENV:-../../.env}
-  environment: &server-env
-    PRICEWATCH_DATABASE_URL: "postgresql://pricewatch:${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в deploy/home/.env}@db:5432/pricewatch"
-    PRICEWATCH_MEDIA_DIR: /data/media
-  logging: *logging
-  restart: unless-stopped
-  networks: [backend]
-  # Процессам сервера права Linux не нужны; запись — только в тома и /tmp.
-  cap_drop: [ALL]
-  security_opt: [no-new-privileges:true]
-  read_only: true
-  tmpfs: [/tmp]
+name: pricewatch-home
 
 services:
-  db:
-    image: postgres:18@sha256:5a5a84b19854a9ffaa54082c166ff4ec27473a361e496e5ea167f298f2da9722
-    environment:
-      POSTGRES_USER: pricewatch
-      POSTGRES_DB: pricewatch
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в deploy/home/.env}"
-    volumes:
-      - pgdata:/var/lib/postgresql
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "pricewatch", "-d", "pricewatch"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-    mem_limit: 1g
-    logging: *logging
-    restart: unless-stopped
-    networks: [backend]
-
-  migrate:
-    <<: *server
-    command: ["alembic", "upgrade", "head"]
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: "no"
-
-  app:
-    <<: *server
-    command: ["python", "-m", "pricewatch.bootstrap", "serve"]
-    environment:
-      <<: *server-env
-      PRICEWATCH_LISTEN_HOST: 0.0.0.0
-      PRICEWATCH_LISTEN_PORT: "8000"
-      # Заголовок X-Forwarded-For с IP посетителя — только от Caddy (он в сетевом пространстве туннеля).
-      PRICEWATCH_TRUSTED_PROXIES: 172.31.250.2/32
-    volumes:
-      - media:/data/media
-    networks: [backend, edge]
-    # Только для этого компьютера: сюда ходит worker (deploy/windows); снаружи сайт открывается через Caddy и туннель.
-    ports:
-      - "127.0.0.1:8000:8000"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=5).status != 200)"]
-      interval: 30s
-      timeout: 10s
-      start_period: 20s
-      retries: 3
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-    mem_limit: 1g
-
-  tunnel:
-    build:
-      context: .
-      dockerfile: tunnel/Dockerfile
-    image: pricewatch-tunnel
-    volumes:
-      - ./tunnel.conf:/etc/wireguard/wg0.conf:ro
-    cap_drop: [ALL]
-    cap_add: [NET_ADMIN]
-    read_only: true
-    tmpfs: [/run, /tmp]
-    networks:
-      edge:
-        ipv4_address: 172.31.250.2
-    healthcheck:
-      # Рукопожатие с сервером было не позже 3 минут назад.
-      test: ["CMD-SHELL", "test $$(( $$(date +%s) - $$(wg show wg0 latest-handshakes | awk '{ print $$2 }') )) -lt 180"]
-      interval: 30s
-      timeout: 5s
-      start_period: 30s
-      retries: 3
-    mem_limit: 64m
-    logging: *logging
-    restart: unless-stopped
-
-  caddy:
-    image: caddy:2.10-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
-    # Слушает 80 и 443 на адресе туннеля 10.66.0.2: трафик приходит только через него.
-    network_mode: service:tunnel
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    cap_drop: [ALL]
-    cap_add: [NET_BIND_SERVICE]
-    security_opt: [no-new-privileges:true]
-    read_only: true
-    tmpfs: [/tmp]
-    depends_on:
-      tunnel:
-        condition: service_started
-        # Туннель перезапустился — Caddy следом: иначе он остался бы в старом сетевом пространстве.
-        restart: true
-      app:
-        condition: service_healthy
-    mem_limit: 256m
-    logging: *logging
-    restart: unless-stopped
-
-  scheduler:
-    <<: *server
-    command: ["python", "-m", "pricewatch.bootstrap", "scheduler"]
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-    mem_limit: 512m
-
-  backup:
-    <<: *server
+  backup-pull:
     build:
       context: ../..
       dockerfile: deploy/Dockerfile
-      target: backup
-    image: pricewatch-backup
-    command: ["python", "-m", "pricewatch.bootstrap", "backup"]
-    env_file:
-      - ${PRICEWATCH_SERVER_ENV:-../../.env}
-      - ${PRICEWATCH_BACKUP_ENV:-../../backup.env}
+      target: app
+    image: pricewatch-app
+    command: ["python", "-m", "pricewatch.bootstrap", "pull-backups"]
+    env_file: ${PRICEWATCH_PULL_ENV:-../../pull.env}
     environment:
-      <<: *server-env
-      PRICEWATCH_BACKUP_DIR: /backups
-      PRICEWATCH_BACKUP_SSH_KEY: /run/backup-ssh/id_ed25519
-      PRICEWATCH_BACKUP_KNOWN_HOSTS: /run/backup-ssh/known_hosts
-    # Копии — на отдельном от базы диске (на ПК — D:); картинки только читаются. Незашифрованный дамп — в /tmp (память).
-    # backup-ssh рядом: ключ SSH для отправки копий на арендный сервер и строка его ключа (в Git не попадают).
+      PRICEWATCH_PULL_DIR: /backups
     volumes:
-      - media:/data/media:ro
       - ${BACKUP_HOST_DIR:?задайте BACKUP_HOST_DIR в deploy/home/.env}:/backups
-      - ./backup-ssh:/run/backup-ssh:ro
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-    mem_limit: 512m
-
-networks:
-  backend:
-  edge:
-    ipam:
-      config:
-        - subnet: 172.31.250.0/29
-
-volumes:
-  pgdata:
-  media:
-  caddy_data:
-  caddy_config:
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped

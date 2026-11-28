@@ -2,16 +2,27 @@
 
 - Имя — момент создания по UTC с секундами: pricewatch-2026-10-14T013000Z.tar.age. По нему считается возраст копии:
   время изменения файла на диске Windows, подключённом в контейнер, ненадёжно.
-- Копия хранится 30 суток; старше — удаляется. Файлы с другими именами в папке копий не трогаются.
-- Удачной копии нет больше 36 часов — предупреждение администраторам. Отсчёт — от последней удачной копии, а если
+- На сервере хранятся две последние копии: старые удаляются только после того, как новая записана целиком.
+  Перед копией — проверка места: нужно размер последней копии × 1,5 + 1 ГБ запаса; не хватает — копии нет, ничего
+  не удаляется «чтобы влезло».
+- Дома (приёмник копий) копия хранится 30 суток; старше — удаляется. Файлы с другими именами не трогаются.
+- Рядом с копией — файл контрольной суммы <копия>.sha256 (sha256 в шестнадцатеричном виде): по нему приёмник
+  сверяет скачанное.
+- Удачной копии нет больше 36 часов — предупреждение администраторам; так же — если домашний приёмник не забирал
+  копии больше 36 часов (на сервере их только две, дольше — часть пропадёт). Отсчёт — от последней удачной копии, а если
   удачных не было — от первой попытки; попыток нет вовсе — копии на узле не настроены, предупреждать не о чем.
 """
 
 import re
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
+from fractions import Fraction
 
 KEEP = timedelta(days=30)
+SERVER_KEEP = 2
+SPACE_FACTOR = Fraction(3, 2)
+SPACE_RESERVE = 1024**3
+CHECKSUM_SUFFIX = ".sha256"
 STALE_AFTER = timedelta(hours=36)
 NAME = re.compile(r"^pricewatch-(\d{4}-\d{2}-\d{2}T\d{6})Z\.tar\.age$")
 NAME_TIME = "%Y-%m-%dT%H%M%S"
@@ -38,6 +49,27 @@ def expired(names: Iterable[str], now: datetime, keep: timedelta = KEEP) -> list
     """Копии старше срока хранения, по возрастанию времени создания."""
     dated = [(moment, name) for name in names if (moment := created_at(name)) is not None]
     return [name for moment, name in sorted(dated) if moment < now - keep]
+
+
+def surplus(names: Iterable[str], keep: int = SERVER_KEEP) -> list[str]:
+    """Копии сверх keep самых новых, по возрастанию времени создания."""
+    dated = sorted((moment, name) for name in names if (moment := created_at(name)) is not None)
+    return [name for _, name in dated[: max(0, len(dated) - keep)]]
+
+
+def latest(names: Iterable[str]) -> str | None:
+    """Самая новая копия; None — копий нет."""
+    dated = sorted((moment, name) for name in names if (moment := created_at(name)) is not None)
+    return dated[-1][1] if dated else None
+
+
+def space_needed(last_size: int | None) -> int:
+    """Сколько байт должно быть свободно перед копией: размер последней × 1,5 + 1 ГБ; копий не было — только запас."""
+    return int((last_size or 0) * SPACE_FACTOR) + SPACE_RESERVE
+
+
+def checksum_name(name: str) -> str:
+    return name + CHECKSUM_SUFFIX
 
 
 def stale_since(last_ok_at: datetime | None, first_started_at: datetime | None, now: datetime) -> datetime | None:

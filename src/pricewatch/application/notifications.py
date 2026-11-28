@@ -30,7 +30,7 @@ BACKUP_FAILURES = {
     "STORAGE_FAILED": "нет доступа к папке копий",
     "MEDIA_UNAVAILABLE": "нет папки картинок",
     "RETENTION_FAILED": "копия сделана, но старые не удалены",
-    "UPLOAD_FAILED": "копия сделана, но не отправлена на арендный сервер",
+    "NO_SPACE": "мало места на диске сервера, старые копии не тронуты",
 }
 
 
@@ -104,11 +104,15 @@ def notification_text(kind: str, payload: dict[str, object]) -> tuple[str, str |
     if kind == "backup_failed":
         started = datetime.fromisoformat(str(payload["started_at"])).astimezone(MOSCOW)
         reason = BACKUP_FAILURES.get(str(payload["error_code"]), str(payload["error_code"]))
-        return f"Резервная копия {started:%d.%m в %H:%M} не удалась: {reason}. Журнал — служба backup на домашнем узле.", None
+        return f"Резервная копия {started:%d.%m в %H:%M} не удалась: {reason}. Журнал — планировщик на сервере.", None
     if kind == "backup_stale":
         since = datetime.fromisoformat(str(payload["since"])).astimezone(MOSCOW)
         what = "Удачной резервной копии нет с" if payload["ever_ok"] else "Ни одной удачной резервной копии с первой попытки"
-        return f"{what} {since:%d.%m в %H:%M}: проверьте службу backup на домашнем узле.", None
+        return f"{what} {since:%d.%m в %H:%M}: проверьте планировщик на сервере.", None
+    if kind == "backup_not_pulled":
+        since = datetime.fromisoformat(str(payload["since"])).astimezone(MOSCOW)
+        what = "Домашний узел не забирал резервные копии с" if payload["ever_pulled"] else "Домашний узел ни разу не забрал резервную копию с"
+        return f"{what} {since:%d.%m в %H:%M}: на сервере хранятся только две последние, включите домашний узел.", None
     if kind in SILENCE_TEXTS:
         since = datetime.fromisoformat(str(payload["since"])).astimezone(MOSCOW)
         return SILENCE_TEXTS[kind].format(name=payload["name"], since=f"{since:%d.%m в %H:%M}"), None

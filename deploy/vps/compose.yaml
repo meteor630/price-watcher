@@ -4,6 +4,8 @@
 # Секреты — вне Git, в /srv/secrets/pricewatch (права 600):
 #   compose.env — POSTGRES_PASSWORD (подставляется в адрес базы);
 #   server.env  — настройки сайта (PRICEWATCH_SECRET_KEY и др., образец ../../.env.example).
+# Копии: планировщик (образ backup) раз в сутки — pg_dump + картинки → age, на сервере не больше двух (том backups);
+# сайт отдаёт их домашнему приёмнику по /backups/v1 (том только на чтение). Сервер в дом не ходит.
 # Сети: база видна только сайту и планировщику (backend); снаружи открыт только Caddy на 443 (edge).
 
 name: pricewatch
@@ -68,8 +70,10 @@ services:
       PRICEWATCH_LISTEN_PORT: "8000"
       # X-Forwarded-For с IP посетителя — только от Caddy.
       PRICEWATCH_TRUSTED_PROXIES: 172.31.250.2/32
+      PRICEWATCH_BACKUPS_DIR: /backups
     volumes:
       - media:/data/media
+      - backups:/backups:ro
     networks:
       backend:
       edge:
@@ -87,11 +91,26 @@ services:
 
   scheduler:
     <<: *server
-    command: ["python", "-m", "pricewatch.bootstrap", "scheduler"]
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile
+      target: backup
+    image: pricewatch-backup
+    command: ["python", "-m", "pricewatch.bootstrap", "scheduler", "--backups"]
+    environment:
+      <<: *server-env
+      PRICEWATCH_BACKUP_DIR: /backups
+      # Открытый ключ age владельца: им копия шифруется; закрытого ключа на сервере нет.
+      PRICEWATCH_BACKUP_RECIPIENT: age1lphlfa8e7neft64t630qgmzuzc3tzvtz9yqta26c9y8wkdj5nqcs2rl7lc
+      PRICEWATCH_BACKUP_TIME: "04:30"
+    # Картинки — только на чтение; незашифрованный дамп — в /tmp (память).
+    volumes:
+      - media:/data/media:ro
+      - backups:/backups
     depends_on:
       migrate:
         condition: service_completed_successfully
-    mem_limit: 384m
+    mem_limit: 512m
 
   caddy:
     image: caddy:2.10-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
@@ -128,5 +147,6 @@ networks:
 volumes:
   pgdata:
   media:
+  backups:
   caddy_data:
   caddy_config:

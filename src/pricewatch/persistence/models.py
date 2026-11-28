@@ -328,7 +328,7 @@ class TelegramLinkCodeRow(Base):
 
 
 class AuthFailureRow(Base):
-    """Неудачная попытка входа (login) или ввода кода связки (pairing) — для ограничений."""
+    """Неудачная попытка входа (login), ввода кода связки (pairing) или токена приёмника копий (backup) — для ограничений."""
 
     __tablename__ = "auth_failures"
 
@@ -339,7 +339,7 @@ class AuthFailureRow(Base):
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (
-        CheckConstraint("kind IN ('login', 'pairing')", name="kind"),
+        CheckConstraint("kind IN ('login', 'pairing', 'backup')", name="kind"),
         CheckConstraint("subject IS NULL OR char_length(subject) BETWEEN 1 AND 64", name="subject_length"),
         Index("ix_auth_failures_kind_subject_created_at", "kind", "subject", "created_at"),
         Index("ix_auth_failures_kind_ip_created_at", "kind", "ip", "created_at"),
@@ -517,6 +517,29 @@ class ServiceRow(Base):
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Сторож сообщил администраторам, что процесс молчит с этого момента (последний пульс); пусто — на связи.
     silent_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        _hash_check("token_hash"),
+        CheckConstraint(f"next_token_hash IS NULL OR next_token_hash ~ {HASH_PATTERN}", name="next_token_hash_format"),
+        CheckConstraint("next_token_hash IS NULL OR next_token_hash <> token_hash", name="tokens_differ"),
+        CheckConstraint("char_length(name) BETWEEN 1 AND 80", name="name_length"),
+    )
+
+
+class BackupReaderRow(Base):
+    """Домашний приёмник копий: токен только на чтение копий (/backups/v1), как у worker — в базе только HMAC,
+    ротация через next_token_hash. last_pulled_at — когда приёмник последний раз подтвердил полученную копию."""
+
+    __tablename__ = "backup_readers"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    next_token_hash: Mapped[str | None] = mapped_column(Text, unique=True)
+    created_at: Mapped[datetime] = _created_at()
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_pulled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         _hash_check("token_hash"),

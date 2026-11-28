@@ -644,6 +644,32 @@ class ServiceRepository(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
+class PullHealth:
+    """Действующие приёмники копий: когда последний раз подтверждено получение (None — ни разу) и когда выдан первый токен."""
+
+    last_pulled_at: datetime | None
+    created_at: datetime
+
+
+class BackupReaderRepository(Protocol):
+    """Домашние приёмники копий /backups/v1: тот же механизм токена, что у worker."""
+
+    def create(self, name: str, token_hash: str, now: datetime) -> int:
+        """Новый приёмник; занятое имя — NAME_TAKEN."""
+        ...
+    def find_by_token(self, token_hash: str) -> WorkerAuth | None: ...
+    def promote_next_token(self, worker_id: int) -> None: ...
+    def set_next_token(self, name: str, token_hash: str) -> None: ...
+    def touch(self, worker_id: int, now: datetime) -> None: ...
+    def mark_pulled(self, reader_id: int, now: datetime) -> None:
+        """Приёмник подтвердил, что получил копию и сверил её сумму."""
+        ...
+    def pull_health(self) -> PullHealth | None:
+        """Сводка по действующим приёмникам; None — приёмников нет (копии домой не забираются)."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
 class OutboxMessage:
     """Telegram-сообщение, взятое ботом на отправку."""
 
@@ -925,20 +951,23 @@ class BackupRepository(Protocol):
 
 
 class BackupArchive(Protocol):
-    """Папка копий на домашнем узле."""
+    """Папка копий на сервере."""
 
     def create(self, name: str) -> int:
-        """Зашифрованная копия базы и картинок под этим именем; размер в байтах.
+        """Зашифрованная копия базы и картинок под этим именем и файл её контрольной суммы; размер в байтах.
         Сбой — BackupError, и файла с этим именем нет."""
         ...
     def names(self) -> list[str]:
         """Имена файлов в папке копий."""
         ...
-    def remove(self, name: str) -> None:
-        """Удалить копию; сбой — BackupError."""
+    def size(self, name: str) -> int:
+        """Размер копии в байтах; сбой — BackupError."""
         ...
-    def upload(self) -> None:
-        """Отправить на арендный сервер копии, которых там ещё нет; сбой — BackupError."""
+    def free_bytes(self) -> int:
+        """Свободное место на диске папки копий; сбой — BackupError."""
+        ...
+    def remove(self, name: str) -> None:
+        """Удалить копию и её контрольную сумму; сбой — BackupError."""
         ...
 
 
@@ -995,6 +1024,7 @@ class UnitOfWork(Protocol):
     audit: AuditRepository
     client_errors: ClientErrorRepository
     services: ServiceRepository
+    backup_readers: BackupReaderRepository
     telegram: TelegramRepository
     backups: BackupRepository
 

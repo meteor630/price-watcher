@@ -436,7 +436,6 @@ def test_bad_bot_admin_chat_ids_name_variable(monkeypatch: pytest.MonkeyPatch, r
 from pricewatch.config.settings import BackupSettings, load_backup_settings  # noqa: E402
 
 RECIPIENT = "age1" + "q" * 58
-REMOTE = {"REMOTE": "pwbackup@tunnel.example.ru", "SSH_KEY": "/run/backup-ssh/id_ed25519", "KNOWN_HOSTS": "/run/backup-ssh/known_hosts"}
 
 
 def backup_env(monkeypatch: pytest.MonkeyPatch, **values: str) -> None:
@@ -449,27 +448,23 @@ def backup_env(monkeypatch: pytest.MonkeyPatch, **values: str) -> None:
 def test_backup_settings_normal_with_default_time(monkeypatch: pytest.MonkeyPatch) -> None:
     from datetime import time
 
-    backup_env(monkeypatch, DIR="/backups", RECIPIENT=RECIPIENT, **REMOTE)
+    backup_env(monkeypatch, DIR="/backups", RECIPIENT=RECIPIENT)
 
     settings = load_backup_settings(None)
 
     assert (settings.dir, settings.recipient, settings.time) == (Path("/backups"), RECIPIENT, time(4, 30))
-    assert (settings.remote, settings.ssh_port, settings.ssh_key) == ("pwbackup@tunnel.example.ru", 22, Path("/run/backup-ssh/id_ed25519"))
 
 
 @pytest.mark.parametrize(
     ("values", "variable"),
     [
-        ({"DIR": "/backups", **REMOTE}, "PRICEWATCH_BACKUP_RECIPIENT"),
-        ({"DIR": "/backups", "RECIPIENT": "AGE-SECRET-KEY-1" + "Q" * 58, **REMOTE}, "PRICEWATCH_BACKUP_RECIPIENT"),
-        ({"DIR": "/backups", "RECIPIENT": "age1" + "b" * 58, **REMOTE}, "PRICEWATCH_BACKUP_RECIPIENT"),
-        ({"DIR": "/backups", "RECIPIENT": RECIPIENT, "TIME": "25:00", **REMOTE}, "PRICEWATCH_BACKUP_TIME"),
-        ({"RECIPIENT": RECIPIENT, **REMOTE}, "PRICEWATCH_BACKUP_DIR"),
-        ({"DIR": "/backups", "RECIPIENT": RECIPIENT, **REMOTE, "REMOTE": "tunnel.example.ru"}, "PRICEWATCH_BACKUP_REMOTE"),
-        ({"DIR": "/backups", "RECIPIENT": RECIPIENT, **REMOTE, "REMOTE": "pwbackup@host;rm -rf /"}, "PRICEWATCH_BACKUP_REMOTE"),
-        ({"DIR": "/backups", "RECIPIENT": RECIPIENT, "REMOTE": "pwbackup@tunnel.example.ru", "KNOWN_HOSTS": "/k"}, "PRICEWATCH_BACKUP_SSH_KEY"),
+        ({"DIR": "/backups"}, "PRICEWATCH_BACKUP_RECIPIENT"),
+        ({"DIR": "/backups", "RECIPIENT": "AGE-SECRET-KEY-1" + "Q" * 58}, "PRICEWATCH_BACKUP_RECIPIENT"),
+        ({"DIR": "/backups", "RECIPIENT": "age1" + "b" * 58}, "PRICEWATCH_BACKUP_RECIPIENT"),
+        ({"DIR": "/backups", "RECIPIENT": RECIPIENT, "TIME": "25:00"}, "PRICEWATCH_BACKUP_TIME"),
+        ({"RECIPIENT": RECIPIENT}, "PRICEWATCH_BACKUP_DIR"),
     ],
-    ids=["no-recipient", "secret-key-instead-of-public", "not-bech32", "bad-time", "no-dir", "remote-without-user", "remote-with-shell", "no-ssh-key"],
+    ids=["no-recipient", "secret-key-instead-of-public", "not-bech32", "bad-time", "no-dir"],
 )
 def test_backup_settings_errors_name_variable_without_value(monkeypatch: pytest.MonkeyPatch, values: dict, variable: str) -> None:
     backup_env(monkeypatch, **values)
@@ -482,14 +477,14 @@ def test_backup_settings_errors_name_variable_without_value(monkeypatch: pytest.
 
 
 def test_backup_rejects_unknown_backup_variable(monkeypatch: pytest.MonkeyPatch) -> None:
-    backup_env(monkeypatch, DIR="/backups", RECIPIENT=RECIPIENT, KEY="typo", **REMOTE)
+    backup_env(monkeypatch, DIR="/backups", RECIPIENT=RECIPIENT, KEY="typo")
 
     with pytest.raises(ConfigError, match="PRICEWATCH_BACKUP_KEY"):
         load_backup_settings(None)
 
 
 def test_server_ignores_backup_variables(monkeypatch: pytest.MonkeyPatch) -> None:
-    backup_env(monkeypatch, DIR="/backups", RECIPIENT=RECIPIENT, **REMOTE)
+    backup_env(monkeypatch, DIR="/backups", RECIPIENT=RECIPIENT)
     monkeypatch.setenv("PRICEWATCH_ENV", "test")
 
     with pytest.raises(ConfigError) as caught:
@@ -508,4 +503,70 @@ def test_backup_env_example_is_complete_and_loads(monkeypatch: pytest.MonkeyPatc
     settings = load_backup_settings(env_file)
 
     assert variables == {f"PRICEWATCH_BACKUP_{name.upper()}" for name in BackupSettings.model_fields}
+    assert settings.dir == Path("backups")
+
+
+# --- домашний приёмник копий ---
+
+from pricewatch.config.settings import PULL_MAX_BYTES, PullSettings, load_pull_settings  # noqa: E402
+
+PULL_TOKEN = "p" * 43
+
+
+def pull_env(monkeypatch: pytest.MonkeyPatch, **values: str) -> None:
+    for name in [name for name in __import__("os").environ if name.startswith("PRICEWATCH_")]:
+        monkeypatch.delenv(name)
+    for name, value in values.items():
+        monkeypatch.setenv(f"PRICEWATCH_PULL_{name}", value)
+
+
+def test_pull_settings_normal_with_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import time
+
+    pull_env(monkeypatch, API_URL="https://prices.example.ru/", TOKEN=PULL_TOKEN, DIR="/backups")
+
+    settings = load_pull_settings(None)
+
+    assert (settings.api_url, settings.dir, settings.max_bytes, settings.time) == ("https://prices.example.ru", Path("/backups"), PULL_MAX_BYTES, time(7, 0))
+    assert settings.token.get_secret_value() == PULL_TOKEN
+
+
+@pytest.mark.parametrize(
+    ("values", "variable"),
+    [
+        ({"API_URL": "https://prices.example.ru", "DIR": "/b"}, "PRICEWATCH_PULL_TOKEN"),
+        ({"API_URL": "https://prices.example.ru", "DIR": "/b", "TOKEN": "short"}, "PRICEWATCH_PULL_TOKEN"),
+        ({"API_URL": "https://prices.example.ru/backups/v1", "DIR": "/b", "TOKEN": PULL_TOKEN}, "PRICEWATCH_PULL_API_URL"),
+        ({"API_URL": "https://prices.example.ru", "TOKEN": PULL_TOKEN}, "PRICEWATCH_PULL_DIR"),
+        ({"API_URL": "https://prices.example.ru", "DIR": "/b", "TOKEN": PULL_TOKEN, "MAX_BYTES": "0"}, "PRICEWATCH_PULL_MAX_BYTES"),
+    ],
+    ids=["no-token", "short-token", "url-with-path", "no-dir", "zero-limit"],
+)
+def test_pull_settings_errors_name_variable_without_value(monkeypatch: pytest.MonkeyPatch, values: dict, variable: str) -> None:
+    pull_env(monkeypatch, **values)
+
+    with pytest.raises(ConfigError) as caught:
+        load_pull_settings(None)
+
+    assert variable in str(caught.value)
+    assert PULL_TOKEN not in str(caught.value)
+
+
+def test_pull_rejects_unknown_variable(monkeypatch: pytest.MonkeyPatch) -> None:
+    pull_env(monkeypatch, API_URL="https://prices.example.ru", TOKEN=PULL_TOKEN, DIR="/b", DELETE_REMOTE="1")
+
+    with pytest.raises(ConfigError, match="PRICEWATCH_PULL_DELETE_REMOTE"):
+        load_pull_settings(None)
+
+
+def test_pull_env_example_is_complete_and_loads(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    example = (ROOT / "pull.env.example").read_text(encoding="utf-8")
+    variables = {line.split("=", 1)[0] for line in example.splitlines() if line and not line.startswith("#")}
+    env_file = tmp_path / "pull.env"
+    env_file.write_text(example, encoding="utf-8")
+    pull_env(monkeypatch, TOKEN=PULL_TOKEN)
+
+    settings = load_pull_settings(env_file)
+
+    assert variables == {f"PRICEWATCH_PULL_{name.upper()}" for name in PullSettings.model_fields}
     assert settings.dir == Path("backups")

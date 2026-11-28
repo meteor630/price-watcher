@@ -1,11 +1,14 @@
-"""Запуск планировщика: python -m pricewatch.bootstrap scheduler.
+"""Запуск планировщика: python -m pricewatch.bootstrap scheduler [--backups].
 
 Настройки и проверка базы — как у сервера; коды выхода те же: 2 — конфигурация, 3 — база или схема.
-Сигнал остановки (Ctrl+C, SIGTERM) завершает процесс после текущего обхода.
+--backups — в том же процессе служба ежедневной резервной копии (настройки backup.env, образ backup с pg_dump и age):
+на сервере копии делает планировщик, отдельного контейнера нет.
+Сигнал остановки (Ctrl+C, SIGTERM) завершает процесс после текущего обхода; служба копий останавливается вместе с ним.
 """
 
 import logging
 import signal
+import threading
 from datetime import datetime, time
 from pathlib import Path
 
@@ -19,8 +22,10 @@ from pricewatch.application.retention import delete_blocked_users_data, purge_de
 from pricewatch.application.runs import ExpiredLeases, ScheduledStart, expire_leases, schedule_times, start_scheduled_run
 from pricewatch.application.summaries import send_run_summaries
 from pricewatch.application.watchdog import WatchReport, watch
+from pricewatch.backup.service import BackupService
+from pricewatch.bootstrap.backups import backup_service
 from pricewatch.bootstrap.server import EXIT_CONFIG, EXIT_DATABASE, check_database
-from pricewatch.config.settings import ConfigError, load_settings
+from pricewatch.config.settings import BackupSettings, ConfigError, load_backup_settings, load_settings
 from pricewatch.observability.json_log import configure_logging
 from pricewatch.persistence.database import create_db_engine
 from pricewatch.persistence.unit_of_work import SqlUnitOfWork
@@ -66,9 +71,10 @@ class SqlJobs:
         return watch_backups(SqlUnitOfWork(self._engine), now)
 
 
-def run_scheduler(env_file: Path = Path(".env")) -> int:
+def run_scheduler(env_file: Path = Path(".env"), *, backups: bool = False, backup_env: Path = Path("backup.env")) -> int:
     try:
         settings = load_settings(env_file)
+        backup: BackupSettings | None = load_backup_settings(backup_env) if backups else None
     except ConfigError as error:
         configure_logging("ERROR")
         logger.error(str(error))
@@ -79,11 +85,25 @@ def run_scheduler(env_file: Path = Path(".env")) -> int:
         if not check_database(engine):
             return EXIT_DATABASE
         scheduler = Scheduler(SqlJobs(engine))
+        copies: BackupService | None = None if backup is None else backup_service(settings, backup, engine)
+        copies_thread = None if copies is None else threading.Thread(target=copies.run, name="backups", daemon=True)
+
+        def stop(*_: object) -> None:
+            scheduler.stop()
+            if copies is not None:
+                copies.stop()
+
         for name in ("SIGINT", "SIGTERM"):
             if hasattr(signal, name):
-                signal.signal(getattr(signal, name), lambda *_: scheduler.stop())
+                signal.signal(getattr(signal, name), stop)
+        if copies_thread is not None:
+            copies_thread.start()
+            logger.info("Служба резервных копий запущена")
         logger.info("Планировщик запущен")
         scheduler.run()
+        if copies is not None and copies_thread is not None:
+            copies.stop()
+            copies_thread.join()
     finally:
         engine.dispose()
     logger.info("Планировщик остановлен")

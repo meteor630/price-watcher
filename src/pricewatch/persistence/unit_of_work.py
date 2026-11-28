@@ -14,6 +14,7 @@ from sqlalchemy.exc import InterfaceError, OperationalError, SQLAlchemyError
 
 from pricewatch.domain.errors import ErrorCode, PriceWatcherError
 
+from pricewatch.persistence.backup_reader_repository import SqlBackupReaderRepository
 from pricewatch.persistence.backup_repository import SqlBackupRepository
 from pricewatch.persistence.collection_repositories import (
     SqlItemLinkRepository,
@@ -93,6 +94,7 @@ class SqlUnitOfWork:
         self.services = SqlServiceRepository(self._connection)
         self.telegram = SqlTelegramRepository(self._connection)
         self.backups = SqlBackupRepository(self._connection)
+        self.backup_readers = SqlBackupReaderRepository(self._connection)
         return self
 
     def commit(self) -> None:

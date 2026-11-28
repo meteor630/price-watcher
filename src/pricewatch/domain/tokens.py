@@ -29,6 +29,7 @@ class Purpose(StrEnum):
     REFRESH = "refresh"
     WORKER = "worker"
     SERVICE = "service"
+    BACKUP_READER = "backup_reader"
     TELEGRAM_LINK = "telegram_link"
     UNDO = "undo"
 

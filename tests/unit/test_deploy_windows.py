@@ -13,7 +13,7 @@ BOM = b"\xef\xbb\xbf"
 
 
 def test_all_worker_scripts_present() -> None:
-    assert [script.name for script in SCRIPTS] == ["autostart.ps1", "install-worker.ps1", "start-worker.ps1"]
+    assert [script.name for script in SCRIPTS] == ["autostart.ps1", "install-worker.ps1", "restore-check.ps1", "start-worker.ps1"]
 
 
 @pytest.mark.parametrize("script", SCRIPTS, ids=lambda path: path.name)

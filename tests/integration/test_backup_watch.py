@@ -1,6 +1,7 @@
 """Сторож копий на настоящей базе: неудачная попытка — одно уведомление на попытку, нет удачной копии дольше 36 часов —
 одно на эпизод, в колокольчик и в Telegram администраторам; повтор обхода не повторяет уведомление, два сторожа
-одновременно не сообщают дважды; без попыток копии не настроены — молчание."""
+одновременно не сообщают дважды; без попыток копии не настроены — молчание. Домашний приёмник не получал копий дольше
+36 часов (от последнего получения, без него — от выдачи токена) — одно уведомление на эпизод."""
 
 import threading
 from collections.abc import Iterator
@@ -30,7 +31,7 @@ def engine(module_database_url: str) -> Iterator[Engine]:
 @pytest.fixture(autouse=True)
 def clean(engine: Engine) -> None:
     with engine.begin() as db:
-        db.execute(text("TRUNCATE users, notifications, backup_runs CASCADE"))
+        db.execute(text("TRUNCATE users, notifications, backup_runs, backup_readers CASCADE"))
 
 
 def admin(engine: Engine, chat: int | None = None) -> User:
@@ -52,7 +53,7 @@ def attempt(engine: Engine, started: datetime, outcome: BackupOutcome | None) ->
 
 
 OK = BackupOutcome("ok", "pricewatch-x.tar.age", 100, None)
-UPLOAD_FAILED = BackupOutcome("failed", "pricewatch-y.tar.age", 100, "UPLOAD_FAILED")
+RETENTION_FAILED = BackupOutcome("failed", "pricewatch-y.tar.age", 100, "RETENTION_FAILED")
 
 
 def notes(engine: Engine) -> list[tuple[str, str, int]]:
@@ -78,13 +79,13 @@ def test_failed_copy_alerts_admins_once_in_bell_and_telegram(engine: Engine) -> 
     owner = admin(engine, chat=111)
     admin(engine)
     attempt(engine, NOW - timedelta(days=1), OK)
-    failed = attempt(engine, NOW - timedelta(hours=4, minutes=30), UPLOAD_FAILED)
+    failed = attempt(engine, NOW - timedelta(hours=4, minutes=30), RETENTION_FAILED)
 
     assert watch(engine) == BackupAlerts(failed_backup_id=failed)
     assert watch(engine, NOW + timedelta(seconds=30)) == BackupAlerts()
     assert notes(engine) == [("backup_failed", "in_app", 1), ("backup_failed", "telegram", 1), ("backup_failed", "in_app", 1)]
     (item,) = bell_page(SqlUnitOfWork(engine), owner, 0, 10).items
-    assert item.text == "Резервная копия 14.10 в 07:30 не удалась: копия сделана, но не отправлена на арендный сервер. Журнал — служба backup на домашнем узле."
+    assert item.text == "Резервная копия 14.10 в 07:30 не удалась: копия сделана, но старые не удалены. Журнал — планировщик на сервере."
 
 
 def test_each_failed_attempt_is_its_own_alert(engine: Engine) -> None:
@@ -142,7 +143,7 @@ def test_without_attempts_backups_are_not_set_up(engine: Engine) -> None:
 
 def test_two_watchers_at_once_alert_once(engine: Engine) -> None:
     admin(engine)
-    failed = attempt(engine, NOW - timedelta(hours=1), UPLOAD_FAILED)
+    failed = attempt(engine, NOW - timedelta(hours=1), RETENTION_FAILED)
     results: list[BackupAlerts] = []
     start = threading.Barrier(2)
 
@@ -158,3 +159,48 @@ def test_two_watchers_at_once_alert_once(engine: Engine) -> None:
 
     assert sorted(result.failed_backup_id or 0 for result in results) == [0, failed]
     assert notes(engine) == [("backup_failed", "in_app", 1)]
+
+
+# --- домашний приёмник копий ---
+
+HASH = "0" * 64
+
+
+def reader(engine: Engine, created: datetime, pulled: datetime | None) -> None:
+    with engine.begin() as db:
+        db.execute(text(
+            "INSERT INTO backup_readers (name, token_hash, created_at, last_pulled_at) VALUES ('home', :h, :c, :p)"
+        ), {"h": HASH, "c": created, "p": pulled})
+
+
+def test_recent_pull_is_quiet(engine: Engine) -> None:
+    admin(engine)
+    attempt(engine, NOW - timedelta(hours=5), OK)
+    reader(engine, NOW - timedelta(days=10), NOW - timedelta(hours=3))
+    assert watch(engine) == BackupAlerts()
+
+
+def test_home_off_for_three_days_alerts_once(engine: Engine) -> None:
+    owner = admin(engine, chat=111)
+    attempt(engine, NOW - timedelta(hours=5), OK)
+    reader(engine, NOW - timedelta(days=10), NOW - timedelta(days=3))
+
+    assert watch(engine).not_pulled_since == NOW - timedelta(days=3)
+    assert watch(engine, NOW + timedelta(hours=1)) == BackupAlerts()
+    assert notes(engine) == [("backup_not_pulled", "in_app", 1), ("backup_not_pulled", "telegram", 1)]
+    (item,) = bell_page(SqlUnitOfWork(engine), owner, 0, 10).items
+    assert item.text.startswith("Домашний узел не забирал резервные копии с 11.10 в 12:00")
+
+
+def test_reader_that_never_pulled_counts_from_token(engine: Engine) -> None:
+    admin(engine)
+    attempt(engine, NOW - timedelta(hours=5), OK)
+    reader(engine, NOW - STALE_AFTER - timedelta(minutes=1), None)
+    assert watch(engine).not_pulled_since == NOW - STALE_AFTER - timedelta(minutes=1)
+
+
+def test_exactly_36_hours_since_pull_is_quiet(engine: Engine) -> None:
+    admin(engine)
+    attempt(engine, NOW - timedelta(hours=5), OK)
+    reader(engine, NOW - timedelta(days=10), NOW - STALE_AFTER)
+    assert watch(engine) == BackupAlerts()
